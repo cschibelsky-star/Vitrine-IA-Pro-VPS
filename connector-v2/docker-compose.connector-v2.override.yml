@@ -1,0 +1,22 @@
+services:
+  ops_broker:
+    environment:
+      TVSUMARE_ROOT: /srv/tvsumare
+      TVSUMARE_BACKUP_ROOT: /srv/backups/tvsumare
+      NGINX_CONF_ROOT: /srv/vitrine/docker/nginx/conf.d
+      NGINX_HTML_ROOT: /srv/vitrine/docker/nginx/html
+      TVSUMARE_OPS_TIMEOUT: 1200
+    volumes:
+      - /srv/tvsumare:/srv/tvsumare:rw
+      - /srv/backups/tvsumare:/srv/backups/tvsumare:rw
+      - /srv/vitrine/docker/nginx/conf.d:/srv/vitrine/docker/nginx/conf.d:rw
+      - /srv/vitrine/docker/nginx/html:/srv/vitrine/docker/nginx/html:rw
+      - /srv/vitrine/ssl:/srv/vitrine/ssl:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  vps_mcp_connector:
+    environment:
+      TVSUMARE_ROOT: /srv/tvsumare
+    volumes:
+      - /srv/tvsumare:/host/tvsumare:ro
+      - /srv/backups/tvsumare:/host/backups/tvsumare:ro
