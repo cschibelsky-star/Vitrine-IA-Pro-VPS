@@ -6,17 +6,25 @@ services:
       NGINX_CONF_ROOT: /srv/vitrine/docker/nginx/conf.d
       NGINX_HTML_ROOT: /srv/vitrine/docker/nginx/html
       TVSUMARE_OPS_TIMEOUT: 1200
+      PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects
+      PROJECT_MANAGER_TIMEOUT: 1200
+      OPS_AUDIT_LOG: /var/log/vitrine-ops/audit.jsonl
     volumes:
       - /srv/tvsumare:/srv/tvsumare:rw
+      - /srv/projects:/srv/projects:rw
       - /srv/backups/tvsumare:/srv/backups/tvsumare:rw
       - /srv/vitrine/docker/nginx/conf.d:/srv/vitrine/docker/nginx/conf.d:rw
       - /srv/vitrine/docker/nginx/html:/srv/vitrine/docker/nginx/html:rw
       - /srv/vitrine/ssl:/srv/vitrine/ssl:rw
+      - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
       - /var/run/docker.sock:/var/run/docker.sock
 
   vps_mcp_connector:
     environment:
       TVSUMARE_ROOT: /srv/tvsumare
+      PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects
     volumes:
       - /srv/tvsumare:/host/tvsumare:ro
+      - /srv/projects:/host/projects:ro
       - /srv/backups/tvsumare:/host/backups/tvsumare:ro
+      - /var/log/vitrine-ops:/host/logs/vitrine-ops:ro
