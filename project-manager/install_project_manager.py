@@ -136,6 +136,12 @@ def main() -> None:
     dockerfile.write_text(docker_text, encoding='utf-8')
 
     compose_override = ROOT / 'docker-compose.connector-v2.override.yml'
+    compose_template = SOURCE.parent / 'connector-v2' / 'docker-compose.connector-v2.override.yml'
+    if not compose_override.exists():
+        if not compose_template.exists():
+            raise RuntimeError(f'Compose override ausente: {compose_override} e template não encontrado: {compose_template}')
+        shutil.copy2(compose_template, compose_override)
+
     backup(compose_override)
     compose_text = compose_override.read_text(encoding='utf-8')
 
