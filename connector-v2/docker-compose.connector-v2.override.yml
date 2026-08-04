@@ -5,6 +5,8 @@ services:
       TVSUMARE_BACKUP_ROOT: /srv/backups/tvsumare
       NGINX_CONF_ROOT: /srv/vitrine/docker/nginx/conf.d
       NGINX_HTML_ROOT: /srv/vitrine/docker/nginx/html
+      VITRINE_SSL_ROOT: /srv/vitrine/ssl
+      CERTBOT_IMAGE: certbot/certbot:latest
       TVSUMARE_OPS_TIMEOUT: 1200
     volumes:
       - /srv/tvsumare:/srv/tvsumare:rw
