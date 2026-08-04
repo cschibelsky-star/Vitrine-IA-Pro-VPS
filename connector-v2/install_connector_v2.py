@@ -21,32 +21,38 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def ensure_line_after(text: str, marker: str, line: str, label: str) -> str:
+    if line in text:
+        return text
+    return replace_once(text, marker, marker + line, label)
+
+
 def main() -> None:
     if not ROOT.exists():
         raise SystemExit(f'Raiz do conector não encontrada: {ROOT}')
 
-    ops_module = ROOT / 'tvsumare_operations.py'
-    mcp_module = ROOT / 'tvsumare_tools.py'
-    shutil.copy2(SOURCE / 'tvsumare_operations.py', ops_module)
-    shutil.copy2(SOURCE / 'main_tvsumare_tools.py', mcp_module)
+    shutil.copy2(SOURCE / 'tvsumare_operations.py', ROOT / 'tvsumare_operations.py')
+    shutil.copy2(SOURCE / 'main_tvsumare_tools.py', ROOT / 'tvsumare_tools.py')
 
     ops_broker = ROOT / 'ops_broker.py'
     backup(ops_broker)
     text = ops_broker.read_text(encoding='utf-8')
-    text = replace_once(
-        text,
-        'from via_operations import router as via_operations_router\n',
-        'from via_operations import router as via_operations_router\n'
-        'from tvsumare_operations import router as tvsumare_operations_router\n',
-        'import do router TV Sumaré',
-    )
-    text = replace_once(
-        text,
-        'app.include_router(via_operations_router)\n',
-        'app.include_router(via_operations_router)\n'
-        'app.include_router(tvsumare_operations_router)\n',
-        'registro do router TV Sumaré',
-    )
+    if 'from tvsumare_operations import router as tvsumare_operations_router\n' not in text:
+        text = replace_once(
+            text,
+            'from via_operations import router as via_operations_router\n',
+            'from via_operations import router as via_operations_router\n'
+            'from tvsumare_operations import router as tvsumare_operations_router\n',
+            'import do router TV Sumaré',
+        )
+    if 'app.include_router(tvsumare_operations_router)\n' not in text:
+        text = replace_once(
+            text,
+            'app.include_router(via_operations_router)\n',
+            'app.include_router(via_operations_router)\n'
+            'app.include_router(tvsumare_operations_router)\n',
+            'registro do router TV Sumaré',
+        )
     ops_broker.write_text(text, encoding='utf-8')
 
     main_py = ROOT / 'main.py'
@@ -65,7 +71,9 @@ def main() -> None:
             '    tvsumare_php_lint as _tvsumare_php_lint,\n'
             '    tvsumare_docker_build as _tvsumare_docker_build,\n'
             '    tvsumare_docker_up as _tvsumare_docker_up,\n'
+            '    tvsumare_issue_homologation_certificate as _tvsumare_issue_homologation_certificate,\n'
             '    tvsumare_create_homologation_vhost as _tvsumare_create_homologation_vhost,\n'
+            '    tvsumare_publish_homologation as _tvsumare_publish_homologation,\n'
             '    tvsumare_create_release_zip as _tvsumare_create_release_zip,\n'
             ')\n',
             'imports de ferramentas TV Sumaré',
@@ -107,11 +115,28 @@ def tvsumare_docker_up() -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def tvsumare_issue_homologation_certificate(
+    domain: str = "tv-hml.vitrineiapro.com.br",
+    email: str = "cschibelsky@gmail.com",
+) -> dict[str, Any]:
+    return _tvsumare_issue_homologation_certificate(domain, email)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def tvsumare_create_homologation_vhost(
     domain: str = "tv-hml.vitrineiapro.com.br",
     upstream: str = "tvsumare_web:80",
 ) -> dict[str, Any]:
     return _tvsumare_create_homologation_vhost(domain, upstream)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def tvsumare_publish_homologation(
+    domain: str = "tv-hml.vitrineiapro.com.br",
+    upstream: str = "tvsumare_web:80",
+    email: str = "cschibelsky@gmail.com",
+) -> dict[str, Any]:
+    return _tvsumare_publish_homologation(domain, upstream, email)
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
@@ -121,6 +146,8 @@ def tvsumare_create_release_zip() -> dict[str, Any]:
     marker = '\nif __name__ == "__main__":\n'
     if 'def tvsumare_workspace_create()' not in text:
         text = replace_once(text, marker, block + marker, 'registro MCP TV Sumaré')
+    elif 'def tvsumare_publish_homologation(' not in text:
+        text = replace_once(text, marker, block + marker, 'atualização MCP TV Sumaré')
     main_py.write_text(text, encoding='utf-8')
 
     compose = ROOT / 'docker-compose.mcp.yml'
@@ -136,8 +163,23 @@ def tvsumare_create_release_zip() -> dict[str, Any]:
             + '      TVSUMARE_BACKUP_ROOT: /srv/backups/tvsumare\n'
             + '      NGINX_CONF_ROOT: /srv/vitrine/docker/nginx/conf.d\n'
             + '      NGINX_HTML_ROOT: /srv/vitrine/docker/nginx/html\n'
+            + '      VITRINE_SSL_ROOT: /srv/vitrine/ssl\n'
+            + '      CERTBOT_IMAGE: certbot/certbot:latest\n'
             + '      TVSUMARE_OPS_TIMEOUT: 1200\n',
             'variáveis ops_broker',
+        )
+    else:
+        compose_text = ensure_line_after(
+            compose_text,
+            '      NGINX_HTML_ROOT: /srv/vitrine/docker/nginx/html\n',
+            '      VITRINE_SSL_ROOT: /srv/vitrine/ssl\n',
+            'VITRINE_SSL_ROOT',
+        )
+        compose_text = ensure_line_after(
+            compose_text,
+            '      VITRINE_SSL_ROOT: /srv/vitrine/ssl\n',
+            '      CERTBOT_IMAGE: certbot/certbot:latest\n',
+            'CERTBOT_IMAGE',
         )
     volume_marker = '      - /var/run/docker.sock:/var/run/docker.sock\n'
     if '/srv/tvsumare:/srv/tvsumare:rw' not in compose_text:
