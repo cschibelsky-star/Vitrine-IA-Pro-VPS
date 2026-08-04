@@ -82,6 +82,18 @@ def tvsumare_docker_up() -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def tvsumare_issue_homologation_certificate(
+    domain: str = "tv-hml.vitrineiapro.com.br",
+    email: str = "cschibelsky@gmail.com",
+) -> dict[str, Any]:
+    """Emite ou renova o certificado Let's Encrypt da homologação usando webroot, valida os arquivos no Nginx e registra auditoria."""
+    return _post(
+        "/tvsumare/ssl/issue",
+        {"domain": domain, "email": email},
+    )
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def tvsumare_create_homologation_vhost(
     domain: str = "tv-hml.vitrineiapro.com.br",
     upstream: str = "tvsumare_web:80",
@@ -90,6 +102,19 @@ def tvsumare_create_homologation_vhost(
     return _post(
         "/tvsumare/nginx/vhost",
         {"domain": domain, "upstream": upstream, "homologation": True},
+    )
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def tvsumare_publish_homologation(
+    domain: str = "tv-hml.vitrineiapro.com.br",
+    upstream: str = "tvsumare_web:80",
+    email: str = "cschibelsky@gmail.com",
+) -> dict[str, Any]:
+    """Executa o ciclo completo: certificado, virtual host HTTPS, nginx -t, reload e testes HTTP/HTTPS com rollback em falha."""
+    return _post(
+        "/tvsumare/publication/homologation",
+        {"domain": domain, "upstream": upstream, "email": email},
     )
 
 
