@@ -42,3 +42,23 @@ def project_clone(project_id: str) -> dict[str, Any]:
 
 def project_status(project_id: str) -> dict[str, Any]:
     return _request("GET", f"/projects/{project_id}/status")
+
+
+def project_deploy(
+    project_id: str,
+    environment: str = "homologation",
+    update_repository: bool = True,
+    build: bool = True,
+    start: bool = True,
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/project-deployments/deploy",
+        {
+            "project_id": project_id,
+            "environment": environment,
+            "update_repository": update_repository,
+            "build": build,
+            "start": start,
+        },
+    )
