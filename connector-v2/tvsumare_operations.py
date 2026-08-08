@@ -168,13 +168,60 @@ def git_status() -> dict[str, Any]:
 @router.post("/tests/php-lint", dependencies=[Depends(auth)])
 def php_lint() -> dict[str, Any]:
     repository = TV_ROOT / "repository"
-    command = [
-        "sh",
-        "-c",
-        "find . -type f -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l",
-    ]
-    result = run(command, repository)
-    audit("php_lint", {}, result)
+
+    # Use the exact PHP runtime image already running for TV Sumaré, but mount
+    # the current repository read-only. This validates pending source changes
+    # before rebuild instead of linting the stale code baked into tvsumare_web.
+    image_result = run(
+        ["docker", "inspect", "--format", "{{.Config.Image}}", "tvsumare_web"],
+        repository,
+    )
+    if not image_result["ok"]:
+        result = {
+            "ok": False,
+            "exit_code": image_result["exit_code"],
+            "stdout": image_result["stdout"],
+            "stderr": "Nao foi possivel identificar a imagem do container tvsumare_web. " + image_result["stderr"],
+        }
+        audit("php_lint", {"runtime": "tvsumare_web"}, result)
+        return result
+
+    image = image_result["stdout"].strip()
+    if not image:
+        result = {"ok": False, "exit_code": 125, "stdout": "", "stderr": "Imagem do tvsumare_web nao identificada."}
+        audit("php_lint", {"runtime": "tvsumare_web"}, result)
+        return result
+
+    lint_script = (
+        "set -eu; "
+        "files=$(find /lint -type f -name '*.php' -not -path '/lint/vendor/*' -not -path '/lint/.git/*'); "
+        "if [ -z \"$files\" ]; then echo 'Nenhum arquivo PHP encontrado.'; exit 0; fi; "
+        "find /lint -type f -name '*.php' -not -path '/lint/vendor/*' -not -path '/lint/.git/*' -print0 "
+        "| xargs -0 -n1 php -l"
+    )
+    result = run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,nodev,size=32m",
+            "--entrypoint",
+            "sh",
+            "-v",
+            f"{repository}:/lint:ro",
+            image,
+            "-lc",
+            lint_script,
+        ],
+        repository,
+    )
+    result["runtime_image"] = image
+    result["source_mount"] = f"{repository}:/lint:ro"
+    audit("php_lint", {"runtime": "temporary_container", "image": image}, result)
     return result
 
 
