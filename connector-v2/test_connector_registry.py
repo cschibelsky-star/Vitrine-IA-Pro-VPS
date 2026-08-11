@@ -35,11 +35,28 @@ def test_project_registry() -> None:
     }
     for key,value in expected.items():
         if ctx.get(key)!=value: fail(f'{key} divergente: {ctx.get(key)!r}')
+    unknown=get_project_context('projeto-inexistente')
+    if unknown.get('ok') is not False or unknown.get('error')!='unknown_project':
+        fail('registry não rejeita projeto desconhecido de forma determinística')
+
+
+def test_runtime_health() -> None:
+    from connector_runtime import CONNECTOR_ID, connector_health, project_context
+    if CONNECTOR_ID!='vitrine_ops': fail(f'connector_id técnico inválido: {CONNECTOR_ID!r}')
+    health=connector_health()
+    required=('ok','connector_id','version','registry_version','projects')
+    for key in required:
+        if key not in health: fail(f'health sem campo {key}')
+    if not health.get('ok'): fail('connector_health não retornou ok')
+    if health.get('connector_id')!='vitrine_ops': fail('connector_health diverge do id técnico')
+    ctx=project_context('tvsumare')
+    if ctx.get('repository')!='/srv/tvsumare/repository': fail('project_context não usa registry canônico')
 
 
 def main() -> None:
     test_no_nested_fastmcp()
     test_project_registry()
+    test_runtime_health()
     print('CONNECTOR_STABILIZATION_TEST=PASS')
 
 
