@@ -41,8 +41,10 @@ def test_project_registry() -> None:
 
 
 def test_runtime_health() -> None:
-    from connector_runtime import CONNECTOR_ID, connector_health, project_context
+    from connector_runtime import CONNECTOR_ID, CONNECTOR_VERSION, connector_health, project_context
     if CONNECTOR_ID!='vitrine_ops': fail(f'connector_id técnico inválido: {CONNECTOR_ID!r}')
+    if not CONNECTOR_VERSION.startswith('2.1.0-stabilization'):
+        fail(f'versão inesperada: {CONNECTOR_VERSION!r}')
     health=connector_health()
     required=('ok','connector_id','version','registry_version','projects')
     for key in required:
@@ -53,10 +55,19 @@ def test_runtime_health() -> None:
     if ctx.get('repository')!='/srv/tvsumare/repository': fail('project_context não usa registry canônico')
 
 
+def test_installer_contract() -> None:
+    text=(ROOT/'install_connector_v2.py').read_text(encoding='utf-8')
+    for token in ('def ensure_after(', 'def ensure_before(', 'CONNECTOR_STABILIZATION_INSTALLED=SIM'):
+        if token not in text: fail(f'instalador sem contrato idempotente: {token}')
+    if 'replace_once(' in text:
+        fail('instalador ainda contém patch estritamente não idempotente')
+
+
 def main() -> None:
     test_no_nested_fastmcp()
     test_project_registry()
     test_runtime_health()
+    test_installer_contract()
     print('CONNECTOR_STABILIZATION_TEST=PASS')
 
 
