@@ -1,0 +1,25 @@
+name: Connector Stabilization
+
+on:
+  push:
+    paths:
+      - 'connector-v2/**'
+      - '.github/workflows/connector-stabilization.yml'
+  pull_request:
+    paths:
+      - 'connector-v2/**'
+      - '.github/workflows/connector-stabilization.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile connector modules
+        run: python -m compileall -q connector-v2
+      - name: Validate single registry and project context
+        working-directory: connector-v2
+        run: python test_connector_registry.py
