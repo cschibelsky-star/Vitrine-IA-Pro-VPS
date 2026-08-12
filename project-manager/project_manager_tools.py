@@ -90,3 +90,24 @@ def project_deploy(
             "start": start,
         },
     )
+
+def project_workspace_action(
+    project_id: str,
+    action: str,
+    name: str = "",
+    branch: str = "",
+    include_untracked: bool = True,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/workspace/action",
+        {
+            "project_id": project_id,
+            "action": action,
+            "name": name,
+            "branch": branch,
+            "include_untracked": include_untracked,
+            "confirm": confirm,
+        },
+    )
