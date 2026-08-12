@@ -166,6 +166,8 @@ def main() -> None:
             tools_text = (connector_root / "project_manager_tools.py").read_text(encoding="utf-8")
             assert "def project_write_file(" in tools_text
             assert "def project_php_lint(" in tools_text
+            assert (connector_root / "project_file_operations.py").is_file()
+            assert "project_file_operations.py" in (connector_root / "Dockerfile").read_text(encoding="utf-8")
             snapshots.append((compose_path.read_bytes(), main_path.read_bytes()))
 
         assert snapshots[0] == snapshots[1]

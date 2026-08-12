@@ -108,6 +108,7 @@ def main() -> None:
     manifest_target.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(SOURCE / 'project_manager_operations.py', ROOT / 'project_manager_operations.py')
+    shutil.copy2(SOURCE / 'project_file_operations.py', ROOT / 'project_file_operations.py')
     shutil.copy2(SOURCE / 'project_manager_tools.py', ROOT / 'project_manager_tools.py')
     shutil.copy2(SOURCE / 'project_deployment_engine.py', ROOT / 'project_deployment_engine.py')
 
@@ -225,6 +226,7 @@ def main() -> None:
 
     required = [
         'project_manager_operations.py',
+        'project_file_operations.py',
         'project_manager_tools.py',
         'project_deployment_engine.py',
     ]

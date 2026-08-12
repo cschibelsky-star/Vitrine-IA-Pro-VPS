@@ -1,69 +1,60 @@
 from __future__ import annotations
 
-import importlib
 import json
-import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from fastapi import HTTPException
+from project_file_operations import (
+    PHP_LINT_TIMEOUT,
+    ProjectFileOperationError,
+    php_lint_project_file,
+    write_project_file,
+)
 
-
-def _blocked(call: Any, detail: str | None = None) -> None:
+def _blocked(call: Callable[[], Any], detail: str | None = None) -> None:
     try:
         call()
-    except HTTPException as exc:
+    except ProjectFileOperationError as exc:
         if detail is not None:
             assert exc.detail == detail
         return
     raise AssertionError("unsafe project path was accepted")
 
 
+def _audit_writer(audit_log: Path) -> Callable[[dict[str, Any], dict[str, Any]], None]:
+    def write(payload: dict[str, Any], result: dict[str, Any]) -> None:
+        safe_record = {
+            "action": "project_write_file",
+            "payload": payload,
+            "result": result,
+        }
+        with audit_log.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(safe_record) + "\n")
+
+    return write
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="project-file-operations-") as temp:
         base = Path(temp)
-        workspace = base / "workspace"
-        repository = workspace / "repository"
-        manifests = base / "manifests"
+        repository = base / "repository"
         audit_log = base / "audit.jsonl"
-        repository.mkdir(parents=True)
-        manifests.mkdir()
-        (manifests / "sample.json").write_text(
-            json.dumps(
-                {
-                    "id": "sample",
-                    "workspace_root": str(workspace),
-                    "repository": {
-                        "url": "https://example.invalid/sample.git",
-                        "branch": "main",
-                        "directory": "repository",
-                    },
-                    "shared_directories": [],
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        os.environ["PROJECT_MANIFEST_ROOT"] = str(manifests)
-        os.environ["PROJECT_WORKSPACE_ROOTS"] = str(workspace)
-        os.environ["OPS_AUDIT_LOG"] = str(audit_log)
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        ops = importlib.import_module("project_manager_operations")
+        repository.mkdir()
 
         secret_content = "<?php\n// FILE_CONTENT_MUST_NOT_BE_LOGGED\nreturn 1;\n"
-        request = ops.ProjectWriteRequest(
-            project_id="sample",
-            path="app/Services/SafeService.php",
-            content=secret_content,
+        relative_path = "app/Services/SafeService.php"
+        first = write_project_file(
+            repository,
+            relative_path,
+            secret_content,
             confirm="EXECUTAR",
+            audit_callback=_audit_writer(audit_log),
         )
-        first = ops.project_write_file(request)
-        target = repository / request.path
+        target = repository / relative_path
         assert first["ok"] is True
-        assert first["path"] == request.path
+        assert first["path"] == relative_path
         assert first["backup"] is None
         assert first["backup_created"] is False
         assert first["bytes_written"] == len(secret_content.encode("utf-8"))
@@ -71,8 +62,11 @@ def main() -> None:
         print("PROJECT_WRITE_WITHIN_ROOT=PASS")
 
         replacement = "<?php\nreturn 2;\n"
-        second = ops.project_write_file(
-            request.model_copy(update={"content": replacement})
+        second = write_project_file(
+            repository,
+            relative_path,
+            replacement,
+            confirm="EXECUTAR",
         )
         assert second["backup"] is not None
         assert second["backup_created"] is True
@@ -84,14 +78,7 @@ def main() -> None:
         print("PROJECT_SECOND_WRITE=PASS")
 
         def write(path: str) -> None:
-            ops.project_write_file(
-                ops.ProjectWriteRequest(
-                    project_id="sample",
-                    path=path,
-                    content="blocked",
-                    confirm="EXECUTAR",
-                )
-            )
+            write_project_file(repository, path, "blocked", confirm="EXECUTAR")
 
         _blocked(lambda: write("../escape.php"))
         _blocked(lambda: write(".env"))
@@ -99,13 +86,7 @@ def main() -> None:
         _blocked(lambda: write("config/client_secret.php"))
         _blocked(lambda: write(str((base / "outside.php").resolve())))
         _blocked(
-            lambda: ops.project_write_file(
-                ops.ProjectWriteRequest(
-                    project_id="sample",
-                    path="app/no-confirm.php",
-                    content="blocked",
-                )
-            ),
+            lambda: write_project_file(repository, "app/no-confirm.php", "blocked"),
             "confirmation_required",
         )
         symlink_path = repository / "app" / "linked.php"
@@ -131,17 +112,30 @@ def main() -> None:
             output = "PHP Parse error" if returncode else "No syntax errors detected"
             return subprocess.CompletedProcess(argv, returncode, output, "")
 
-        ops.subprocess.run = fake_run
-        lint_valid = ops.project_php_lint(
-            ops.ProjectPathRequest(project_id="sample", path="app/valid.php")
+        lint_valid = php_lint_project_file(
+            repository,
+            "app/valid.php",
+            run_process=fake_run,
         )
-        lint_invalid = ops.project_php_lint(
-            ops.ProjectPathRequest(project_id="sample", path="app/invalid.php")
+        lint_invalid = php_lint_project_file(
+            repository,
+            "app/invalid.php",
+            run_process=fake_run,
+        )
+        def fake_timeout(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+        lint_timeout = php_lint_project_file(
+            repository,
+            "app/valid.php",
+            run_process=fake_timeout,
         )
         call_count = len(calls)
         _blocked(
-            lambda: ops.project_php_lint(
-                ops.ProjectPathRequest(project_id="sample", path="app/notes.txt")
+            lambda: php_lint_project_file(
+                repository,
+                "app/notes.txt",
+                run_process=fake_run,
             ),
             "php_file_required",
         )
@@ -149,18 +143,19 @@ def main() -> None:
         assert lint_valid["success"] is True and lint_valid["exit_code"] == 0
         assert lint_invalid["ok"] is False
         assert lint_invalid["success"] is False and lint_invalid["exit_code"] == 255
+        assert lint_timeout["success"] is False and lint_timeout["exit_code"] == 124
         for argv, kwargs in calls:
             assert argv == ["php", "-l", argv[2]]
             assert Path(argv[2]).is_file()
             assert kwargs["shell"] is False
-            assert kwargs["timeout"] == ops.PHP_LINT_TIMEOUT
+            assert kwargs["timeout"] == PHP_LINT_TIMEOUT
         print("PROJECT_PHP_LINT_VALID=PASS")
         print("PROJECT_PHP_LINT_SYNTAX_ERROR=PASS")
         print("PROJECT_PHP_LINT_NON_PHP_BLOCKED=PASS")
+        print("PROJECT_PHP_LINT_TIMEOUT=PASS")
         print("PROJECT_NO_ARBITRARY_SHELL=PASS")
 
-        audit_text = audit_log.read_text(encoding="utf-8")
-        assert "FILE_CONTENT_MUST_NOT_BE_LOGGED" not in audit_text
+        assert secret_content not in audit_log.read_text(encoding="utf-8")
         assert str(repository) not in lint_valid["stdout"]
         print("PROJECT_SAFE_AUDIT=PASS")
 
