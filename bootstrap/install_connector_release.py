@@ -15,9 +15,27 @@ COMPOSE_FILES = [
 ]
 
 
-def run(command: list[str], cwd: Path | None = None) -> None:
+def run(command: list[str], cwd: Path | None = None, label: str | None = None) -> None:
+    if label:
+        print(f'GATE_START={label}', flush=True)
     print('+', ' '.join(command), flush=True)
-    subprocess.run(command, cwd=str(cwd) if cwd else None, check=True)
+    proc = subprocess.run(
+        command,
+        cwd=str(cwd) if cwd else None,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.stdout:
+        print(proc.stdout.rstrip(), flush=True)
+    if proc.stderr:
+        print(proc.stderr.rstrip(), file=sys.stderr, flush=True)
+    if proc.returncode != 0:
+        if label:
+            print(f'GATE_FAIL={label} EXIT={proc.returncode}', file=sys.stderr, flush=True)
+        raise RuntimeError(f'{label or "command"} failed with exit {proc.returncode}: {" ".join(command)}')
+    if label:
+        print(f'GATE_PASS={label}', flush=True)
 
 
 def backup_tree(source: Path) -> Path:
@@ -37,14 +55,15 @@ def compose_command(*args: str) -> list[str]:
 
 
 def restore_backup(backup: Path) -> None:
+    print('ROLLBACK_START=SIM', file=sys.stderr, flush=True)
     failed = CONNECTOR_ROOT.with_name(CONNECTOR_ROOT.name + '.failed')
     if failed.exists():
         shutil.rmtree(failed)
     if CONNECTOR_ROOT.exists():
         CONNECTOR_ROOT.rename(failed)
     shutil.copytree(backup, CONNECTOR_ROOT, symlinks=True)
-    run(compose_command('build', '--no-cache'), CONNECTOR_ROOT)
-    run(compose_command('up', '-d'), CONNECTOR_ROOT)
+    run(compose_command('build', '--no-cache'), CONNECTOR_ROOT, 'rollback_build')
+    run(compose_command('up', '-d'), CONNECTOR_ROOT, 'rollback_up')
 
 
 def main() -> int:
@@ -65,20 +84,18 @@ def main() -> int:
     try:
         with tempfile.TemporaryDirectory(prefix='vitrine-connector-release-') as temp:
             checkout = Path(temp) / 'source'
-            run(['git', 'clone', '--depth', '1', '--branch', args.branch, args.repository, str(checkout)])
+            run(['git', 'clone', '--depth', '1', '--branch', args.branch, args.repository, str(checkout)], label='source_clone')
 
-            # Gate 1: fonte precisa estar consistente antes de alterar o runtime.
-            run([sys.executable, str(checkout / 'connector-v2' / 'test_connector_stabilization.py')], checkout)
+            run([sys.executable, str(checkout / 'connector-v2' / 'test_connector_stabilization.py')], checkout, 'source_stabilization_test')
             run([sys.executable, '-m', 'py_compile',
                  str(checkout / 'connector-v2' / 'main_tvsumare_tools.py'),
                  str(checkout / 'connector-v2' / 'connector_runtime.py'),
                  str(checkout / 'connector-v2' / 'install_connector_v2.py'),
-                 str(checkout / 'project-manager' / 'project_deployment_engine.py')])
+                 str(checkout / 'project-manager' / 'project_deployment_engine.py')], label='source_py_compile')
 
-            run([sys.executable, str(checkout / 'connector-v2' / 'install_connector_v2.py')])
-            run([sys.executable, str(checkout / 'project-manager' / 'install_project_manager.py')])
+            run([sys.executable, str(checkout / 'connector-v2' / 'install_connector_v2.py')], label='install_connector_v2')
+            run([sys.executable, str(checkout / 'project-manager' / 'install_project_manager.py')], label='install_project_manager')
 
-            # Gate 2: arquivos instalados precisam compilar.
             run([
                 sys.executable, '-m', 'py_compile',
                 str(CONNECTOR_ROOT / 'ops_broker.py'),
@@ -89,18 +106,32 @@ def main() -> int:
                 str(CONNECTOR_ROOT / 'project_manager_operations.py'),
                 str(CONNECTOR_ROOT / 'project_manager_tools.py'),
                 str(CONNECTOR_ROOT / 'project_deployment_engine.py'),
-            ])
+            ], label='installed_py_compile')
 
-            run(compose_command('config'), CONNECTOR_ROOT)
-            run(compose_command('build', '--no-cache'), CONNECTOR_ROOT)
-            run(compose_command('up', '-d'), CONNECTOR_ROOT)
-            run(compose_command('ps', '-a'), CONNECTOR_ROOT)
+            run(compose_command('config'), CONNECTOR_ROOT, 'compose_config')
+            run(compose_command('build', '--no-cache'), CONNECTOR_ROOT, 'compose_build')
+            run(compose_command('up', '-d'), CONNECTOR_ROOT, 'compose_up')
+            run(compose_command('ps', '-a'), CONNECTOR_ROOT, 'compose_ps')
 
-            # Gate 3: runtime real. Falha aqui aciona rollback integral.
             run(['docker', 'exec', 'vitrine_mcp_ops_broker', 'python', '-c',
-                 'import project_deployment_engine, project_manager_operations, tvsumare_operations'])
+                 'import project_deployment_engine, project_manager_operations, tvsumare_operations; print("OPS_BROKER_IMPORTS=PASS")'],
+                label='ops_broker_imports')
+
             run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c',
-                 'import main; assert hasattr(main, "project_deploy"); assert hasattr(main, "connector_health"); assert hasattr(main, "project_context"); h=main.connector_health(); assert h["ok"] and h["connector_id"]=="vitrine_ops"; c=main.project_context("tvsumare"); assert c["ok"] and c["repository_root"]=="/srv/tvsumare/repository"; print("CONNECTOR_RUNTIME_TEST=PASS")'])
+                 'import os; print("CWD="+os.getcwd()); import connector_runtime; print("CONNECTOR_RUNTIME_IMPORT=PASS")'],
+                label='connector_runtime_import')
+
+            run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c',
+                 'import main; print("MAIN_IMPORT=PASS"); assert hasattr(main, "project_deploy"); assert hasattr(main, "connector_health"); assert hasattr(main, "project_context"); print("MAIN_TOOLS=PASS")'],
+                label='main_tool_registry')
+
+            run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c',
+                 'import main; h=main.connector_health(); print("HEALTH="+repr(h)); assert h["ok"] and h["connector_id"]=="vitrine_ops"'],
+                label='connector_health_runtime')
+
+            run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c',
+                 'import main; c=main.project_context("tvsumare"); print("CONTEXT="+repr(c)); assert c["ok"] and c["repository_root"]=="/srv/tvsumare/repository"; print("CONNECTOR_RUNTIME_TEST=PASS")'],
+                label='project_context_runtime')
 
         print('CONNECTOR_RELEASE_INSTALLED=SIM')
         return 0
