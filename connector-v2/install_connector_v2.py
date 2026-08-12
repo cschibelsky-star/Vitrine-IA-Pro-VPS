@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path('/srv/connectors/vitrine-vps-mcp')
+ROOT = Path(os.getenv('CONNECTOR_ROOT', '/srv/connectors/vitrine-vps-mcp'))
 SOURCE = Path(__file__).resolve().parent
 STAMP = datetime.now().strftime('%Y%m%d-%H%M%S')
 
@@ -38,6 +39,7 @@ def main() -> None:
     shutil.copy2(SOURCE / 'tvsumare_operations.py', ROOT / 'tvsumare_operations.py')
     shutil.copy2(SOURCE / 'main_tvsumare_tools.py', ROOT / 'tvsumare_tools.py')
     shutil.copy2(SOURCE / 'connector_runtime.py', ROOT / 'connector_runtime.py')
+    shutil.copy2(SOURCE / 'connector_observability.py', ROOT / 'connector_observability.py')
 
     ops_broker = ROOT / 'ops_broker.py'
     backup(ops_broker)
@@ -60,6 +62,23 @@ def main() -> None:
     backup(main_py)
     text = main_py.read_text(encoding='utf-8')
     import_marker = 'from typing import Any\n'
+
+    observability_import = '''from connector_observability import SafeToolCallLoggingMiddleware\n'''
+    text = ensure_after(
+        text,
+        import_marker,
+        observability_import,
+        'from connector_observability import SafeToolCallLoggingMiddleware',
+    )
+
+    middleware_marker = 'from server import mcp\n'
+    middleware_registration = '\nmcp.add_middleware(SafeToolCallLoggingMiddleware())\n'
+    text = ensure_after(
+        text,
+        middleware_marker,
+        middleware_registration,
+        'mcp.add_middleware(SafeToolCallLoggingMiddleware())',
+    )
 
     tv_import = '''\nfrom tvsumare_tools import (\n    tvsumare_health as _tvsumare_health,\n    tvsumare_workspace_create as _tvsumare_workspace_create,\n    tvsumare_write_file as _tvsumare_write_file,\n    tvsumare_git_status as _tvsumare_git_status,\n    tvsumare_php_lint as _tvsumare_php_lint,\n    tvsumare_docker_build as _tvsumare_docker_build,\n    tvsumare_docker_up as _tvsumare_docker_up,\n    tvsumare_create_homologation_vhost as _tvsumare_create_homologation_vhost,\n    tvsumare_create_release_zip as _tvsumare_create_release_zip,\n)\n'''
     text = ensure_after(text, import_marker, tv_import, 'from tvsumare_tools import (')
@@ -85,9 +104,11 @@ def main() -> None:
     )
     if not copy_line:
         raise RuntimeError('Dockerfile: linha COPY não encontrada')
-    if 'connector_runtime.py' not in copy_line.split():
-        updated_line = copy_line[:-3] + ' connector_runtime.py ./'
-        docker_text = docker_text.replace(copy_line, updated_line, 1)
+    updated_line = copy_line
+    for required in ('connector_runtime.py', 'connector_observability.py'):
+        if required not in updated_line.split():
+            updated_line = updated_line[:-3] + f' {required} ./'
+    docker_text = docker_text.replace(copy_line, updated_line, 1)
     dockerfile.write_text(docker_text, encoding='utf-8')
 
     compose = ROOT / 'docker-compose.mcp.yml'

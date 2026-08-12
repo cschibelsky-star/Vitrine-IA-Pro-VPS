@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 CONNECTOR_ID = "vitrine_ops"
@@ -25,7 +25,7 @@ def project_context(project_id: str) -> dict[str, Any]:
     if root not in path.parents or not path.is_file():
         return {"ok": False, "error": "manifest_not_found", "project_id": project_id}
     data = json.loads(path.read_text(encoding="utf-8"))
-    workspace = Path(data["workspace_root"])
+    workspace = PurePosixPath(data["workspace_root"])
     repository = workspace / data.get("repository", {}).get("directory", "repository")
     docker = data.get("docker", {})
     deployment = data.get("deployment", {})
