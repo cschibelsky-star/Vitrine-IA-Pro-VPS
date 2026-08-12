@@ -38,6 +38,19 @@ def run(command: list[str], cwd: Path | None = None, label: str | None = None) -
         print(f'GATE_PASS={label}', flush=True)
 
 
+def capture(command: list[str], cwd: Path | None = None) -> str:
+    proc = subprocess.run(
+        command,
+        cwd=str(cwd) if cwd else None,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f'command failed with exit {proc.returncode}: {" ".join(command)}')
+    return proc.stdout.strip()
+
+
 def backup_tree(source: Path) -> Path:
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     target = Path('/srv/backups/vitrine-vps-mcp') / f'connector-{stamp}'
@@ -52,6 +65,34 @@ def compose_command(*args: str) -> list[str]:
         command.extend(['-f', compose_file])
     command.extend(args)
     return command
+
+
+def resolve_mcp_probe_runtime() -> tuple[str, str]:
+    container_id = capture(
+        compose_command('ps', '-q', 'vps_mcp_connector'),
+        CONNECTOR_ROOT,
+    ).splitlines()
+    if len(container_id) != 1 or not container_id[0]:
+        raise RuntimeError('mcp probe: running service container not found')
+
+    image = capture(
+        ['docker', 'inspect', '--format', '{{.Config.Image}}', container_id[0]],
+    )
+    network_output = capture(
+        [
+            'docker', 'inspect', '--format',
+            '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}',
+            container_id[0],
+        ],
+    )
+    networks = [line.strip() for line in network_output.splitlines() if line.strip()]
+    network = next(
+        (name for name in networks if 'mcp' in name.lower() or 'internal' in name.lower()),
+        networks[0] if networks else '',
+    )
+    if not image or not network:
+        raise RuntimeError('mcp probe: image or network could not be resolved')
+    return image, network
 
 
 def restore_backup(backup: Path) -> None:
@@ -117,7 +158,7 @@ def main() -> int:
                 str(CONNECTOR_ROOT / 'project_deployment_engine.py'),
             ], label='installed_py_compile')
 
-            run(compose_command('config'), CONNECTOR_ROOT, 'compose_config')
+            run(compose_command('config', '--quiet'), CONNECTOR_ROOT, 'compose_config')
             run(compose_command('build', '--no-cache'), CONNECTOR_ROOT, 'compose_build')
             run(compose_command('up', '-d'), CONNECTOR_ROOT, 'compose_up')
             run(compose_command('ps', '-a'), CONNECTOR_ROOT, 'compose_ps')
@@ -126,14 +167,14 @@ def main() -> int:
                  'import project_deployment_engine, project_manager_operations, tvsumare_operations; print("OPS_BROKER_IMPORTS=PASS")'],
                 label='ops_broker_imports')
 
-            run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c',
-                 'import os; print("CWD="+os.getcwd()); import connector_runtime; print("CONNECTOR_RUNTIME_IMPORT=PASS")'],
-                label='connector_runtime_import')
-
+            probe_image, probe_network = resolve_mcp_probe_runtime()
             run([
-                'docker', 'exec', 'vitrine_vps_mcp_connector',
-                'python', '/app/probe_streamable_http.py',
-                '--url', 'http://127.0.0.1:8765/mcp',
+                'docker', 'run', '--rm',
+                '--network', probe_network,
+                '--entrypoint', 'python',
+                probe_image,
+                '/app/probe_streamable_http.py',
+                '--url', 'http://vps_mcp_connector:8765/mcp',
                 '--calls', '0',
                 '--sessions', '1',
                 '--catalog-only',
