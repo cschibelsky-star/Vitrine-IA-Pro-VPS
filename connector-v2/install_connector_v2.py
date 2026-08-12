@@ -75,6 +75,21 @@ def main() -> None:
     text = ensure_before(text, marker, runtime_tools, 'def connector_health()')
     main_py.write_text(text, encoding='utf-8')
 
+    # Garante que o runtime novo seja realmente copiado para a imagem do MCP.
+    dockerfile = ROOT / 'Dockerfile'
+    backup(dockerfile)
+    docker_text = dockerfile.read_text(encoding='utf-8')
+    copy_line = next(
+        (line for line in docker_text.splitlines() if line.startswith('COPY ') and line.endswith(' ./')),
+        None,
+    )
+    if not copy_line:
+        raise RuntimeError('Dockerfile: linha COPY não encontrada')
+    if 'connector_runtime.py' not in copy_line.split():
+        updated_line = copy_line[:-3] + ' connector_runtime.py ./'
+        docker_text = docker_text.replace(copy_line, updated_line, 1)
+    dockerfile.write_text(docker_text, encoding='utf-8')
+
     compose = ROOT / 'docker-compose.mcp.yml'
     backup(compose)
     compose_text = compose.read_text(encoding='utf-8')
