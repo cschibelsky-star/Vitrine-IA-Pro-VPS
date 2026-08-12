@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +16,8 @@ COMPOSE_FILES = [
     'docker-compose.mcp.yml',
     'docker-compose.connector-v2.override.yml',
 ]
+MCP_HEALTH_TIMEOUT = int(os.getenv('MCP_HEALTH_TIMEOUT', '180'))
+MCP_HEALTH_INTERVAL = float(os.getenv('MCP_HEALTH_INTERVAL', '2'))
 
 
 def run(command: list[str], cwd: Path | None = None, label: str | None = None) -> None:
@@ -67,29 +72,79 @@ def compose_command(*args: str) -> list[str]:
     return command
 
 
-def resolve_mcp_probe_runtime() -> tuple[str, str]:
+def resolve_mcp_service_container() -> str:
     container_id = capture(
         compose_command('ps', '-q', 'vps_mcp_connector'),
         CONNECTOR_ROOT,
     ).splitlines()
     if len(container_id) != 1 or not container_id[0]:
         raise RuntimeError('mcp probe: running service container not found')
+    return container_id[0]
+
+
+def wait_for_mcp_health(container_id: str) -> None:
+    print('GATE_START=mcp_service_health', flush=True)
+    deadline = time.monotonic() + MCP_HEALTH_TIMEOUT
+    last_status = ''
+    while time.monotonic() < deadline:
+        status = capture([
+            'docker', 'inspect', '--format',
+            '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}',
+            container_id,
+        ]).strip().lower()
+        if status != last_status:
+            print(f'MCP_HEALTH_STATUS={status}', flush=True)
+            last_status = status
+        if status == 'healthy':
+            print('GATE_PASS=mcp_service_health', flush=True)
+            return
+        if status in {'dead', 'exited', 'removing'}:
+            print(f'GATE_FAIL=mcp_service_health STATUS={status}', file=sys.stderr, flush=True)
+            raise RuntimeError(f'mcp service became {status} before healthy')
+        time.sleep(MCP_HEALTH_INTERVAL)
+    print('GATE_FAIL=mcp_service_health EXIT=124', file=sys.stderr, flush=True)
+    raise TimeoutError(f'mcp service did not become healthy within {MCP_HEALTH_TIMEOUT}s')
+
+
+def _network_priority(name: str) -> tuple[int, str]:
+    lowered = name.lower()
+    if lowered == 'vitrine_mcp_internal':
+        return 0, name
+    if lowered.endswith('_mcp_internal'):
+        return 1, name
+    if 'internal' in lowered:
+        return 2, name
+    if 'egress' not in lowered:
+        return 3, name
+    return 4, name
+
+
+def resolve_mcp_probe_runtime(container_id: str) -> tuple[str, str]:
 
     image = capture(
-        ['docker', 'inspect', '--format', '{{.Config.Image}}', container_id[0]],
+        ['docker', 'inspect', '--format', '{{.Config.Image}}', container_id],
     )
     network_output = capture(
         [
             'docker', 'inspect', '--format',
-            '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}',
-            container_id[0],
+            '{{json .NetworkSettings.Networks}}',
+            container_id,
         ],
     )
-    networks = [line.strip() for line in network_output.splitlines() if line.strip()]
-    network = next(
-        (name for name in networks if 'mcp' in name.lower() or 'internal' in name.lower()),
-        networks[0] if networks else '',
-    )
+    try:
+        network_settings = json.loads(network_output)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError('mcp probe: invalid network inspection result') from exc
+    networks = [
+        name
+        for name, settings in network_settings.items()
+        if isinstance(settings, dict)
+        and (
+            'vps_mcp_connector' in (settings.get('Aliases') or [])
+            or 'vitrine_vps_mcp_connector' in (settings.get('Aliases') or [])
+        )
+    ]
+    network = min(networks, key=_network_priority) if networks else ''
     if not image or not network:
         raise RuntimeError('mcp probe: image or network could not be resolved')
     return image, network
@@ -167,7 +222,18 @@ def main() -> int:
                  'import project_deployment_engine, project_manager_operations, tvsumare_operations; print("OPS_BROKER_IMPORTS=PASS")'],
                 label='ops_broker_imports')
 
-            probe_image, probe_network = resolve_mcp_probe_runtime()
+            mcp_container_id = resolve_mcp_service_container()
+            wait_for_mcp_health(mcp_container_id)
+            probe_image, probe_network = resolve_mcp_probe_runtime(mcp_container_id)
+            print('SHARED_NETWORK_RESOLUTION_PASS', flush=True)
+            run([
+                'docker', 'run', '--rm',
+                '--network', probe_network,
+                '--entrypoint', 'python',
+                probe_image,
+                '-c',
+                'import socket; socket.create_connection(("vps_mcp_connector", 8765), timeout=10).close(); print("PROBE_TCP_CONNECT=PASS")',
+            ], label='probe_tcp_connect')
             run([
                 'docker', 'run', '--rm',
                 '--network', probe_network,
@@ -184,6 +250,7 @@ def main() -> int:
                 '--require-tool', 'project_write_file',
                 '--require-tool', 'project_php_lint',
             ], label='mcp_protocol_registry')
+            print('MCP_PROTOCOL_REGISTRY_PASS', flush=True)
 
         print('CONNECTOR_RELEASE_INSTALLED=SIM')
         return 0
