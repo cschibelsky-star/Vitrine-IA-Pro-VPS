@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path('/srv/connectors/vitrine-vps-mcp')
+ROOT = Path(os.getenv('CONNECTOR_ROOT', '/srv/connectors/vitrine-vps-mcp'))
 SOURCE = Path(__file__).resolve().parent
 STAMP = datetime.now().strftime('%Y%m%d-%H%M%S')
 
@@ -31,26 +33,70 @@ def ensure_block_before(text: str, marker: str, block: str, sentinel: str, label
 
 
 def ensure_compose_entry(text: str, service: str, section: str, entry: str) -> str:
-    service_marker = f'  {service}:\n'
-    if service_marker not in text:
+    services_match = re.search(r'^services:\s*(?:#.*)?$', text, re.MULTILINE)
+    if services_match is None:
+        raise RuntimeError('Compose: bloco services não encontrado')
+
+    next_top_level = re.search(
+        r'^[A-Za-z0-9_.-]+:\s*(?:#.*)?$',
+        text[services_match.end():],
+        re.MULTILINE,
+    )
+    services_end = (
+        len(text)
+        if next_top_level is None
+        else services_match.end() + next_top_level.start()
+    )
+    services_block = text[services_match.end():services_end]
+
+    service_pattern = re.compile(
+        rf'^  {re.escape(service)}:\s*(?:#.*)?$',
+        re.MULTILINE,
+    )
+    service_match = service_pattern.search(services_block)
+    if service_match is None:
         raise RuntimeError(f'Compose: serviço {service} não encontrado')
 
-    service_start = text.index(service_marker)
-    next_service = text.find('\n  ', service_start + len(service_marker))
-    service_end = len(text) if next_service == -1 else next_service
+    service_start = services_match.end() + service_match.start()
+    service_header_end = services_match.end() + service_match.end()
+    next_service = re.search(
+        r'^  [A-Za-z0-9_.-]+:\s*(?:#.*)?$',
+        services_block[service_match.end():],
+        re.MULTILINE,
+    )
+    service_end = (
+        services_end
+        if next_service is None
+        else service_header_end + next_service.start()
+    )
     service_block = text[service_start:service_end]
 
-    if entry in service_block:
+    section_pattern = re.compile(
+        rf'^    {re.escape(section)}:\s*(?:#.*)?$',
+        re.MULTILINE,
+    )
+    section_match = section_pattern.search(service_block)
+    if section_match is None:
+        insertion_at = service_header_end
+        return text[:insertion_at] + f'\n    {section}:\n      {entry}' + text[insertion_at:]
+
+    next_section = re.search(
+        r'^    [A-Za-z0-9_.-]+:\s*(?:#.*)?$',
+        service_block[section_match.end():],
+        re.MULTILINE,
+    )
+    section_end = (
+        len(service_block)
+        if next_section is None
+        else section_match.end() + next_section.start()
+    )
+    section_block = service_block[section_match.start():section_end]
+    entry_pattern = re.compile(rf'^      {re.escape(entry)}\s*$', re.MULTILINE)
+    if entry_pattern.search(section_block):
         return text
 
-    section_marker = f'    {section}:\n'
-    section_pos = service_block.find(section_marker)
-    if section_pos == -1:
-        insertion = service_marker + f'    {section}:\n      {entry}\n'
-        return text.replace(service_marker, insertion, 1)
-
-    absolute_section = service_start + section_pos + len(section_marker)
-    return text[:absolute_section] + f'      {entry}\n' + text[absolute_section:]
+    insertion_at = service_start + section_match.end()
+    return text[:insertion_at] + f'\n      {entry}' + text[insertion_at:]
 
 
 def main() -> None:
