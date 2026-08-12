@@ -67,22 +67,23 @@ def main() -> int:
             checkout = Path(temp) / 'source'
             run(['git', 'clone', '--depth', '1', '--branch', args.branch, args.repository, str(checkout)])
 
-            # Testa a fonte antes de tocar no runtime instalado.
+            # Gate 1: fonte precisa estar consistente antes de alterar o runtime.
             run([sys.executable, str(checkout / 'connector-v2' / 'test_connector_stabilization.py')], checkout)
             run([sys.executable, '-m', 'py_compile',
                  str(checkout / 'connector-v2' / 'main_tvsumare_tools.py'),
                  str(checkout / 'connector-v2' / 'connector_runtime.py'),
+                 str(checkout / 'connector-v2' / 'install_connector_v2.py'),
                  str(checkout / 'project-manager' / 'project_deployment_engine.py')])
 
             run([sys.executable, str(checkout / 'connector-v2' / 'install_connector_v2.py')])
             run([sys.executable, str(checkout / 'project-manager' / 'install_project_manager.py')])
 
+            # Gate 2: arquivos instalados precisam compilar.
             run([
-                sys.executable,
-                '-m',
-                'py_compile',
+                sys.executable, '-m', 'py_compile',
                 str(CONNECTOR_ROOT / 'ops_broker.py'),
                 str(CONNECTOR_ROOT / 'main.py'),
+                str(CONNECTOR_ROOT / 'connector_runtime.py'),
                 str(CONNECTOR_ROOT / 'tvsumare_operations.py'),
                 str(CONNECTOR_ROOT / 'tvsumare_tools.py'),
                 str(CONNECTOR_ROOT / 'project_manager_operations.py'),
@@ -95,8 +96,11 @@ def main() -> int:
             run(compose_command('up', '-d'), CONNECTOR_ROOT)
             run(compose_command('ps', '-a'), CONNECTOR_ROOT)
 
-            run(['docker', 'exec', 'vitrine_mcp_ops_broker', 'python', '-c', 'import project_deployment_engine, project_manager_operations, tvsumare_operations'])
-            run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c', 'import main; assert hasattr(main, "project_deploy")'])
+            # Gate 3: runtime real. Falha aqui aciona rollback integral.
+            run(['docker', 'exec', 'vitrine_mcp_ops_broker', 'python', '-c',
+                 'import project_deployment_engine, project_manager_operations, tvsumare_operations'])
+            run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c',
+                 'import main; assert hasattr(main, "project_deploy"); assert hasattr(main, "connector_health"); assert hasattr(main, "project_context"); h=main.connector_health(); assert h["ok"] and h["connector_id"]=="vitrine_ops"; c=main.project_context("tvsumare"); assert c["ok"] and c["repository_root"]=="/srv/tvsumare/repository"; print("CONNECTOR_RUNTIME_TEST=PASS")'])
 
         print('CONNECTOR_RELEASE_INSTALLED=SIM')
         return 0
