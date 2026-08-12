@@ -35,7 +35,14 @@ def _result_summary(result: Any) -> dict[str, Any]:
     }
 
 
-async def probe(url: str, token: str | None, calls: int, label: str) -> str | None:
+async def probe(
+    url: str,
+    token: str | None,
+    calls: int,
+    label: str,
+    required_tools: set[str],
+    catalog_only: bool,
+) -> str | None:
     headers = {"Authorization": f"Bearer {token}"} if token else None
     async with httpx.AsyncClient(headers=headers, timeout=30) as http_client:
         async with streamable_http_client(url, http_client=http_client) as (read, write, get_session_id):
@@ -70,6 +77,22 @@ async def probe(url: str, token: str | None, calls: int, label: str) -> str | No
                 print(f"{label}_SCHEMAS_JSON_SERIALIZABLE=True")
                 print(f"{label}_INVALID_INPUT_SCHEMAS=" + json.dumps(invalid_input))
                 print(f"{label}_INVALID_OUTPUT_SCHEMAS=" + json.dumps(invalid_output))
+                missing = sorted(required_tools - set(names))
+                duplicates = sorted({name for name in names if names.count(name) > 1})
+                if missing:
+                    raise RuntimeError("required_tools_missing:" + ",".join(missing))
+                if duplicates:
+                    raise RuntimeError("duplicate_tool_names:" + ",".join(duplicates))
+                if invalid_input or invalid_output:
+                    raise RuntimeError(
+                        "invalid_tool_schemas:input="
+                        + ",".join(invalid_input)
+                        + ";output="
+                        + ",".join(invalid_output)
+                    )
+                if catalog_only:
+                    print(f"{label}_CATALOG_VALID=True")
+                    return get_session_id()
                 for index in range(calls):
                     result = await session.call_tool("system_health")
                     print(f"{label}_SYSTEM_HEALTH_{index + 1}=" + json.dumps(_result_summary(result), sort_keys=True))
@@ -82,9 +105,26 @@ async def probe(url: str, token: str | None, calls: int, label: str) -> str | No
                 return get_session_id()
 
 
-async def run_probes(url: str, token: str | None, calls: int, sessions: int) -> None:
+async def run_probes(
+    url: str,
+    token: str | None,
+    calls: int,
+    sessions: int,
+    required_tools: set[str],
+    catalog_only: bool,
+) -> None:
     ids = await asyncio.gather(
-        *(probe(url, token, calls if index == 0 else 1, f"SESSION_{index + 1}") for index in range(sessions))
+        *(
+            probe(
+                url,
+                token,
+                calls if index == 0 else 1,
+                f"SESSION_{index + 1}",
+                required_tools,
+                catalog_only,
+            )
+            for index in range(sessions)
+        )
     )
     present = [session_id for session_id in ids if session_id]
     print("MULTI_SESSION_IDS_UNIQUE=" + str(len(present) == sessions and len(set(present)) == sessions))
@@ -96,9 +136,20 @@ def main() -> None:
     parser.add_argument("--token-file", type=Path)
     parser.add_argument("--calls", type=int, default=1)
     parser.add_argument("--sessions", type=int, default=1)
+    parser.add_argument("--require-tool", action="append", default=[])
+    parser.add_argument("--catalog-only", action="store_true")
     args = parser.parse_args()
     token = _load_bearer(args.token_file) if args.token_file else None
-    asyncio.run(run_probes(args.url, token, args.calls, args.sessions))
+    asyncio.run(
+        run_probes(
+            args.url,
+            token,
+            args.calls,
+            args.sessions,
+            set(args.require_tool),
+            args.catalog_only,
+        )
+    )
 
 
 if __name__ == "__main__":

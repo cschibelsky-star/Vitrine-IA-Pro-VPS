@@ -40,6 +40,7 @@ def main() -> None:
     shutil.copy2(SOURCE / 'main_tvsumare_tools.py', ROOT / 'tvsumare_tools.py')
     shutil.copy2(SOURCE / 'connector_runtime.py', ROOT / 'connector_runtime.py')
     shutil.copy2(SOURCE / 'connector_observability.py', ROOT / 'connector_observability.py')
+    shutil.copy2(SOURCE / 'probe_streamable_http.py', ROOT / 'probe_streamable_http.py')
 
     ops_broker = ROOT / 'ops_broker.py'
     backup(ops_broker)
@@ -105,7 +106,7 @@ def main() -> None:
     if not copy_line:
         raise RuntimeError('Dockerfile: linha COPY não encontrada')
     updated_line = copy_line
-    for required in ('connector_runtime.py', 'connector_observability.py'):
+    for required in ('connector_runtime.py', 'connector_observability.py', 'probe_streamable_http.py'):
         if required not in updated_line.split():
             updated_line = updated_line[:-3] + f' {required} ./'
     docker_text = docker_text.replace(copy_line, updated_line, 1)

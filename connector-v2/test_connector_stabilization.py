@@ -54,11 +54,14 @@ def test_installer_idempotency() -> None:
             "project_context": main_text.count("def project_context(project_id: str) -> dict[str, Any]:"),
             "runtime_image": dockerfile.count("connector_runtime.py"),
             "observability_image": dockerfile.count("connector_observability.py"),
+            "probe_image": dockerfile.count("probe_streamable_http.py"),
         }
         if any(count != 1 for count in checks.values()):
             fail(f"instalador não idempotente: {checks}")
         if not (root / "connector_observability.py").is_file():
             fail("instrumentação não copiada")
+        if not (root / "probe_streamable_http.py").is_file():
+            fail("probe MCP não copiado")
 
 
 def main() -> None:
@@ -89,6 +92,7 @@ def main() -> None:
     required_installer_fragments = [
         "shutil.copy2(SOURCE / 'connector_runtime.py'",
         "shutil.copy2(SOURCE / 'connector_observability.py'",
+        "shutil.copy2(SOURCE / 'probe_streamable_http.py'",
         "from connector_runtime import (",
         "mcp.add_middleware(SafeToolCallLoggingMiddleware())",
         "def connector_health()",

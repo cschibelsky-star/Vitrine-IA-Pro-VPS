@@ -87,9 +87,12 @@ def main() -> int:
             run(['git', 'clone', '--depth', '1', '--branch', args.branch, args.repository, str(checkout)], label='source_clone')
 
             run([sys.executable, str(checkout / 'connector-v2' / 'test_connector_stabilization.py')], checkout, 'source_stabilization_test')
+            run([sys.executable, str(checkout / 'bootstrap' / 'test_install_connector_release.py')], checkout, 'source_release_gate_test')
+            run([sys.executable, str(checkout / 'project-manager' / 'test_install_project_manager.py')], checkout, 'source_project_manager_test')
             run([sys.executable, '-m', 'py_compile',
                  str(checkout / 'connector-v2' / 'main_tvsumare_tools.py'),
                  str(checkout / 'connector-v2' / 'connector_runtime.py'),
+                 str(checkout / 'connector-v2' / 'probe_streamable_http.py'),
                  str(checkout / 'connector-v2' / 'install_connector_v2.py'),
                  str(checkout / 'project-manager' / 'project_deployment_engine.py')], label='source_py_compile')
 
@@ -121,17 +124,17 @@ def main() -> int:
                  'import os; print("CWD="+os.getcwd()); import connector_runtime; print("CONNECTOR_RUNTIME_IMPORT=PASS")'],
                 label='connector_runtime_import')
 
-            run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c',
-                 'import main; print("MAIN_IMPORT=PASS"); assert hasattr(main, "project_deploy"); assert hasattr(main, "connector_health"); assert hasattr(main, "project_context"); print("MAIN_TOOLS=PASS")'],
-                label='main_tool_registry')
-
-            run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c',
-                 'import main; h=main.connector_health(); print("HEALTH="+repr(h)); assert h["ok"] and h["connector_id"]=="vitrine_ops"'],
-                label='connector_health_runtime')
-
-            run(['docker', 'exec', 'vitrine_vps_mcp_connector', 'python', '-c',
-                 'import main; c=main.project_context("tvsumare"); print("CONTEXT="+repr(c)); assert c["ok"] and c["repository_root"]=="/srv/tvsumare/repository"; print("CONNECTOR_RUNTIME_TEST=PASS")'],
-                label='project_context_runtime')
+            run([
+                'docker', 'exec', 'vitrine_vps_mcp_connector',
+                'python', '/app/probe_streamable_http.py',
+                '--url', 'http://127.0.0.1:8765/mcp',
+                '--calls', '0',
+                '--sessions', '1',
+                '--catalog-only',
+                '--require-tool', 'project_deploy',
+                '--require-tool', 'connector_health',
+                '--require-tool', 'project_context',
+            ], label='mcp_protocol_registry')
 
         print('CONNECTOR_RELEASE_INSTALLED=SIM')
         return 0

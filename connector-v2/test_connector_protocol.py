@@ -74,6 +74,10 @@ def serve(port: int, broker_port: int, manifest_root: Path) -> None:
     def instrumentation_error_probe() -> dict[str, Any]:
         raise ValueError("synthetic-test-error")
 
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+    def project_deploy(project_id: str) -> dict[str, Any]:
+        return {"ok": True, "project_id": project_id}
+
     mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})(runtime_health)
     mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})(runtime_context)
     mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})(runtime_tvsumare_health)
@@ -191,6 +195,43 @@ def main() -> None:
         try:
             wait_until_ready(port, process)
             gates = asyncio.run(run_protocol_checks(f"http://127.0.0.1:{port}/mcp"))
+            valid_probe = subprocess.run(
+                [
+                    sys.executable,
+                    str(HERE / "probe_streamable_http.py"),
+                    "--url",
+                    f"http://127.0.0.1:{port}/mcp",
+                    "--catalog-only",
+                    "--require-tool",
+                    "connector_health",
+                    "--require-tool",
+                    "project_context",
+                    "--require-tool",
+                    "project_deploy",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert valid_probe.returncode == 0, valid_probe.stderr
+            assert "SESSION_1_CATALOG_VALID=True" in valid_probe.stdout
+
+            missing_probe = subprocess.run(
+                [
+                    sys.executable,
+                    str(HERE / "probe_streamable_http.py"),
+                    "--url",
+                    f"http://127.0.0.1:{port}/mcp",
+                    "--catalog-only",
+                    "--require-tool",
+                    "tool_that_must_not_exist",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert missing_probe.returncode != 0
+            assert "required_tools_missing:tool_that_must_not_exist" in missing_probe.stderr
         finally:
             process.terminate()
             process.wait(timeout=10)
@@ -206,6 +247,8 @@ def main() -> None:
         for gate in gates:
             print(gate)
         print("SAFE_INSTRUMENTATION_PASS")
+        print("PROTOCOL_CATALOG_GATE_PASS")
+        print("PROTOCOL_REQUIRED_TOOL_FAILURE_PASS")
 
 
 if __name__ == "__main__":
