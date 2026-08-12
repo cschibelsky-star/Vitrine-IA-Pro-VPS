@@ -53,12 +53,14 @@ def serve(port: int, broker_port: int, manifest_root: Path) -> None:
     os.environ["OPS_BROKER_URL"] = f"http://127.0.0.1:{broker_port}"
     os.environ["OPS_BROKER_TOKEN"] = SECRET_SENTINEL
     sys.path.insert(0, str(HERE))
+    sys.path.insert(0, str(HERE.parent / "project-manager"))
 
     from connector_observability import SafeToolCallLoggingMiddleware
     from connector_runtime import connector_health as runtime_health
     from connector_runtime import project_context as runtime_context
     from fastmcp import FastMCP
     from main_tvsumare_tools import tvsumare_health as runtime_tvsumare_health
+    from project_manager_tools import project_php_lint, project_write_file
 
     broker = ThreadingHTTPServer(("127.0.0.1", broker_port), _BrokerHandler)
     threading.Thread(target=broker.serve_forever, daemon=True).start()
@@ -81,6 +83,8 @@ def serve(port: int, broker_port: int, manifest_root: Path) -> None:
     mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})(runtime_health)
     mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})(runtime_context)
     mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})(runtime_tvsumare_health)
+    mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})(project_write_file)
+    mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})(project_php_lint)
     mcp.run(transport="http", host="127.0.0.1", port=port, show_banner=False)
 
 
@@ -117,8 +121,20 @@ async def run_protocol_checks(url: str) -> list[str]:
                 await session.initialize()
                 listed = await session.list_tools()
                 names = [tool.name for tool in listed.tools]
-                required = {"system_health", "connector_health", "project_context", "tvsumare_health"}
+                required = {
+                    "system_health",
+                    "connector_health",
+                    "project_context",
+                    "tvsumare_health",
+                    "project_write_file",
+                    "project_php_lint",
+                }
                 assert required <= set(names)
+                for tool in listed.tools:
+                    json.dumps(tool.model_dump(mode="json", by_alias=True, exclude_none=True))
+                schemas = {tool.name: tool.inputSchema for tool in listed.tools}
+                assert schemas["project_write_file"]["required"] == ["project_id", "path", "content"]
+                assert schemas["project_php_lint"]["required"] == ["project_id", "path"]
                 gates.append("DISCOVERY_PASS")
                 assert len(names) == len(set(names))
                 assert not _helper_has_registry()
@@ -208,6 +224,10 @@ def main() -> None:
                     "project_context",
                     "--require-tool",
                     "project_deploy",
+                    "--require-tool",
+                    "project_write_file",
+                    "--require-tool",
+                    "project_php_lint",
                 ],
                 capture_output=True,
                 text=True,

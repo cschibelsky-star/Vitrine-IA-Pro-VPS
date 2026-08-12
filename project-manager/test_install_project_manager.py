@@ -143,7 +143,7 @@ def main() -> None:
         connector_root = Path(temp)
         _write_fixture(connector_root)
         env = {**os.environ, "CONNECTOR_ROOT": str(connector_root)}
-        snapshots: list[bytes] = []
+        snapshots: list[tuple[bytes, bytes]] = []
 
         for _ in range(2):
             subprocess.run(
@@ -156,10 +156,21 @@ def main() -> None:
             compose_path = connector_root / "docker-compose.connector-v2.override.yml"
             _assert_compose(compose_path)
             _docker_compose_config(connector_root)
-            snapshots.append(compose_path.read_bytes())
+            main_path = connector_root / "main.py"
+            main_text = main_path.read_text(encoding="utf-8")
+            assert main_text.count("project_write_file as _project_write_file,") == 1
+            assert main_text.count("project_php_lint as _project_php_lint,") == 1
+            assert main_text.count("def project_write_file(") == 1
+            assert main_text.count("def project_php_lint(") == 1
+            assert '"destructiveHint": True' in main_text
+            tools_text = (connector_root / "project_manager_tools.py").read_text(encoding="utf-8")
+            assert "def project_write_file(" in tools_text
+            assert "def project_php_lint(" in tools_text
+            snapshots.append((compose_path.read_bytes(), main_path.read_bytes()))
 
         assert snapshots[0] == snapshots[1]
         print("PROJECT_MANAGER_COMPOSE_REGRESSION_TEST=PASS")
+        print("PROJECT_MANAGER_SAFE_FILE_TOOLS_TEST=PASS")
         print("PROJECT_MANAGER_INSTALLER_IDEMPOTENCY_TEST=PASS")
 
 

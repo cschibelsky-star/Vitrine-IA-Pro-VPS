@@ -147,7 +147,7 @@ def main() -> None:
     backup(main_py)
     text = main_py.read_text(encoding='utf-8')
 
-    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_deploy as _project_deploy,\n)\n'''
+    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_write_file as _project_write_file,\n    project_php_lint as _project_php_lint,\n    project_deploy as _project_deploy,\n)\n'''
 
     if 'from project_manager_tools import' not in text:
         marker = 'from tvsumare_migration_tools import ('
@@ -159,12 +159,21 @@ def main() -> None:
             raise RuntimeError('imports project manager: fechamento não encontrado')
         end += 2
         text = text[:end] + import_block + text[end:]
-    elif 'project_deploy as _project_deploy,' not in text:
-        text = text.replace(
-            '    project_status as _project_status,\n)',
-            '    project_status as _project_status,\n    project_deploy as _project_deploy,\n)',
-            1,
+    else:
+        import_start = text.find('from project_manager_tools import (')
+        import_end = text.find(')\n', import_start)
+        if import_end == -1:
+            raise RuntimeError('imports project manager: fechamento não encontrado')
+        import_lines = (
+            '    project_write_file as _project_write_file,\n',
+            '    project_php_lint as _project_php_lint,\n',
+            '    project_deploy as _project_deploy,\n',
         )
+        for import_line in import_lines:
+            import_block_text = text[import_start:import_end]
+            if import_line.strip() not in import_block_text:
+                text = text[:import_end] + import_line + text[import_end:]
+                import_end += len(import_line)
 
     tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_manifest(project_id: str) -> dict[str, Any]:\n    return _project_manifest(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_workspace(project_id: str) -> dict[str, Any]:\n    return _project_workspace(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_clone(project_id: str) -> dict[str, Any]:\n    return _project_clone(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_status(project_id: str) -> dict[str, Any]:\n    return _project_status(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_deploy(\n    project_id: str,\n    environment: str = "homologation",\n    update_repository: bool = True,\n    build: bool = True,\n    start: bool = True,\n) -> dict[str, Any]:\n    return _project_deploy(project_id, environment, update_repository, build, start)\n'''
 
@@ -183,6 +192,24 @@ def main() -> None:
             project_deploy_block,
             'def project_deploy(',
             'registro project deploy tool',
+        )
+    if 'def project_write_file(' not in text:
+        project_write_file_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_write_file(\n    project_id: str,\n    path: str,\n    content: str,\n    backup: bool = True,\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_write_file(project_id, path, content, backup, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_write_file_block,
+            'def project_write_file(',
+            'registro project write file tool',
+        )
+    if 'def project_php_lint(' not in text:
+        project_php_lint_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_php_lint(project_id: str, path: str) -> dict[str, Any]:\n    return _project_php_lint(project_id, path)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_php_lint_block,
+            'def project_php_lint(',
+            'registro project php lint tool',
         )
     main_py.write_text(text, encoding='utf-8')
 

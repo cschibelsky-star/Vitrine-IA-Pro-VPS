@@ -27,6 +27,9 @@ def main() -> None:
         "'--require-tool', 'project_deploy'",
         "'--require-tool', 'connector_health'",
         "'--require-tool', 'project_context'",
+        "'--require-tool', 'project_write_file'",
+        "'--require-tool', 'project_php_lint'",
+        "'source_project_file_operations_test'",
         "restore_backup(backup)",
     ]
     for fragment in required:

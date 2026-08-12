@@ -63,6 +63,8 @@ def connector_health() -> dict[str, Any]:
             "project_context",
             "project_status",
             "project_deploy",
+            "project_write_file",
+            "project_php_lint",
             "tvsumare_operations",
         ],
     }

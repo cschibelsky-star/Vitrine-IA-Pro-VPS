@@ -44,6 +44,34 @@ def project_status(project_id: str) -> dict[str, Any]:
     return _request("GET", f"/projects/{project_id}/status")
 
 
+def project_write_file(
+    project_id: str,
+    path: str,
+    content: str,
+    backup: bool = True,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/write-file",
+        {
+            "project_id": project_id,
+            "path": path,
+            "content": content,
+            "backup": backup,
+            "confirm": confirm,
+        },
+    )
+
+
+def project_php_lint(project_id: str, path: str) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/php-lint",
+        {"project_id": project_id, "path": path},
+    )
+
+
 def project_deploy(
     project_id: str,
     environment: str = "homologation",
