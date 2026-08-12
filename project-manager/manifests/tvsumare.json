@@ -4,7 +4,7 @@
   "workspace_root": "/srv/tvsumare",
   "repository": {
     "url": "https://github.com/cschibelsky-star/TVSUMARE_ENTERPRISE.git",
-    "branch": "main",
+    "branch": "feature/tvsumare-boletim-social",
     "directory": "repository"
   },
   "legacy": {
@@ -22,7 +22,8 @@
   ],
   "docker": {
     "compose_file": "docker-compose.vps.yml",
-    "project_name": "tvsumare"
+    "project_name": "tvsumare",
+    "service": "web"
   },
   "domains": {
     "homologation": ["tv-hml.vitrineiapro.com.br"],
@@ -41,6 +42,7 @@
       "requires_explicit_cutover": true
     }
   },
+  "backup_root": "/srv/backups/tvsumare",
   "release": {
     "directory": "releases",
     "exclude": [
