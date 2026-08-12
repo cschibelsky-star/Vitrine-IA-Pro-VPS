@@ -50,7 +50,7 @@ def restore_backup(backup: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--repository', default='https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS.git')
-    parser.add_argument('--branch', default='feature/connector-autonomia-tvsumare-v3')
+    parser.add_argument('--branch', default='fix/connector-stabilization-v2')
     parser.add_argument('--confirm', required=True)
     args = parser.parse_args()
 
@@ -66,6 +66,13 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix='vitrine-connector-release-') as temp:
             checkout = Path(temp) / 'source'
             run(['git', 'clone', '--depth', '1', '--branch', args.branch, args.repository, str(checkout)])
+
+            # Testa a fonte antes de tocar no runtime instalado.
+            run([sys.executable, str(checkout / 'connector-v2' / 'test_connector_stabilization.py')], checkout)
+            run([sys.executable, '-m', 'py_compile',
+                 str(checkout / 'connector-v2' / 'main_tvsumare_tools.py'),
+                 str(checkout / 'connector-v2' / 'connector_runtime.py'),
+                 str(checkout / 'project-manager' / 'project_deployment_engine.py')])
 
             run([sys.executable, str(checkout / 'connector-v2' / 'install_connector_v2.py')])
             run([sys.executable, str(checkout / 'project-manager' / 'install_project_manager.py')])
