@@ -5,20 +5,14 @@ from typing import Any
 
 import httpx
 
+OPS_API_URL = os.getenv("OPS_API_URL", "http://host.docker.internal:18080").rstrip("/")
 OPS_BROKER_URL = os.getenv("OPS_BROKER_URL", "http://ops_broker:8770").rstrip("/")
 OPS_BROKER_TOKEN = os.getenv("OPS_BROKER_TOKEN", "")
 OPS_REQUEST_TIMEOUT = float(os.getenv("OPS_REQUEST_TIMEOUT", "1200"))
+OPS_API_FALLBACK = os.getenv("OPS_API_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
-def _request(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    headers = {"Authorization": f"Bearer {OPS_BROKER_TOKEN}"}
-    with httpx.Client(timeout=OPS_REQUEST_TIMEOUT) as client:
-        response = client.request(
-            method,
-            f"{OPS_BROKER_URL}{path}",
-            headers=headers,
-            json=payload,
-        )
+def _decode(response: httpx.Response) -> dict[str, Any]:
     try:
         body = response.json()
     except ValueError:
@@ -26,6 +20,49 @@ def _request(method: str, path: str, payload: dict[str, Any] | None = None) -> d
     if response.status_code >= 400:
         return {"ok": False, "status_code": response.status_code, "body": body}
     return body
+
+
+def _request_once(base_url: str, method: str, path: str, payload: dict[str, Any] | None) -> dict[str, Any]:
+    headers = {"Authorization": f"Bearer {OPS_BROKER_TOKEN}"}
+    with httpx.Client(timeout=OPS_REQUEST_TIMEOUT) as client:
+        response = client.request(
+            method,
+            f"{base_url}{path}",
+            headers=headers,
+            json=payload,
+        )
+    return _decode(response)
+
+
+def _request(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    try:
+        result = _request_once(OPS_API_URL, method, path, payload)
+        result.setdefault("transport", "ops_api")
+        result.setdefault("transport_url", OPS_API_URL)
+        return result
+    except (httpx.HTTPError, OSError) as exc:
+        if not OPS_API_FALLBACK:
+            return {
+                "ok": False,
+                "transport": "ops_api",
+                "transport_url": OPS_API_URL,
+                "error": "ops_api_unreachable",
+                "detail": type(exc).__name__,
+            }
+
+    try:
+        result = _request_once(OPS_BROKER_URL, method, path, payload)
+        result.setdefault("transport", "ops_broker_fallback")
+        result.setdefault("transport_url", OPS_BROKER_URL)
+        return result
+    except (httpx.HTTPError, OSError) as exc:
+        return {
+            "ok": False,
+            "transport": "ops_broker_fallback",
+            "transport_url": OPS_BROKER_URL,
+            "error": "ops_api_and_broker_unreachable",
+            "detail": type(exc).__name__,
+        }
 
 
 def project_manifest(project_id: str) -> dict[str, Any]:
@@ -90,6 +127,7 @@ def project_deploy(
             "start": start,
         },
     )
+
 
 def project_workspace_action(
     project_id: str,
