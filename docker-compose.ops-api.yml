@@ -6,7 +6,7 @@ services:
     container_name: vitrine_ops_api_hml
     environment:
       PROJECT_MANIFEST_ROOT: /app/project-manifests
-      PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects
+      PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects,/srv/connectors
       PROJECT_MANAGER_TIMEOUT: 1200
       OPS_AUDIT_LOG: /var/log/vitrine-ops/audit.jsonl
       OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
@@ -14,6 +14,7 @@ services:
     volumes:
       - /srv/projects:/srv/projects:rw
       - /srv/tvsumare:/srv/tvsumare:rw
+      - /srv/connectors:/srv/connectors:rw
       - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
     ports:
       - "127.0.0.1:18080:8080"
