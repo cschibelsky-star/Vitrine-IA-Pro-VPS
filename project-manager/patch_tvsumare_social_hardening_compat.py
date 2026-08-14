@@ -14,8 +14,8 @@ REPLACEMENTS = (
         'Social reviewed copy source',
     ),
     (
-        "$ready=array_values(array_filter($videos,'ds_ready'));",
-        "$ready=array_values(array_filter($videos,'ds_social_ready'));",
+        "$ready=array_values(array_filter($videos,\\'ds_ready\\'));",
+        "$ready=array_values(array_filter($videos,\\'ds_social_ready\\'));",
         'Social ready filtering source',
     ),
     (
