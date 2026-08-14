@@ -14,10 +14,12 @@ PHP_LINT_TIMEOUT = int(os.getenv("PROJECT_PHP_LINT_TIMEOUT", "15"))
 MAX_WRITE_BYTES = int(os.getenv("PROJECT_MAX_WRITE_BYTES", "1048576"))
 
 ALLOWED_PROJECT_ROOTS = {
+    "admin",
     "app",
     "bootstrap",
     "config",
     "database",
+    "includes",
     "public",
     "resources",
     "routes",
@@ -45,7 +47,7 @@ BLOCKED_NAMES = {
     "id_rsa", "id_ed25519",
 }
 BLOCKED_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".sqlite", ".sqlite3"}
-SENSITIVE_FRAGMENTS = {"secret", "credential", "oauth", "private"}
+SENSITIVE_FRAGMENTS = {"secret", "credential", "private"}
 BLOCKED_DIRECTORIES = {
     ".git", "vendor", "node_modules", "__pycache__", "bootstrap/cache",
     "storage/framework", "storage/logs", "storage/oauth", "secrets",
