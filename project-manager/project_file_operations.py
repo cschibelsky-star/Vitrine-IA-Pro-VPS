@@ -117,7 +117,9 @@ def _is_text_path(relative_path: str, candidate: Path) -> bool:
     if relative_path in ALLOWED_PROJECT_FILES:
         return True
     name = candidate.name.lower()
-    return name.endswith(".blade.php") or candidate.suffix.lower() in TEXT_SUFFIXES
+    if name.endswith(".blade.php") or candidate.suffix.lower() in TEXT_SUFFIXES:
+        return True
+    return re.fullmatch(r".+\.php\.bak-[a-z0-9._-]+", name) is not None
 
 
 def _has_symlink_component(repository: Path, relative_path: str) -> bool:
