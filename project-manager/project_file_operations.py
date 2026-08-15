@@ -27,6 +27,7 @@ ALLOWED_PROJECT_ROOTS = {
     "tests",
 }
 ALLOWED_PROJECT_FILES = {
+    ".dockerignore",
     "artisan",
     "composer.json",
     "composer.lock",
