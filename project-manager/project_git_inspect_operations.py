@@ -92,11 +92,18 @@ def _blob_compare(repository: Path, head_ref: str, remote_ref: str, paths: list[
     for path in paths:
         local_blob = _run(repository, ["rev-parse", f"{head_ref}:{path}"])
         remote_blob = _run(repository, ["rev-parse", f"{remote_ref}:{path}"])
+        same = bool(local_blob and remote_blob and local_blob == remote_blob)
+        diff = ""
+        if not same:
+            diff = _run(repository, ["diff", "--no-ext-diff", "--unified=2", head_ref, remote_ref, "--", path])
+            if len(diff) > 12000:
+                diff = diff[:12000] + "\n[TRUNCATED]"
         rows.append({
             "path": path,
             "local_blob": local_blob,
             "remote_blob": remote_blob,
-            "same": bool(local_blob and remote_blob and local_blob == remote_blob),
+            "same": same,
+            "diff_local_to_remote": diff,
         })
     return rows
 
