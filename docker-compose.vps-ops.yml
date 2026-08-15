@@ -6,12 +6,14 @@ services:
     container_name: vitrine_vps_ops_plugin_hml
     restart: unless-stopped
     environment:
-      OPS_API_URL: http://vitrine_ops_api_hml:8080
-      OPS_BROKER_URL: http://ops_broker:8770
+      OPS_API_URL: http://host.docker.internal:18080
+      OPS_BROKER_URL: http://host.docker.internal:8770
       OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
       OPS_REQUEST_TIMEOUT_MS: 120000
       HOST: 0.0.0.0
       PORT: 8181
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - vitrine_net
     ports:
@@ -34,11 +36,13 @@ services:
         condition: service_healthy
     environment:
       OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command:
       - >-
         echo BOOTSTRAP_START > /bootstrap/tunnel.txt;
-        wget -qO- http://vitrine_ops_api_hml:8080/health > /bootstrap/ops-api.txt 2>&1 || true;
-        wget -qO- --header="Authorization: Bearer $${OPS_BROKER_TOKEN}" http://ops_broker:8770/tvsumare/health > /bootstrap/ops-broker.txt 2>&1 || true;
+        wget -qO- http://host.docker.internal:18080/health > /bootstrap/ops-api.txt 2>&1 || true;
+        wget -qO- --header="Authorization: Bearer $${OPS_BROKER_TOKEN}" http://host.docker.internal:8770/tvsumare/health > /bootstrap/ops-broker.txt 2>&1 || true;
         cloudflared --version >> /bootstrap/tunnel.txt 2>&1;
         echo TUNNEL_START >> /bootstrap/tunnel.txt;
         cloudflared tunnel --no-autoupdate --loglevel info --url http://vps_ops_plugin:8181 >> /bootstrap/tunnel.txt 2>&1;
