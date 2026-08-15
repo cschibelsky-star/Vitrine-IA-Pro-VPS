@@ -33,6 +33,27 @@ services:
       retries: 5
       start_period: 8s
 
+  vps_ops_bootstrap_tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: vitrine_vps_ops_bootstrap_tunnel
+    restart: unless-stopped
+    depends_on:
+      vps_ops_plugin:
+        condition: service_healthy
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --loglevel
+      - info
+      - --logfile
+      - /bootstrap/tunnel.log
+      - --url
+      - http://vps_ops_plugin:8181
+    networks:
+      - vitrine_net
+    volumes:
+      - ./storage/app/factory/vps-ops:/bootstrap:rw
+
 networks:
   vitrine_net:
     external: true
