@@ -17,11 +17,21 @@ services:
     ports:
       - "127.0.0.1:18181:8181"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8181/health"]
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const h={Authorization:'Bearer '+(process.env.OPS_BROKER_TOKEN||'')};
+          Promise.all([
+            fetch('http://127.0.0.1:8181/health'),
+            fetch('http://vitrine_ops_api_hml:8080/health',{headers:h}),
+            fetch('http://ops_broker:8770/tvsumare/health',{headers:h})
+          ]).then(r=>{if(r.some(x=>!x.ok))process.exit(1)}).catch(()=>process.exit(1));
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 8s
 
 networks:
   vitrine_net:
