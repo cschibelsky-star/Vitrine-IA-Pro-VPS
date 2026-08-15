@@ -14,6 +14,7 @@ from project_manager_operations import router as project_router  # noqa: E402
 from project_shared_operations import router as project_shared_router  # noqa: E402
 from project_read_operations import router as project_read_router  # noqa: E402
 from project_git_inspect_operations import router as project_git_inspect_router  # noqa: E402
+from project_git_recovery_operations import router as project_git_recovery_router  # noqa: E402
 
 APP_VERSION = os.getenv("VITRINE_OPS_API_VERSION", "0.1.0")
 
@@ -38,3 +39,4 @@ app.include_router(project_router)
 app.include_router(project_shared_router)
 app.include_router(project_read_router)
 app.include_router(project_git_inspect_router)
+app.include_router(project_git_recovery_router)
