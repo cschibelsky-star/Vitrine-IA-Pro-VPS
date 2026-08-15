@@ -1,0 +1,14 @@
+{
+  "name": "vitrine-vps-ops-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.1",
+    "zod": "^3.25.76"
+  }
+}
