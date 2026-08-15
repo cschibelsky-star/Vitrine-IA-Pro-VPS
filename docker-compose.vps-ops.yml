@@ -32,9 +32,13 @@ services:
     depends_on:
       vps_ops_plugin:
         condition: service_healthy
+    environment:
+      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
     command:
       - >-
         echo BOOTSTRAP_START > /bootstrap/tunnel.txt;
+        wget -qO- http://vitrine_ops_api_hml:8080/health > /bootstrap/ops-api.txt 2>&1 || true;
+        wget -qO- --header="Authorization: Bearer $${OPS_BROKER_TOKEN}" http://ops_broker:8770/tvsumare/health > /bootstrap/ops-broker.txt 2>&1 || true;
         cloudflared --version >> /bootstrap/tunnel.txt 2>&1;
         echo TUNNEL_START >> /bootstrap/tunnel.txt;
         cloudflared tunnel --no-autoupdate --loglevel info --url http://vps_ops_plugin:8181 >> /bootstrap/tunnel.txt 2>&1;
