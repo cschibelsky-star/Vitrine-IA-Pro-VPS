@@ -74,6 +74,31 @@ services:
     volumes:
       - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
 
+  vps_ops_tvsumare_runtime_inspector:
+    image: docker:27-cli
+    container_name: vitrine_vps_ops_tvsumare_runtime_inspector
+    restart: "no"
+    command:
+      - sh
+      - -lc
+      - >-
+        {
+          echo 'TVSUMARE_RUNTIME_INSPECT=START';
+          date -u '+AT=%Y-%m-%dT%H:%M:%SZ';
+          echo '--- PS ---';
+          docker ps -a --no-trunc --filter 'name=^/tvsumare_web$';
+          echo '--- INSPECT ---';
+          docker inspect tvsumare_web;
+          echo '--- NETWORKS ---';
+          docker inspect tvsumare_web --format '{{json .NetworkSettings.Networks}}';
+          echo '--- MOUNTS ---';
+          docker inspect tvsumare_web --format '{{json .Mounts}}';
+          echo 'TVSUMARE_RUNTIME_INSPECT=END';
+        } > /bootstrap/runtime-container-inspect.txt 2>&1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
+
 networks:
   vitrine_net:
     external: true
