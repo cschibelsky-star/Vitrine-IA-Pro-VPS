@@ -57,7 +57,7 @@ def _run(repository: Path, args: list[str]) -> str:
     return proc.stdout.strip()
 
 
-def _commit_details(repository: Path, revision_range: str) -> list[dict[str, Any]]:
+def _commit_details(repository: Path, revision_range: str, include_patch: bool = False) -> list[dict[str, Any]]:
     shas = _run(repository, ["rev-list", "--max-count=20", revision_range]).splitlines()
     details: list[dict[str, Any]] = []
     for sha in shas:
@@ -68,13 +68,19 @@ def _commit_details(repository: Path, revision_range: str) -> list[dict[str, Any
         parents = _run(repository, ["show", "-s", "--format=%P", sha]).split()
         changed = _run(repository, ["diff-tree", "--no-commit-id", "--name-status", "-r", sha])
         stat = _run(repository, ["show", "--format=", "--shortstat", sha])
-        details.append({
+        row: dict[str, Any] = {
             "sha": sha,
             "subject": subject,
             "parents": parents,
             "changed_files": changed.splitlines() if changed else [],
             "shortstat": stat,
-        })
+        }
+        if include_patch:
+            patch = _run(repository, ["show", "--format=", "--unified=2", sha])
+            if len(patch) > 16000:
+                patch = patch[:16000] + "\n[TRUNCATED]"
+            row["patch"] = patch
+        details.append(row)
     return details
 
 
@@ -154,7 +160,7 @@ def project_git_inspect(project_id: str) -> dict[str, Any]:
         "behind": behind,
         "local_only_commits": local_only.splitlines() if local_only else [],
         "remote_only_commits": remote_only.splitlines() if remote_only else [],
-        "local_only_details": _commit_details(repository, f"{remote_ref}..HEAD") if remote else [],
+        "local_only_details": _commit_details(repository, f"{remote_ref}..HEAD", include_patch=True) if remote else [],
         "remote_only_details": _commit_details(repository, f"HEAD..{remote_ref}") if remote else [],
         "local_changed_from_merge_base": local_changed.splitlines() if local_changed else [],
         "remote_changed_from_merge_base": remote_changed.splitlines() if remote_changed else [],
