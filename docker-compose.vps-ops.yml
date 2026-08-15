@@ -25,6 +25,35 @@ services:
       retries: 5
       start_period: 5s
 
+  vps_ops_query_bridge:
+    build:
+      context: .
+      dockerfile: vps-ops-plugin/Dockerfile.bootstrap-tunnel
+    container_name: vitrine_vps_ops_query_bridge
+    restart: unless-stopped
+    depends_on:
+      vps_ops_plugin:
+        condition: service_healthy
+    environment:
+      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+    command:
+      - >-
+        while true; do
+          if [ -s /bootstrap/query.json ]; then
+            curl -sS -X POST
+            -H "Authorization: Bearer $${OPS_BROKER_TOKEN}"
+            -H "Content-Type: application/json"
+            --data-binary @/bootstrap/query.json
+            http://vitrine_ops_api_hml:8080/projects/shared/read
+            > /bootstrap/query-result.txt 2>&1 || true;
+          fi;
+          sleep 3;
+        done
+    networks:
+      - vitrine_net
+    volumes:
+      - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
+
   vps_ops_bootstrap_tunnel:
     build:
       context: .
@@ -43,7 +72,6 @@ services:
         echo BOOTSTRAP_START > /bootstrap/tunnel.txt;
         curl -sS -i http://vitrine_ops_api_hml:8080/health > /bootstrap/ops-api.txt 2>&1 || true;
         curl -sS -i -H "Authorization: Bearer $${OPS_BROKER_TOKEN}" http://host.docker.internal:8770/tvsumare/health > /bootstrap/ops-broker.txt 2>&1 || true;
-        curl -sS -i -X POST -H "Authorization: Bearer $${OPS_BROKER_TOKEN}" -H "Content-Type: application/json" --data '{"project_id":"tvsumare","shared_directory":"data","path":"noticias.json","start_line":1,"end_line":20}' http://vitrine_ops_api_hml:8080/projects/shared/read > /bootstrap/shared-test.txt 2>&1 || true;
         cloudflared --version >> /bootstrap/tunnel.txt 2>&1;
         echo TUNNEL_START >> /bootstrap/tunnel.txt;
         cloudflared tunnel --no-autoupdate --loglevel info --url http://vps_ops_plugin:8181 >> /bootstrap/tunnel.txt 2>&1;
