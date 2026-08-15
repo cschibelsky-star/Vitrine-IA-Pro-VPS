@@ -122,6 +122,20 @@ services:
       - /srv/tvsumare/repository:/srv/tvsumare/repository:ro
       - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
 
+  vps_ops_tvsumare_safe_deployer:
+    image: docker:27-cli
+    container_name: vitrine_vps_ops_tvsumare_safe_deployer
+    restart: "no"
+    working_dir: /srv/tvsumare/repository
+    command:
+      - sh
+      - /usr/local/bin/tvsumare-safe-deploy.sh
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/tvsumare/repository:/srv/tvsumare/repository:ro
+      - /srv/projects/vitrine-vps-ops/repository/vps-ops-plugin/tvsumare-safe-deploy.sh:/usr/local/bin/tvsumare-safe-deploy.sh:ro
+      - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
+
 networks:
   vitrine_net:
     external: true
