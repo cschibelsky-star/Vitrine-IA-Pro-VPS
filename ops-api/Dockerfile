@@ -10,6 +10,7 @@ COPY ops-api/requirements.txt /app/ops-api/requirements.txt
 RUN pip install --no-cache-dir -r /app/ops-api/requirements.txt
 
 COPY project-manager /app/project-manager
+COPY project-manager/manifests /app/project-manifests
 COPY ops-api /app/ops-api
 
 WORKDIR /app/ops-api
