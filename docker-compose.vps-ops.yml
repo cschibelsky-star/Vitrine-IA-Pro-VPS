@@ -42,7 +42,7 @@ services:
     networks:
       - vitrine_net
     volumes:
-      - ./storage/app/factory/vps-ops:/bootstrap:rw
+      - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
 
 networks:
   vitrine_net:
