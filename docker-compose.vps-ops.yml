@@ -33,11 +33,11 @@ services:
       vps_ops_plugin:
         condition: service_healthy
     command: >-
-      { echo BOOTSTRAP_START;
-      cloudflared --version;
-      echo TUNNEL_START;
-      cloudflared tunnel --no-autoupdate --loglevel info --url http://vps_ops_plugin:8181;
-      echo TUNNEL_EXIT=$?; } > /bootstrap/tunnel.txt 2>&1;
+      echo BOOTSTRAP_START > /bootstrap/tunnel.txt;
+      cloudflared --version >> /bootstrap/tunnel.txt 2>&1;
+      echo TUNNEL_START >> /bootstrap/tunnel.txt;
+      cloudflared tunnel --no-autoupdate --loglevel info --url http://vps_ops_plugin:8181 >> /bootstrap/tunnel.txt 2>&1;
+      echo TUNNEL_EXIT=$? >> /bootstrap/tunnel.txt;
       sleep 3600
     networks:
       - vitrine_net
