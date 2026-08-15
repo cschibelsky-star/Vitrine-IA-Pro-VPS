@@ -1,6 +1,6 @@
 FROM cloudflare/cloudflared:latest AS cloudflared
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates curl
 COPY --from=cloudflared /usr/local/bin/cloudflared /usr/local/bin/cloudflared
 ENTRYPOINT ["/bin/sh", "-c"]
