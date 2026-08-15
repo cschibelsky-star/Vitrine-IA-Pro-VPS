@@ -64,7 +64,6 @@ services:
         curl -sS -X POST -H "Authorization: Bearer $${OPS_BROKER_TOKEN}" -H "Content-Type: application/json" --data '{"project_id":"tvsumare","expected_head":"41309f1a20205d6225e8b52995a8884be6cf16e7","expected_remote_head":"7137f53170370bae5b70c3d0bf84b89d5ccfcc34","recovery_ref":"recovery-local/tvsumare-prealign-20260815-41309f1","confirm":"EXECUTAR"}' http://vitrine_ops_api_hml:8080/projects/git-align > /bootstrap/align-result.txt 2>&1 || true;
         curl -sS -H "Authorization: Bearer $${OPS_BROKER_TOKEN}" http://vitrine_ops_api_hml:8080/projects/tvsumare/git-inspect > /bootstrap/git-inspect-after.txt 2>&1 || true;
         curl -sS -i -H "Authorization: Bearer $${OPS_BROKER_TOKEN}" http://host.docker.internal:8770/tvsumare/health > /bootstrap/ops-broker.txt 2>&1 || true;
-        curl -sS -X POST -H "Authorization: Bearer $${OPS_BROKER_TOKEN}" http://host.docker.internal:8770/tvsumare/docker/build > /bootstrap/tvsumare-broker-build.json 2>&1 || true;
         cloudflared --version >> /bootstrap/tunnel.txt 2>&1;
         echo TUNNEL_START >> /bootstrap/tunnel.txt;
         cloudflared tunnel --no-autoupdate --loglevel info --url http://vps_ops_plugin:8181 >> /bootstrap/tunnel.txt 2>&1;
@@ -98,6 +97,29 @@ services:
         } > /bootstrap/runtime-container-inspect.txt 2>&1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
+
+  vps_ops_tvsumare_repository_builder:
+    image: docker:27-cli
+    container_name: vitrine_vps_ops_tvsumare_repository_builder
+    restart: "no"
+    working_dir: /srv/tvsumare/repository
+    command:
+      - sh
+      - -lc
+      - >-
+        rm -f /bootstrap/tvsumare-repository-build.txt;
+        echo 'TVSUMARE_REPOSITORY_BUILD=START' > /bootstrap/tvsumare-repository-build.txt;
+        date -u '+AT=%Y-%m-%dT%H:%M:%SZ' >> /bootstrap/tvsumare-repository-build.txt;
+        docker compose version >> /bootstrap/tvsumare-repository-build.txt 2>&1;
+        docker compose -p repository -f docker-compose.vps.yml build >> /bootstrap/tvsumare-repository-build.txt 2>&1;
+        rc=$$?;
+        echo "EXIT_CODE=$$rc" >> /bootstrap/tvsumare-repository-build.txt;
+        echo 'TVSUMARE_REPOSITORY_BUILD=END' >> /bootstrap/tvsumare-repository-build.txt;
+        exit $$rc
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/tvsumare/repository:/srv/tvsumare/repository:ro
       - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
 
 networks:
