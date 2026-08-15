@@ -68,16 +68,37 @@ def _commit_details(repository: Path, revision_range: str) -> list[dict[str, Any
         parents = _run(repository, ["show", "-s", "--format=%P", sha]).split()
         changed = _run(repository, ["diff-tree", "--no-commit-id", "--name-status", "-r", sha])
         stat = _run(repository, ["show", "--format=", "--shortstat", sha])
-        details.append(
-            {
-                "sha": sha,
-                "subject": subject,
-                "parents": parents,
-                "changed_files": changed.splitlines() if changed else [],
-                "shortstat": stat,
-            }
-        )
+        details.append({
+            "sha": sha,
+            "subject": subject,
+            "parents": parents,
+            "changed_files": changed.splitlines() if changed else [],
+            "shortstat": stat,
+        })
     return details
+
+
+def _changed_paths(lines: str) -> set[str]:
+    result: set[str] = set()
+    for line in lines.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            result.add(parts[-1].strip())
+    return result
+
+
+def _blob_compare(repository: Path, head_ref: str, remote_ref: str, paths: list[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in paths:
+        local_blob = _run(repository, ["rev-parse", f"{head_ref}:{path}"])
+        remote_blob = _run(repository, ["rev-parse", f"{remote_ref}:{path}"])
+        rows.append({
+            "path": path,
+            "local_blob": local_blob,
+            "remote_blob": remote_blob,
+            "same": bool(local_blob and remote_blob and local_blob == remote_blob),
+        })
+    return rows
 
 
 @router.get("/{project_id}/git-inspect", dependencies=[Depends(auth)])
@@ -106,6 +127,12 @@ def project_git_inspect(project_id: str) -> dict[str, Any]:
     local_changed = _run(repository, ["diff", "--name-status", f"{merge_base}..HEAD"]) if merge_base else ""
     remote_changed = _run(repository, ["diff", "--name-status", f"{merge_base}..{remote_ref}"]) if merge_base and remote else ""
     working_tree = _run(repository, ["status", "--short"])
+    working_diff_stat = _run(repository, ["diff", "--stat"])
+    working_diff = _run(repository, ["diff", "--no-ext-diff", "--unified=3"])
+    if len(working_diff) > 50000:
+        working_diff = working_diff[:50000] + "\n[TRUNCATED]"
+
+    overlap = sorted(_changed_paths(local_changed) & _changed_paths(remote_changed))
 
     return {
         "ok": True,
@@ -124,5 +151,8 @@ def project_git_inspect(project_id: str) -> dict[str, Any]:
         "remote_only_details": _commit_details(repository, f"HEAD..{remote_ref}") if remote else [],
         "local_changed_from_merge_base": local_changed.splitlines() if local_changed else [],
         "remote_changed_from_merge_base": remote_changed.splitlines() if remote_changed else [],
+        "overlap_blob_comparison": _blob_compare(repository, "HEAD", remote_ref, overlap) if remote else [],
         "working_tree": working_tree.splitlines() if working_tree else [],
+        "working_diff_stat": working_diff_stat.splitlines() if working_diff_stat else [],
+        "working_diff": working_diff,
     }
