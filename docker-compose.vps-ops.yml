@@ -113,10 +113,25 @@ services:
         date -u '+AT=%Y-%m-%dT%H:%M:%SZ' >> /bootstrap/tvsumare-repository-build.txt;
         docker compose version >> /bootstrap/tvsumare-repository-build.txt 2>&1;
         docker compose -p repository -f docker-compose.vps.yml build >> /bootstrap/tvsumare-repository-build.txt 2>&1;
-        rc=$$?;
-        echo "EXIT_CODE=$$rc" >> /bootstrap/tvsumare-repository-build.txt;
+        candidate_rc=$$?;
+        echo "CANDIDATE_EXIT_CODE=$$candidate_rc" >> /bootstrap/tvsumare-repository-build.txt;
+        if [ "$$candidate_rc" -ne 0 ]; then echo 'TVSUMARE_REPOSITORY_BUILD=END' >> /bootstrap/tvsumare-repository-build.txt; exit $$candidate_rc; fi;
+        apk add --no-cache git >> /bootstrap/tvsumare-repository-build.txt 2>&1;
+        git_rc=$$?;
+        echo "GIT_INSTALL_EXIT_CODE=$$git_rc" >> /bootstrap/tvsumare-repository-build.txt;
+        if [ "$$git_rc" -ne 0 ]; then echo 'TVSUMARE_REPOSITORY_BUILD=END' >> /bootstrap/tvsumare-repository-build.txt; exit $$git_rc; fi;
+        rm -rf /tmp/tvsumare-rollback-src;
+        mkdir -p /tmp/tvsumare-rollback-src;
+        git -C /srv/tvsumare/repository archive recovery-local/tvsumare-prealign-20260815-41309f1 | tar -x -C /tmp/tvsumare-rollback-src;
+        archive_rc=$$?;
+        echo "ROLLBACK_ARCHIVE_EXIT_CODE=$$archive_rc" >> /bootstrap/tvsumare-repository-build.txt;
+        if [ "$$archive_rc" -ne 0 ]; then echo 'TVSUMARE_REPOSITORY_BUILD=END' >> /bootstrap/tvsumare-repository-build.txt; exit $$archive_rc; fi;
+        cd /tmp/tvsumare-rollback-src;
+        docker build -t repository-web:rollback-prealign-41309f1 . >> /bootstrap/tvsumare-repository-build.txt 2>&1;
+        rollback_rc=$$?;
+        echo "ROLLBACK_BUILD_EXIT_CODE=$$rollback_rc" >> /bootstrap/tvsumare-repository-build.txt;
         echo 'TVSUMARE_REPOSITORY_BUILD=END' >> /bootstrap/tvsumare-repository-build.txt;
-        exit $$rc
+        exit $$rollback_rc
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /srv/tvsumare/repository:/srv/tvsumare/repository:ro
