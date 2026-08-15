@@ -1,0 +1,29 @@
+services:
+  vps_ops_plugin:
+    build:
+      context: ..
+      dockerfile: vps-ops-plugin/Dockerfile
+    container_name: vitrine_vps_ops_plugin_hml
+    restart: unless-stopped
+    environment:
+      OPS_API_URL: http://vitrine_ops_api_hml:8080
+      OPS_BROKER_URL: http://ops_broker:8770
+      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+      OPS_REQUEST_TIMEOUT_MS: 120000
+      HOST: 0.0.0.0
+      PORT: 8181
+    networks:
+      - vitrine_net
+    ports:
+      - "127.0.0.1:18181:8181"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+networks:
+  vitrine_net:
+    external: true
+    name: vitrine_net
