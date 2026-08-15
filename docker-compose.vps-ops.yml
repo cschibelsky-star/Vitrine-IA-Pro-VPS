@@ -61,6 +61,7 @@ services:
         echo BOOTSTRAP_START > /bootstrap/tunnel.txt;
         curl -sS -i http://vitrine_ops_api_hml:8080/health > /bootstrap/ops-api.txt 2>&1 || true;
         curl -sS -H "Authorization: Bearer $${OPS_BROKER_TOKEN}" http://vitrine_ops_api_hml:8080/projects/tvsumare/git-inspect > /bootstrap/git-inspect.txt 2>&1 || true;
+        curl -sS -X POST -H "Authorization: Bearer $${OPS_BROKER_TOKEN}" -H "Content-Type: application/json" --data '{"project_id":"tvsumare","recovery_branch":"recovery/tvsumare-vps-20260815","confirm":"EXECUTAR"}' http://vitrine_ops_api_hml:8080/projects/git-recovery-branch > /bootstrap/recovery-push.txt 2>&1 || true;
         curl -sS -i -H "Authorization: Bearer $${OPS_BROKER_TOKEN}" http://host.docker.internal:8770/tvsumare/health > /bootstrap/ops-broker.txt 2>&1 || true;
         cloudflared --version >> /bootstrap/tunnel.txt 2>&1;
         echo TUNNEL_START >> /bootstrap/tunnel.txt;
