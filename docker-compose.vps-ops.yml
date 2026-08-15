@@ -43,6 +43,7 @@ services:
         echo BOOTSTRAP_START > /bootstrap/tunnel.txt;
         wget -qO- http://vitrine_ops_api_hml:8080/health > /bootstrap/ops-api.txt 2>&1 || true;
         wget -qO- --header="Authorization: Bearer $${OPS_BROKER_TOKEN}" http://host.docker.internal:8770/tvsumare/health > /bootstrap/ops-broker.txt 2>&1 || true;
+        wget -qO- --header="Authorization: Bearer $${OPS_BROKER_TOKEN}" --header="Content-Type: application/json" --post-data='{"project_id":"tvsumare","shared_directory":"data","path":"noticias.json","start_line":1,"end_line":20}' http://vitrine_ops_api_hml:8080/projects/shared/read > /bootstrap/shared-test.txt 2>&1 || true;
         cloudflared --version >> /bootstrap/tunnel.txt 2>&1;
         echo TUNNEL_START >> /bootstrap/tunnel.txt;
         cloudflared tunnel --no-autoupdate --loglevel info --url http://vps_ops_plugin:8181 >> /bootstrap/tunnel.txt 2>&1;
