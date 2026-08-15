@@ -36,7 +36,7 @@ services:
       - --loglevel
       - info
       - --logfile
-      - /bootstrap/tunnel.log
+      - /bootstrap/tunnel.txt
       - --url
       - http://vps_ops_plugin:8181
     networks:
