@@ -9,6 +9,24 @@ Este diretório define o padrão oficial de homologação, URLs provisórias de 
 - URL provisória de cliente: `<slug>.cliente.vitrineiapro.com.br`
 - Domínio definitivo do cliente: host adicional apontando para o mesmo upstream.
 
+## DNS necessário
+
+Para a topologia atual no VPS `143.95.219.238`, a zona precisa de três registros A:
+
+- `hml.vitrineiapro.com.br` -> `143.95.219.238`
+- `*.hml.vitrineiapro.com.br` -> `143.95.219.238`
+- `*.cliente.vitrineiapro.com.br` -> `143.95.219.238`
+
+O wildcard `*.hml.vitrineiapro.com.br` não cobre o próprio host `hml.vitrineiapro.com.br`, por isso o registro `hml` é obrigatório separadamente.
+
+Antes de publicar proxy ou emitir SSL, execute:
+
+```bash
+python3 routing/dns_preflight.py --expected-ip 143.95.219.238
+```
+
+A publicação deve permanecer bloqueada enquanto o preflight retornar código diferente de zero.
+
 ## Rede e isolamento
 
 1. Aplicações publicáveis entram na rede Docker externa `vitrine_net`.
@@ -46,6 +64,24 @@ python3 routing/validate_routes.py routing/routes.json
 ```
 
 O validador bloqueia IDs/hosts duplicados, hostnames fora dos domínios oficiais, upstream inválido, porta fora da faixa, SSL desligado e estados desconhecidos.
+
+## Instalação da Central HML
+
+As credenciais devem existir fora do Git em `/srv/vitrine/secrets/hml-center.env`, com permissão `600`:
+
+```text
+HML_CENTER_USER=<usuario>
+HML_CENTER_PASSWORD=<senha-forte>
+```
+
+Depois execute a partir do checkout da infraestrutura:
+
+```bash
+chmod +x routing/install_hml_center.sh
+./routing/install_hml_center.sh
+```
+
+O instalador valida credenciais, permissões, rede `vitrine_net`, cria backup da instalação anterior, valida `routes.json`, reconstrói a Central HML e exige healthcheck interno positivo.
 
 ## Geração Nginx em staging
 
