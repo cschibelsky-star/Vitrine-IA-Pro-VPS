@@ -28,6 +28,19 @@
     "homologation": ["tv-hml.vitrineiapro.com.br"],
     "production": ["tvsumare.com.br", "www.tvsumare.com.br"]
   },
+  "deployment": {
+    "homologation": {
+      "health_url": "https://tv-hml.vitrineiapro.com.br/health.php",
+      "requires_ssl": true,
+      "automatic": true
+    },
+    "production": {
+      "health_url": "https://tvsumare.com.br/health.php",
+      "requires_ssl": true,
+      "automatic": false,
+      "requires_explicit_cutover": true
+    }
+  },
   "release": {
     "directory": "releases",
     "exclude": [

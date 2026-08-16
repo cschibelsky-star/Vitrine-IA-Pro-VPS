@@ -63,6 +63,7 @@ def main() -> None:
 
     shutil.copy2(SOURCE / 'project_manager_operations.py', ROOT / 'project_manager_operations.py')
     shutil.copy2(SOURCE / 'project_manager_tools.py', ROOT / 'project_manager_tools.py')
+    shutil.copy2(SOURCE / 'project_deployment_engine.py', ROOT / 'project_deployment_engine.py')
 
     for manifest in manifest_source.glob('*.json'):
         shutil.copy2(manifest, manifest_target / manifest.name)
@@ -78,9 +79,21 @@ def main() -> None:
     )
     text = ensure_line_after(
         text,
+        'from project_manager_operations import router as project_manager_router\n',
+        'from project_deployment_engine import router as project_deployment_router\n',
+        'import project deployment router',
+    )
+    text = ensure_line_after(
+        text,
         'app.include_router(tvsumare_migration_router)\n',
         'app.include_router(project_manager_router)\n',
         'include project manager router',
+    )
+    text = ensure_line_after(
+        text,
+        'app.include_router(project_manager_router)\n',
+        'app.include_router(project_deployment_router)\n',
+        'include project deployment router',
     )
     ops_broker.write_text(text, encoding='utf-8')
 
@@ -88,7 +101,7 @@ def main() -> None:
     backup(main_py)
     text = main_py.read_text(encoding='utf-8')
 
-    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n)\n'''
+    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_deploy as _project_deploy,\n)\n'''
 
     if 'from project_manager_tools import' not in text:
         marker = 'from tvsumare_migration_tools import ('
@@ -100,8 +113,14 @@ def main() -> None:
             raise RuntimeError('imports project manager: fechamento não encontrado')
         end += 2
         text = text[:end] + import_block + text[end:]
+    elif 'project_deploy as _project_deploy,' not in text:
+        text = text.replace(
+            '    project_status as _project_status,\n)',
+            '    project_status as _project_status,\n    project_deploy as _project_deploy,\n)',
+            1,
+        )
 
-    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_manifest(project_id: str) -> dict[str, Any]:\n    return _project_manifest(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_workspace(project_id: str) -> dict[str, Any]:\n    return _project_workspace(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_clone(project_id: str) -> dict[str, Any]:\n    return _project_clone(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_status(project_id: str) -> dict[str, Any]:\n    return _project_status(project_id)\n'''
+    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_manifest(project_id: str) -> dict[str, Any]:\n    return _project_manifest(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_workspace(project_id: str) -> dict[str, Any]:\n    return _project_workspace(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_clone(project_id: str) -> dict[str, Any]:\n    return _project_clone(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_status(project_id: str) -> dict[str, Any]:\n    return _project_status(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_deploy(\n    project_id: str,\n    environment: str = "homologation",\n    update_repository: bool = True,\n    build: bool = True,\n    start: bool = True,\n) -> dict[str, Any]:\n    return _project_deploy(project_id, environment, update_repository, build, start)\n'''
 
     text = ensure_block_before(
         text,
@@ -110,6 +129,15 @@ def main() -> None:
         'def project_clone(project_id:',
         'registro project manager tools',
     )
+    if 'def project_deploy(' not in text:
+        project_deploy_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_deploy(\n    project_id: str,\n    environment: str = "homologation",\n    update_repository: bool = True,\n    build: bool = True,\n    start: bool = True,\n) -> dict[str, Any]:\n    return _project_deploy(project_id, environment, update_repository, build, start)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_deploy_block,
+            'def project_deploy(',
+            'registro project deploy tool',
+        )
     main_py.write_text(text, encoding='utf-8')
 
     dockerfile = ROOT / 'Dockerfile'
@@ -122,7 +150,11 @@ def main() -> None:
     if not copy_line:
         raise RuntimeError('Dockerfile: linha COPY não encontrada')
 
-    required = ['project_manager_operations.py', 'project_manager_tools.py']
+    required = [
+        'project_manager_operations.py',
+        'project_manager_tools.py',
+        'project_deployment_engine.py',
+    ]
     updated_line = copy_line
     for item in required:
         if item not in updated_line.split():
