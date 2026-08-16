@@ -1,0 +1,16 @@
+{
+  "id": "<cliente>-<produto>",
+  "project_id": "<project_id>",
+  "client_id": "<client_id>",
+  "product": "<produto>",
+  "environment": "production",
+  "provisional_hostname": "<slug>.cliente.vitrineiapro.com.br",
+  "custom_domains": [],
+  "primary_hostname": "<slug>.cliente.vitrineiapro.com.br",
+  "upstream": "<container_or_service>:80",
+  "health_path": "/health.php",
+  "ssl": true,
+  "provisional_domain_policy": "alias",
+  "status": "planned",
+  "notes": "Quando o cliente fornecer domínio próprio, adicionar em custom_domains, promover para primary_hostname e definir provisional_domain_policy como alias ou redirect_301."
+}
