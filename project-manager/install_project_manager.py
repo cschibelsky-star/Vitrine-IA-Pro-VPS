@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path('/srv/connectors/vitrine-vps-mcp')
+ROOT = Path(os.getenv('CONNECTOR_ROOT', '/srv/connectors/vitrine-vps-mcp'))
 SOURCE = Path(__file__).resolve().parent
 STAMP = datetime.now().strftime('%Y%m%d-%H%M%S')
 
@@ -31,26 +33,70 @@ def ensure_block_before(text: str, marker: str, block: str, sentinel: str, label
 
 
 def ensure_compose_entry(text: str, service: str, section: str, entry: str) -> str:
-    service_marker = f'  {service}:\n'
-    if service_marker not in text:
+    services_match = re.search(r'^services:\s*(?:#.*)?$', text, re.MULTILINE)
+    if services_match is None:
+        raise RuntimeError('Compose: bloco services não encontrado')
+
+    next_top_level = re.search(
+        r'^[A-Za-z0-9_.-]+:\s*(?:#.*)?$',
+        text[services_match.end():],
+        re.MULTILINE,
+    )
+    services_end = (
+        len(text)
+        if next_top_level is None
+        else services_match.end() + next_top_level.start()
+    )
+    services_block = text[services_match.end():services_end]
+
+    service_pattern = re.compile(
+        rf'^  {re.escape(service)}:\s*(?:#.*)?$',
+        re.MULTILINE,
+    )
+    service_match = service_pattern.search(services_block)
+    if service_match is None:
         raise RuntimeError(f'Compose: serviço {service} não encontrado')
 
-    service_start = text.index(service_marker)
-    next_service = text.find('\n  ', service_start + len(service_marker))
-    service_end = len(text) if next_service == -1 else next_service
+    service_start = services_match.end() + service_match.start()
+    service_header_end = services_match.end() + service_match.end()
+    next_service = re.search(
+        r'^  [A-Za-z0-9_.-]+:\s*(?:#.*)?$',
+        services_block[service_match.end():],
+        re.MULTILINE,
+    )
+    service_end = (
+        services_end
+        if next_service is None
+        else service_header_end + next_service.start()
+    )
     service_block = text[service_start:service_end]
 
-    if entry in service_block:
+    section_pattern = re.compile(
+        rf'^    {re.escape(section)}:\s*(?:#.*)?$',
+        re.MULTILINE,
+    )
+    section_match = section_pattern.search(service_block)
+    if section_match is None:
+        insertion_at = service_header_end
+        return text[:insertion_at] + f'\n    {section}:\n      {entry}' + text[insertion_at:]
+
+    next_section = re.search(
+        r'^    [A-Za-z0-9_.-]+:\s*(?:#.*)?$',
+        service_block[section_match.end():],
+        re.MULTILINE,
+    )
+    section_end = (
+        len(service_block)
+        if next_section is None
+        else section_match.end() + next_section.start()
+    )
+    section_block = service_block[section_match.start():section_end]
+    entry_pattern = re.compile(rf'^      {re.escape(entry)}\s*$', re.MULTILINE)
+    if entry_pattern.search(section_block):
         return text
 
-    section_marker = f'    {section}:\n'
-    section_pos = service_block.find(section_marker)
-    if section_pos == -1:
-        insertion = service_marker + f'    {section}:\n      {entry}\n'
-        return text.replace(service_marker, insertion, 1)
-
-    absolute_section = service_start + section_pos + len(section_marker)
-    return text[:absolute_section] + f'      {entry}\n' + text[absolute_section:]
+    insertion_at = service_start + section_match.end()
+    return text[:insertion_at] + f'\n      {entry}' + text[insertion_at:]
 
 
 def main() -> None:
@@ -62,7 +108,9 @@ def main() -> None:
     manifest_target.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(SOURCE / 'project_manager_operations.py', ROOT / 'project_manager_operations.py')
+    shutil.copy2(SOURCE / 'project_file_operations.py', ROOT / 'project_file_operations.py')
     shutil.copy2(SOURCE / 'project_manager_tools.py', ROOT / 'project_manager_tools.py')
+    shutil.copy2(SOURCE / 'project_deployment_engine.py', ROOT / 'project_deployment_engine.py')
 
     for manifest in manifest_source.glob('*.json'):
         shutil.copy2(manifest, manifest_target / manifest.name)
@@ -78,9 +126,21 @@ def main() -> None:
     )
     text = ensure_line_after(
         text,
+        'from project_manager_operations import router as project_manager_router\n',
+        'from project_deployment_engine import router as project_deployment_router\n',
+        'import project deployment router',
+    )
+    text = ensure_line_after(
+        text,
         'app.include_router(tvsumare_migration_router)\n',
         'app.include_router(project_manager_router)\n',
         'include project manager router',
+    )
+    text = ensure_line_after(
+        text,
+        'app.include_router(project_manager_router)\n',
+        'app.include_router(project_deployment_router)\n',
+        'include project deployment router',
     )
     ops_broker.write_text(text, encoding='utf-8')
 
@@ -88,7 +148,7 @@ def main() -> None:
     backup(main_py)
     text = main_py.read_text(encoding='utf-8')
 
-    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n)\n'''
+    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_write_file as _project_write_file,\n    project_php_lint as _project_php_lint,\n    project_deploy as _project_deploy,\n)\n'''
 
     if 'from project_manager_tools import' not in text:
         marker = 'from tvsumare_migration_tools import ('
@@ -100,8 +160,23 @@ def main() -> None:
             raise RuntimeError('imports project manager: fechamento não encontrado')
         end += 2
         text = text[:end] + import_block + text[end:]
+    else:
+        import_start = text.find('from project_manager_tools import (')
+        import_end = text.find(')\n', import_start)
+        if import_end == -1:
+            raise RuntimeError('imports project manager: fechamento não encontrado')
+        import_lines = (
+            '    project_write_file as _project_write_file,\n',
+            '    project_php_lint as _project_php_lint,\n',
+            '    project_deploy as _project_deploy,\n',
+        )
+        for import_line in import_lines:
+            import_block_text = text[import_start:import_end]
+            if import_line.strip() not in import_block_text:
+                text = text[:import_end] + import_line + text[import_end:]
+                import_end += len(import_line)
 
-    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_manifest(project_id: str) -> dict[str, Any]:\n    return _project_manifest(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_workspace(project_id: str) -> dict[str, Any]:\n    return _project_workspace(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_clone(project_id: str) -> dict[str, Any]:\n    return _project_clone(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_status(project_id: str) -> dict[str, Any]:\n    return _project_status(project_id)\n'''
+    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_manifest(project_id: str) -> dict[str, Any]:\n    return _project_manifest(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_workspace(project_id: str) -> dict[str, Any]:\n    return _project_workspace(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_clone(project_id: str) -> dict[str, Any]:\n    return _project_clone(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_status(project_id: str) -> dict[str, Any]:\n    return _project_status(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_deploy(\n    project_id: str,\n    environment: str = "homologation",\n    update_repository: bool = True,\n    build: bool = True,\n    start: bool = True,\n) -> dict[str, Any]:\n    return _project_deploy(project_id, environment, update_repository, build, start)\n'''
 
     text = ensure_block_before(
         text,
@@ -110,6 +185,33 @@ def main() -> None:
         'def project_clone(project_id:',
         'registro project manager tools',
     )
+    if 'def project_deploy(' not in text:
+        project_deploy_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_deploy(\n    project_id: str,\n    environment: str = "homologation",\n    update_repository: bool = True,\n    build: bool = True,\n    start: bool = True,\n) -> dict[str, Any]:\n    return _project_deploy(project_id, environment, update_repository, build, start)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_deploy_block,
+            'def project_deploy(',
+            'registro project deploy tool',
+        )
+    if 'def project_write_file(' not in text:
+        project_write_file_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_write_file(\n    project_id: str,\n    path: str,\n    content: str,\n    backup: bool = True,\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_write_file(project_id, path, content, backup, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_write_file_block,
+            'def project_write_file(',
+            'registro project write file tool',
+        )
+    if 'def project_php_lint(' not in text:
+        project_php_lint_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_php_lint(project_id: str, path: str) -> dict[str, Any]:\n    return _project_php_lint(project_id, path)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_php_lint_block,
+            'def project_php_lint(',
+            'registro project php lint tool',
+        )
     main_py.write_text(text, encoding='utf-8')
 
     dockerfile = ROOT / 'Dockerfile'
@@ -122,7 +224,12 @@ def main() -> None:
     if not copy_line:
         raise RuntimeError('Dockerfile: linha COPY não encontrada')
 
-    required = ['project_manager_operations.py', 'project_manager_tools.py']
+    required = [
+        'project_manager_operations.py',
+        'project_file_operations.py',
+        'project_manager_tools.py',
+        'project_deployment_engine.py',
+    ]
     updated_line = copy_line
     for item in required:
         if item not in updated_line.split():

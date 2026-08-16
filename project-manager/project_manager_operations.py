@@ -9,6 +9,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
+from project_file_operations import (
+    ProjectFileOperationError,
+    php_lint_project_file,
+    safe_project_file as safe_domain_project_file,
+    write_project_file,
+)
 
 router = APIRouter(prefix="/projects")
 
@@ -25,9 +31,21 @@ ALLOWED_WORKSPACE_ROOTS = tuple(
     if item.strip()
 )
 
-
 class ProjectRequest(BaseModel):
     project_id: str
+
+
+class ProjectWriteRequest(BaseModel):
+    project_id: str
+    path: str
+    content: str
+    backup: bool = True
+    confirm: str = ""
+
+
+class ProjectPathRequest(BaseModel):
+    project_id: str
+    path: str
 
 
 def auth(authorization: str | None = Header(default=None)) -> None:
@@ -69,6 +87,28 @@ def validated_child(root: Path, value: Any, field: str) -> Path:
     if not is_within(candidate, root):
         raise HTTPException(status_code=403, detail=f"{field}_outside_workspace")
     return candidate
+
+
+def safe_project_file(
+    manifest: dict[str, Any],
+    value: Any,
+    *,
+    must_exist: bool,
+) -> tuple[str, Path, Path]:
+    _, repository, _ = project_paths(manifest)
+    try:
+        relative, candidate = safe_domain_project_file(
+            repository,
+            value,
+            must_exist=must_exist,
+        )
+    except ProjectFileOperationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return relative, candidate, repository
+
+
+def _safe_audit_failure(action: str, project_id: str, path: str, exc: HTTPException) -> None:
+    audit(action, project_id, {"path": path}, {"ok": False, "detail": exc.detail})
 
 
 def load_manifest(project_id: str) -> dict[str, Any]:
@@ -284,3 +324,62 @@ def project_status(project_id: str) -> dict[str, Any]:
         "git_status": status,
         "origin": origin,
     }
+
+
+@router.post("/write-file", dependencies=[Depends(auth)])
+def project_write_file(req: ProjectWriteRequest) -> dict[str, Any]:
+    try:
+        manifest = load_manifest(req.project_id)
+        _, repository, _ = project_paths(manifest)
+        result = write_project_file(
+            repository,
+            req.path,
+            req.content,
+            backup=req.backup,
+            confirm=req.confirm,
+            audit_callback=lambda payload, outcome: audit(
+                "project_write_file",
+                req.project_id,
+                payload,
+                {**outcome, "project_id": req.project_id},
+            ),
+        )
+        result["project_id"] = req.project_id
+        return result
+    except ProjectFileOperationError as exc:
+        http_exc = HTTPException(status_code=exc.status_code, detail=exc.detail)
+        _safe_audit_failure("project_write_file", req.project_id, req.path, http_exc)
+        raise http_exc from exc
+    except HTTPException as exc:
+        _safe_audit_failure("project_write_file", req.project_id, req.path, exc)
+        raise
+    except OSError as exc:
+        audit(
+            "project_write_file",
+            req.project_id,
+            {"path": req.path},
+            {"ok": False, "detail": type(exc).__name__},
+        )
+        raise HTTPException(status_code=500, detail="project_write_failed") from exc
+
+
+@router.post("/php-lint", dependencies=[Depends(auth)])
+def project_php_lint(req: ProjectPathRequest) -> dict[str, Any]:
+    try:
+        manifest = load_manifest(req.project_id)
+        _, repository, _ = project_paths(manifest)
+        result = php_lint_project_file(
+            repository,
+            req.path,
+            run_process=subprocess.run,
+        )
+        result["project_id"] = req.project_id
+        audit("project_php_lint", req.project_id, {"path": result["path"]}, result)
+        return result
+    except ProjectFileOperationError as exc:
+        http_exc = HTTPException(status_code=exc.status_code, detail=exc.detail)
+        _safe_audit_failure("project_php_lint", req.project_id, req.path, http_exc)
+        raise http_exc from exc
+    except HTTPException as exc:
+        _safe_audit_failure("project_php_lint", req.project_id, req.path, exc)
+        raise
