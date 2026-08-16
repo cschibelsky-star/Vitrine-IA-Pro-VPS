@@ -25,7 +25,7 @@ services:
         echo;
         echo '--- PHP LINT ---';
         lint_fail=0;
-        for file in /var/www/html/admin/_menu.php /var/www/html/admin/radar-regional.php /var/www/html/admin/nova-noticia.php /var/www/html/admin/drafts.php /var/www/html/admin/noticias.php /var/www/html/admin/lixeira.php /var/www/html/admin/log-editorial.php /var/www/html/admin/boletim-ia.php /var/www/html/admin/reporter-ia.php /var/www/html/admin/distribuicao-social.php /var/www/html/admin/tvplay.php /var/www/html/includes/youtube_oauth.php; do docker exec tvsumare_web php -l $$file || lint_fail=$$((lint_fail+1)); done;
+        for file in /var/www/html/admin/_menu.php /var/www/html/admin/radar-regional.php /var/www/html/admin/nova-noticia.php /var/www/html/admin/drafts.php /var/www/html/admin/noticias.php /var/www/html/admin/lixeira.php /var/www/html/admin/log-editorial.php /var/www/html/admin/boletim-ia.php /var/www/html/admin/reporter-ia.php /var/www/html/admin/distribuicao-social.php /var/www/html/admin/tvplay.php /var/www/html/admin/monitor_lib.php /var/www/html/admin/cron_monitor.php /var/www/html/includes/youtube_oauth.php; do docker exec tvsumare_web php -l $$file || lint_fail=$$((lint_fail+1)); done;
         echo "LINT_FAIL=$$lint_fail";
         if [ "$$lint_fail" -ne 0 ]; then echo 'ERROR=runtime_lint_failed'; exit 12; fi;
         echo '--- MARKERS ---';
@@ -36,6 +36,9 @@ services:
         check /var/www/html/admin/log-editorial.php 'pautas_descartadas' 'Log Editorial rastreia descartes';
         check /var/www/html/admin/nova-noticia.php 'NOTICIA_RAPIDA_ENRIQUECIDA' 'Noticia Rapida exige enriquecimento';
         check /var/www/html/admin/drafts.php 'review_confirm' 'Revisoes exigem confirmacao humana';
+        check /var/www/html/admin/drafts.php 'tvs_admin_invalid_draft' 'Revisoes bloqueiam agregador invalido';
+        check /var/www/html/admin/monitor_lib.php 'function tvs_monitor_invalid_extraction' 'Monitor detecta extracao Google News invalida';
+        check /var/www/html/admin/cron_monitor.php 'tvs_monitor_invalid_extraction' 'Cron bloqueia extracao invalida antes do Gemini';
         check /var/www/html/admin/boletim-ia.php 'Criar boletim — IA escolhe roteiro e apresentador' 'Boletim IA moderno';
         check /var/www/html/admin/reporter-ia.php 'send_lock_at' 'Reporter protege envio duplicado';
         check /var/www/html/admin/distribuicao-social.php 'network_status' 'Social preserva status por rede';
