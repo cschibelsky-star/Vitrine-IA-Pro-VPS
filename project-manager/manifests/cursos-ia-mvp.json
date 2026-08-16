@@ -1,0 +1,52 @@
+{
+  "id": "cursos-ia-mvp",
+  "name": "Cursos IA MVP",
+  "workspace_root": "/srv/projects/cursos-ia-mvp",
+  "repository": {
+    "url": "git@github.com:cschibelsky-star/CursosIAMVP.git",
+    "branch": "main",
+    "directory": "repository"
+  },
+  "shared_directories": [
+    "data",
+    "uploads",
+    "logs",
+    "cache",
+    "secrets"
+  ],
+  "docker": {
+    "compose_file": "docker-compose.hml.yml",
+    "project_name": "cursos-ia-mvp",
+    "service": "app",
+    "network": "vitrine_net"
+  },
+  "domains": {
+    "homologation": ["cursos.hml.vitrineiapro.com.br"],
+    "production": []
+  },
+  "deployment": {
+    "homologation": {
+      "health_url": "https://cursos.hml.vitrineiapro.com.br/health.php",
+      "requires_ssl": true,
+      "automatic": true,
+      "status": "pending_dns_proxy"
+    },
+    "production": {
+      "automatic": false,
+      "requires_explicit_cutover": true
+    }
+  },
+  "release": {
+    "directory": "releases",
+    "exclude": [
+      ".git",
+      ".env",
+      "shared",
+      "data",
+      "uploads",
+      "logs",
+      "vendor",
+      "node_modules"
+    ]
+  }
+}
