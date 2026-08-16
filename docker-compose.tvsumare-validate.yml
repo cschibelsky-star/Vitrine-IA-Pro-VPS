@@ -1,0 +1,50 @@
+services:
+  tvsumare_postdeploy_validator:
+    image: docker:27-cli
+    container_name: vitrine_tvsumare_postdeploy_validator
+    restart: "no"
+    command:
+      - sh
+      - -lc
+      - >-
+        rm -f /bootstrap/tvsumare-postdeploy-validation.txt;
+        exec > /bootstrap/tvsumare-postdeploy-validation.txt 2>&1;
+        echo 'TVSUMARE_POSTDEPLOY_VALIDATION=START';
+        date -u '+AT=%Y-%m-%dT%H:%M:%SZ';
+        status=$$(docker inspect -f '{{.State.Status}}' tvsumare_web 2>/dev/null || true);
+        health=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' tvsumare_web 2>/dev/null || true);
+        image=$$(docker inspect -f '{{.Image}}' tvsumare_web 2>/dev/null || true);
+        project=$$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' tvsumare_web 2>/dev/null || true);
+        echo "STATUS=$$status";
+        echo "HEALTH=$$health";
+        echo "IMAGE=$$image";
+        echo "COMPOSE_PROJECT=$$project";
+        if [ "$$status" != 'running' ] || [ "$$health" != 'healthy' ]; then echo 'ERROR=runtime_not_healthy'; exit 10; fi;
+        echo '--- HEALTH INTERNAL ---';
+        docker exec tvsumare_web curl -fsS http://127.0.0.1/health.php || exit 11;
+        echo;
+        echo '--- PHP LINT ---';
+        lint_fail=0;
+        for file in /var/www/html/admin/_menu.php /var/www/html/admin/radar-regional.php /var/www/html/admin/nova-noticia.php /var/www/html/admin/drafts.php /var/www/html/admin/noticias.php /var/www/html/admin/lixeira.php /var/www/html/admin/log-editorial.php /var/www/html/admin/boletim-ia.php /var/www/html/admin/reporter-ia.php /var/www/html/admin/distribuicao-social.php /var/www/html/admin/tvplay.php /var/www/html/includes/youtube_oauth.php; do docker exec tvsumare_web php -l $$file || lint_fail=$$((lint_fail+1)); done;
+        echo "LINT_FAIL=$$lint_fail";
+        if [ "$$lint_fail" -ne 0 ]; then echo 'ERROR=runtime_lint_failed'; exit 12; fi;
+        echo '--- MARKERS ---';
+        marker_fail=0;
+        check(){ path="$$1"; marker="$$2"; label="$$3"; if docker exec tvsumare_web grep -Fq "$$marker" "$$path"; then echo "PASS $$label"; else echo "FAIL $$label"; marker_fail=$$((marker_fail+1)); fi; };
+        check /var/www/html/admin/noticias.php 'ENVIADA_PARA_LIXEIRA' 'Publicadas envia para Lixeira';
+        check /var/www/html/admin/lixeira.php 'RESTAURADA' 'Lixeira restaura noticia';
+        check /var/www/html/admin/log-editorial.php 'pautas_descartadas' 'Log Editorial rastreia descartes';
+        check /var/www/html/admin/nova-noticia.php 'NOTICIA_RAPIDA_ENRIQUECIDA' 'Noticia Rapida exige enriquecimento';
+        check /var/www/html/admin/drafts.php 'review_confirm' 'Revisoes exigem confirmacao humana';
+        check /var/www/html/admin/boletim-ia.php 'Criar boletim — IA escolhe roteiro e apresentador' 'Boletim IA moderno';
+        check /var/www/html/admin/reporter-ia.php 'send_lock_at' 'Reporter protege envio duplicado';
+        check /var/www/html/admin/distribuicao-social.php 'network_status' 'Social preserva status por rede';
+        check /var/www/html/admin/_menu.php 'apresentadores-ia.php' 'Sidebar Apresentadores IA';
+        check /var/www/html/admin/_menu.php 'Distribuição Social' 'Sidebar Distribuicao Social';
+        echo "MARKER_FAIL=$$marker_fail";
+        if [ "$$marker_fail" -ne 0 ]; then echo 'ERROR=runtime_marker_failed'; exit 13; fi;
+        echo 'RESULT=postdeploy_validation_pass';
+        echo 'TVSUMARE_POSTDEPLOY_VALIDATION=END'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
