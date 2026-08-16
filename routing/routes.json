@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "base_domains": {
+    "homologation": "hml.vitrineiapro.com.br",
+    "customer_provisional": "cliente.vitrineiapro.com.br"
+  },
+  "network": "vitrine_net",
+  "routes": [
+    {
+      "id": "tvsumare-hml",
+      "project_id": "tvsumare",
+      "environment": "homologation",
+      "hostname": "tv.hml.vitrineiapro.com.br",
+      "legacy_aliases": ["tv-hml.vitrineiapro.com.br"],
+      "upstream": "tvsumare_web:80",
+      "health_path": "/health.php",
+      "ssl": true,
+      "status": "active"
+    },
+    {
+      "id": "cursos-ia-hml",
+      "project_id": "cursos-ia-mvp",
+      "environment": "homologation",
+      "hostname": "cursos.hml.vitrineiapro.com.br",
+      "legacy_aliases": [],
+      "upstream": "cursos_ia_mvp_hml:80",
+      "health_path": "/health.php",
+      "ssl": true,
+      "status": "pending_dns_proxy"
+    }
+  ]
+}
