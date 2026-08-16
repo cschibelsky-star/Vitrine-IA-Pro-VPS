@@ -128,7 +128,8 @@ services:
       - sh
       - -lc
       - >-
-        rm -f /bootstrap/tvsumare-runtime-rollback-build.txt /tmp/tvsumare-runtime-export.tar;
+        rm -f /bootstrap/tvsumare-runtime-rollback-build.txt /tmp/tvsumare-runtime-export.tar /tmp/tvsumare-runtime-clean.tar;
+        docker rm -f tvsumare_rollback_sanitize >/dev/null 2>&1 || true;
         echo 'TVSUMARE_RUNTIME_ROLLBACK_BUILD=START' > /bootstrap/tvsumare-runtime-rollback-build.txt;
         date -u '+AT=%Y-%m-%dT%H:%M:%SZ' >> /bootstrap/tvsumare-runtime-rollback-build.txt;
         status=$$(docker inspect -f '{{.State.Status}}' tvsumare_web 2>/dev/null || true);
@@ -140,26 +141,48 @@ services:
         export_rc=$$?;
         echo "EXPORT_EXIT_CODE=$$export_rc" >> /bootstrap/tvsumare-runtime-rollback-build.txt;
         if [ "$$export_rc" -ne 0 ] || [ ! -s /tmp/tvsumare-runtime-export.tar ]; then echo 'ERROR=runtime_export_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 11; fi;
-        docker import --change 'ENTRYPOINT ["docker-php-entrypoint"]' --change 'CMD ["apache2-foreground"]' --change 'EXPOSE 80' /tmp/tvsumare-runtime-export.tar repository-web:rollback-runtime-snapshot >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1;
+        docker import --change 'ENTRYPOINT ["docker-php-entrypoint"]' --change 'CMD ["apache2-foreground"]' --change 'EXPOSE 80' /tmp/tvsumare-runtime-export.tar repository-web:rollback-runtime-raw >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1;
         import_rc=$$?;
         echo "IMPORT_EXIT_CODE=$$import_rc" >> /bootstrap/tvsumare-runtime-rollback-build.txt;
         if [ "$$import_rc" -ne 0 ]; then echo 'ERROR=runtime_import_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 12; fi;
-        env_json=$$(docker image inspect repository-web:rollback-runtime-snapshot --format '{{json .Config.Env}}' 2>/dev/null || true);
+        env_json=$$(docker image inspect repository-web:rollback-runtime-raw --format '{{json .Config.Env}}' 2>/dev/null || true);
         echo "IMAGE_ENV=$$env_json" >> /bootstrap/tvsumare-runtime-rollback-build.txt;
         case "$$env_json" in *OPENAI_API_KEY*|*GEMINI_API_KEY*|*HEYGEN_API_KEY*|*YOUTUBE_CLIENT_SECRET*|*TVSUMARE_ADMIN_PASS_HASH*|*SITE_FACTORY_TOKEN*) echo 'ERROR=sensitive_env_found_in_rollback_image' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 13;; esac;
-        sensitive=$$(docker run --rm --entrypoint sh repository-web:rollback-runtime-snapshot -lc 'find /var/www/html -maxdepth 3 -type f \( -name ".env" -o -name ".env.*" -o -name "*.bak" -o -name "*.bak-*" -o -name "*.backup-*" \) -print' 2>/dev/null || true);
-        if [ -n "$$sensitive" ]; then echo 'BLOCKED_PATHS_START' >> /bootstrap/tvsumare-runtime-rollback-build.txt; printf '%s\n' "$$sensitive" >> /bootstrap/tvsumare-runtime-rollback-build.txt; echo 'BLOCKED_PATHS_END' >> /bootstrap/tvsumare-runtime-rollback-build.txt; echo 'ERROR=sensitive_or_backup_file_found_in_snapshot' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 14; fi;
+        env_paths=$$(docker run --rm --entrypoint sh repository-web:rollback-runtime-raw -lc 'find /var/www/html -maxdepth 3 -type f \( -name ".env" -o -name ".env.*" \) -print' 2>/dev/null || true);
+        if [ -n "$$env_paths" ]; then echo 'BLOCKED_ENV_PATHS_START' >> /bootstrap/tvsumare-runtime-rollback-build.txt; printf '%s\n' "$$env_paths" >> /bootstrap/tvsumare-runtime-rollback-build.txt; echo 'BLOCKED_ENV_PATHS_END' >> /bootstrap/tvsumare-runtime-rollback-build.txt; echo 'ERROR=sensitive_file_found_in_snapshot' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 14; fi;
+        backup_paths=$$(docker run --rm --entrypoint sh repository-web:rollback-runtime-raw -lc 'find /var/www/html -maxdepth 3 -type f \( -name "*.bak" -o -name "*.bak-*" -o -name "*.backup-*" \) -print' 2>/dev/null || true);
+        if [ -n "$$backup_paths" ]; then echo 'SANITIZED_BACKUP_PATHS_START' >> /bootstrap/tvsumare-runtime-rollback-build.txt; printf '%s\n' "$$backup_paths" >> /bootstrap/tvsumare-runtime-rollback-build.txt; echo 'SANITIZED_BACKUP_PATHS_END' >> /bootstrap/tvsumare-runtime-rollback-build.txt; fi;
+        docker create --name tvsumare_rollback_sanitize --entrypoint sh repository-web:rollback-runtime-raw -lc 'find /var/www/html -maxdepth 3 -type f \( -name "*.bak" -o -name "*.bak-*" -o -name "*.backup-*" \) -delete' >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1;
+        create_rc=$$?;
+        echo "SANITIZE_CREATE_EXIT_CODE=$$create_rc" >> /bootstrap/tvsumare-runtime-rollback-build.txt;
+        if [ "$$create_rc" -ne 0 ]; then echo 'ERROR=rollback_sanitize_create_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 15; fi;
+        docker start -a tvsumare_rollback_sanitize >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1;
+        sanitize_rc=$$?;
+        echo "SANITIZE_EXIT_CODE=$$sanitize_rc" >> /bootstrap/tvsumare-runtime-rollback-build.txt;
+        if [ "$$sanitize_rc" -ne 0 ]; then echo 'ERROR=rollback_sanitize_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 16; fi;
+        docker export -o /tmp/tvsumare-runtime-clean.tar tvsumare_rollback_sanitize >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1;
+        clean_export_rc=$$?;
+        echo "CLEAN_EXPORT_EXIT_CODE=$$clean_export_rc" >> /bootstrap/tvsumare-runtime-rollback-build.txt;
+        docker rm tvsumare_rollback_sanitize >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1 || true;
+        if [ "$$clean_export_rc" -ne 0 ] || [ ! -s /tmp/tvsumare-runtime-clean.tar ]; then echo 'ERROR=rollback_clean_export_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 17; fi;
+        docker import --change 'ENTRYPOINT ["docker-php-entrypoint"]' --change 'CMD ["apache2-foreground"]' --change 'EXPOSE 80' /tmp/tvsumare-runtime-clean.tar repository-web:rollback-runtime-snapshot >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1;
+        clean_import_rc=$$?;
+        echo "CLEAN_IMPORT_EXIT_CODE=$$clean_import_rc" >> /bootstrap/tvsumare-runtime-rollback-build.txt;
+        if [ "$$clean_import_rc" -ne 0 ]; then echo 'ERROR=rollback_clean_import_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 18; fi;
+        remaining=$$(docker run --rm --entrypoint sh repository-web:rollback-runtime-snapshot -lc 'find /var/www/html -maxdepth 3 -type f \( -name ".env" -o -name ".env.*" -o -name "*.bak" -o -name "*.bak-*" -o -name "*.backup-*" \) -print' 2>/dev/null || true);
+        if [ -n "$$remaining" ]; then echo 'ERROR=rollback_sanitization_incomplete' >> /bootstrap/tvsumare-runtime-rollback-build.txt; printf '%s\n' "$$remaining" >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 19; fi;
         lint_fail=0;
         for file in /var/www/html/admin/_menu.php /var/www/html/admin/radar-regional.php /var/www/html/admin/nova-noticia.php /var/www/html/admin/drafts.php /var/www/html/admin/boletim-ia.php /var/www/html/admin/reporter-ia.php /var/www/html/admin/distribuicao-social.php /var/www/html/admin/tvplay.php /var/www/html/includes/youtube_oauth.php; do docker run --rm --entrypoint php repository-web:rollback-runtime-snapshot -l $$file >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1 || lint_fail=$$((lint_fail+1)); done;
         echo "ROLLBACK_LINT_FAIL=$$lint_fail" >> /bootstrap/tvsumare-runtime-rollback-build.txt;
-        if [ "$$lint_fail" -ne 0 ]; then echo 'ERROR=rollback_lint_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 15; fi;
+        if [ "$$lint_fail" -ne 0 ]; then echo 'ERROR=rollback_lint_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 20; fi;
         docker run --rm --entrypoint apache2ctl repository-web:rollback-runtime-snapshot -t >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1;
         apache_rc=$$?;
         echo "APACHE_CONFIG_EXIT_CODE=$$apache_rc" >> /bootstrap/tvsumare-runtime-rollback-build.txt;
-        if [ "$$apache_rc" -ne 0 ]; then echo 'ERROR=rollback_apache_config_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 16; fi;
+        if [ "$$apache_rc" -ne 0 ]; then echo 'ERROR=rollback_apache_config_failed' >> /bootstrap/tvsumare-runtime-rollback-build.txt; exit 21; fi;
         docker image inspect repository-web:rollback-runtime-snapshot --format 'ROLLBACK_IMAGE_ID={{.Id}}' >> /bootstrap/tvsumare-runtime-rollback-build.txt 2>&1;
         echo 'ROLLBACK_RUNTIME_DATA_EXCLUDED_BY_DOCKER_EXPORT=SIM' >> /bootstrap/tvsumare-runtime-rollback-build.txt;
         echo 'ROLLBACK_RUNTIME_SECRETS_VALIDATED=SIM' >> /bootstrap/tvsumare-runtime-rollback-build.txt;
+        echo 'ROLLBACK_RUNTIME_BACKUPS_SANITIZED=SIM' >> /bootstrap/tvsumare-runtime-rollback-build.txt;
         echo 'RESULT=rollback_image_ready' >> /bootstrap/tvsumare-runtime-rollback-build.txt;
         echo 'TVSUMARE_RUNTIME_ROLLBACK_BUILD=END' >> /bootstrap/tvsumare-runtime-rollback-build.txt
     volumes:
