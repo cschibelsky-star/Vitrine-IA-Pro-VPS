@@ -7,6 +7,17 @@
   "network": "vitrine_net",
   "routes": [
     {
+      "id": "vitrine-hml-center",
+      "project_id": "vitrine-hml-center",
+      "environment": "homologation",
+      "hostname": "hml.vitrineiapro.com.br",
+      "legacy_aliases": [],
+      "upstream": "vitrine_hml_center:8080",
+      "health_path": "/health",
+      "ssl": true,
+      "status": "pending_app"
+    },
+    {
       "id": "tvsumare-hml",
       "project_id": "tvsumare",
       "environment": "homologation",
