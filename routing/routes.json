@@ -38,6 +38,17 @@
       "health_path": "/health.php",
       "ssl": true,
       "status": "pending_dns_proxy"
+    },
+    {
+      "id": "agente-compras-ia-hml",
+      "project_id": "agente-compras-ia",
+      "environment": "homologation",
+      "hostname": "compras.hml.vitrineiapro.com.br",
+      "legacy_aliases": [],
+      "upstream": "agente_compras_build49_hml:8502",
+      "health_path": "/_stcore/health",
+      "ssl": true,
+      "status": "pending_dns_proxy"
     }
   ]
 }
