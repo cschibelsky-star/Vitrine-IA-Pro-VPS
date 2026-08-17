@@ -9,7 +9,7 @@ SSL_ROOT="${VITRINE_SSL_ROOT:-/srv/vitrine/ssl}"
 CERTBOT_IMAGE="${CERTBOT_IMAGE:-certbot/certbot:latest}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 SECRETS_FILE="${HML_CENTER_ENV_FILE:-/srv/vitrine/secrets/hml-center.env}"
-ROUTES=("vitrine-hml-center" "cursos-ia-hml")
+ROUTES=("vitrine-hml-center" "cursos-ia-hml" "agente-compras-ia-hml")
 
 fail() { echo "ERRO: $*" >&2; exit 1; }
 info() { echo "[activate-hml] $*"; }
@@ -23,7 +23,7 @@ docker network inspect vitrine_net >/dev/null 2>&1 || fail "rede vitrine_net nao
 
 python3 "$ROOT/routing/validate_routes.py" "$ROOT/routing/routes.json"
 python3 "$ROOT/routing/dns_preflight.py" --expected-ip "$EXPECTED_IP" --registry "$ROOT/routing/routes.json" \
-  --route-id vitrine-hml-center --route-id cursos-ia-hml
+  --route-id vitrine-hml-center --route-id cursos-ia-hml --route-id agente-compras-ia-hml
 
 HML_CENTER_ENV_FILE="$SECRETS_FILE" bash "$ROOT/routing/install_hml_center.sh" "$ROOT"
 
@@ -105,6 +105,7 @@ import ssl, urllib.request
 checks = [
     ('https://hml.vitrineiapro.com.br/health', 200),
     ('https://cursos.hml.vitrineiapro.com.br/health.php', 200),
+    ('https://compras.hml.vitrineiapro.com.br/_stcore/health', 200),
 ]
 ctx = ssl.create_default_context()
 for url, expected in checks:
