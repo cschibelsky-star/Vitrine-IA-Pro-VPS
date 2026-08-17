@@ -16,7 +16,7 @@ info() { echo "[activate-hml] $*"; }
 
 [[ -n "$CERTBOT_EMAIL" ]] || fail "CERTBOT_EMAIL obrigatorio"
 [[ -f "$ROOT/routing/routes.json" ]] || fail "routing/routes.json ausente"
-[[ -x "$ROOT/routing/install_hml_center.sh" ]] || fail "routing/install_hml_center.sh deve ser executavel"
+[[ -f "$ROOT/routing/install_hml_center.sh" ]] || fail "routing/install_hml_center.sh ausente"
 
 docker inspect vitrine_nginx >/dev/null 2>&1 || fail "container vitrine_nginx nao encontrado"
 docker network inspect vitrine_net >/dev/null 2>&1 || fail "rede vitrine_net nao encontrada"
@@ -25,7 +25,7 @@ python3 "$ROOT/routing/validate_routes.py" "$ROOT/routing/routes.json"
 python3 "$ROOT/routing/dns_preflight.py" --expected-ip "$EXPECTED_IP" --registry "$ROOT/routing/routes.json" \
   --route-id vitrine-hml-center --route-id cursos-ia-hml
 
-HML_CENTER_ENV_FILE="$SECRETS_FILE" "$ROOT/routing/install_hml_center.sh" "$ROOT"
+HML_CENTER_ENV_FILE="$SECRETS_FILE" bash "$ROOT/routing/install_hml_center.sh" "$ROOT"
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 backup_root="/srv/vitrine/backups/routing/$stamp"
