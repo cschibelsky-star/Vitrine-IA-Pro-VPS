@@ -74,14 +74,14 @@ cp "$http_stage/$ROUTE_ID.conf" "$target"
 docker exec vitrine_nginx nginx -t
 docker exec vitrine_nginx nginx -s reload
 
-info "emitindo/renovando certificado para $host"
+info "emitindo certificado dedicado para $host"
 docker run --rm \
   -v "$SSL_ROOT:/etc/letsencrypt" \
   -v "$NGINX_HTML_ROOT:/usr/share/nginx/html" \
   "$CERTBOT_IMAGE" certonly \
   --webroot --webroot-path /usr/share/nginx/html \
-  --domain "$host" --email "$CERTBOT_EMAIL" \
-  --agree-tos --non-interactive --no-eff-email --keep-until-expiring
+  --cert-name "$host" --domain "$host" --email "$CERTBOT_EMAIL" \
+  --agree-tos --non-interactive --no-eff-email --force-renewal
 
 [[ -s "$SSL_ROOT/live/$host/fullchain.pem" ]] || fail "fullchain ausente para $host"
 [[ -s "$SSL_ROOT/live/$host/privkey.pem" ]] || fail "privkey ausente para $host"
