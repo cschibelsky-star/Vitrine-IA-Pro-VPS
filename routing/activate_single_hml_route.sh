@@ -91,15 +91,40 @@ cp "$https_stage/$ROUTE_ID.conf" "$target"
 docker exec vitrine_nginx nginx -t
 docker exec vitrine_nginx nginx -s reload
 
+info "validando vhost carregado no nginx"
+docker exec vitrine_nginx nginx -T 2>&1 | grep -F "server_name $host;" >/dev/null || fail "vhost nao carregado para $host"
+docker exec vitrine_nginx nginx -T 2>&1 | grep -F "ssl_certificate /etc/letsencrypt/live/$host/fullchain.pem;" >/dev/null || fail "certificado do vhost nao carregado para $host"
+
+info "aguardando SNI local assumir o certificado correto"
+matched=""
+for attempt in $(seq 1 20); do
+  cert_info="$(openssl s_client -connect 127.0.0.1:443 -servername "$host" </dev/null 2>/dev/null | openssl x509 -noout -subject -ext subjectAltName 2>/dev/null || true)"
+  if printf '%s\n' "$cert_info" | grep -F "DNS:$host" >/dev/null; then
+    matched="yes"
+    info "SNI local confirmado na tentativa $attempt"
+    break
+  fi
+  sleep 1
+done
+[[ "$matched" == "yes" ]] || fail "SNI local ainda nao apresenta certificado de $host"
+
 python3 - "$host" "$health_path" <<'PY'
-import ssl, sys, urllib.request
+import ssl, sys, time, urllib.request
 host, health = sys.argv[1], sys.argv[2]
 url = f"https://{host}{health}"
 ctx = ssl.create_default_context()
-with urllib.request.urlopen(url, timeout=20, context=ctx) as response:
-    if response.status != 200:
-        raise SystemExit(f"{url}: status {response.status}, esperado 200")
-    print(f"OK {url} -> {response.status}")
+last = None
+for attempt in range(1, 11):
+    try:
+        with urllib.request.urlopen(url, timeout=20, context=ctx) as response:
+            if response.status == 200:
+                print(f"OK {url} -> {response.status} (tentativa {attempt})")
+                raise SystemExit(0)
+            last = f"status {response.status}"
+    except Exception as exc:
+        last = repr(exc)
+    time.sleep(1)
+raise SystemExit(f"{url}: healthcheck falhou apos 10 tentativas: {last}")
 PY
 
 trap - ERR
