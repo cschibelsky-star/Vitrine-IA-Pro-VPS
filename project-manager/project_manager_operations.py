@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,10 +25,36 @@ ALLOWED_WORKSPACE_ROOTS = tuple(
     ).split(",")
     if item.strip()
 )
+DOCKER_ALLOWED_PREFIXES = tuple(
+    item.strip()
+    for item in os.getenv(
+        "PROJECT_DOCKER_ALLOWED_PREFIXES",
+        "vitrine_core_,cursos_ia_mvp_,tvsumare_,agente_compras_",
+    ).split(",")
+    if item.strip()
+)
+SENSITIVE_ENV_MARKERS = (
+    "PASSWORD",
+    "PASSWD",
+    "SECRET",
+    "TOKEN",
+    "API_KEY",
+    "APIKEY",
+    "PRIVATE_KEY",
+    "ACCESS_KEY",
+    "AUTH",
+    "CREDENTIAL",
+)
+SAFE_CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
 class ProjectRequest(BaseModel):
     project_id: str
+
+
+class ProjectContainerRequest(BaseModel):
+    project_id: str
+    container_name: str
 
 
 def auth(authorization: str | None = Header(default=None)) -> None:
@@ -134,6 +161,16 @@ def run(command: list[str], cwd: Path) -> dict[str, Any]:
         return {"ok": False, "exit_code": 124, "stdout": "", "stderr": "timeout"}
 
 
+def run_json(command: list[str], cwd: Path) -> Any:
+    result = run(command, cwd)
+    if not result["ok"]:
+        raise HTTPException(status_code=502, detail={"command_failed": result})
+    try:
+        return json.loads(result["stdout"])
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail=f"invalid_docker_json: {exc}") from exc
+
+
 def project_paths(manifest: dict[str, Any]) -> tuple[Path, Path, Path]:
     root = validated_workspace_root(manifest["workspace_root"])
     repository = validated_child(
@@ -157,6 +194,26 @@ def workspace_paths(manifest: dict[str, Any]) -> list[Path]:
         for item in manifest["shared_directories"]
     )
     return paths
+
+
+def validate_container_name(container_name: str) -> str:
+    name = container_name.strip()
+    if not SAFE_CONTAINER_RE.fullmatch(name):
+        raise HTTPException(status_code=422, detail="invalid_container_name")
+    if not DOCKER_ALLOWED_PREFIXES or not any(name.startswith(prefix) for prefix in DOCKER_ALLOWED_PREFIXES):
+        raise HTTPException(status_code=403, detail="container_not_allowed")
+    return name
+
+
+def redact_container_env(env_items: list[str]) -> dict[str, str]:
+    safe: dict[str, str] = {}
+    for item in env_items:
+        key, separator, value = item.partition("=")
+        if not separator:
+            continue
+        upper = key.upper()
+        safe[key] = "***REDACTED***" if any(marker in upper for marker in SENSITIVE_ENV_MARKERS) else value
+    return safe
 
 
 @router.get("/{project_id}/manifest", dependencies=[Depends(auth)])
@@ -284,3 +341,58 @@ def project_status(project_id: str) -> dict[str, Any]:
         "git_status": status,
         "origin": origin,
     }
+
+
+@router.post("/docker/container-info", dependencies=[Depends(auth)])
+def project_docker_container_info(req: ProjectContainerRequest) -> dict[str, Any]:
+    manifest = load_manifest(req.project_id)
+    root, _, _ = project_paths(manifest)
+    name = validate_container_name(req.container_name)
+    inspected = run_json(["docker", "inspect", name], root)
+    if not isinstance(inspected, list) or not inspected:
+        raise HTTPException(status_code=404, detail="container_not_found")
+
+    item = inspected[0]
+    networks = item.get("NetworkSettings", {}).get("Networks", {}) or {}
+    result = {
+        "ok": True,
+        "project_id": req.project_id,
+        "container": {
+            "name": str(item.get("Name", "")).lstrip("/"),
+            "image": item.get("Config", {}).get("Image"),
+            "status": item.get("State", {}).get("Status"),
+            "running": bool(item.get("State", {}).get("Running")),
+            "health": item.get("State", {}).get("Health", {}).get("Status"),
+            "networks": {
+                network_name: {
+                    "ip_address": network_data.get("IPAddress"),
+                    "gateway": network_data.get("Gateway"),
+                    "aliases": network_data.get("Aliases") or [],
+                }
+                for network_name, network_data in networks.items()
+            },
+            "ports": item.get("NetworkSettings", {}).get("Ports", {}) or {},
+        },
+    }
+    audit("project_docker_container_info", req.project_id, req.model_dump(), result)
+    return result
+
+
+@router.post("/docker/container-env-safe", dependencies=[Depends(auth)])
+def project_docker_container_env_safe(req: ProjectContainerRequest) -> dict[str, Any]:
+    manifest = load_manifest(req.project_id)
+    root, _, _ = project_paths(manifest)
+    name = validate_container_name(req.container_name)
+    inspected = run_json(["docker", "inspect", name], root)
+    if not isinstance(inspected, list) or not inspected:
+        raise HTTPException(status_code=404, detail="container_not_found")
+
+    env_items = inspected[0].get("Config", {}).get("Env", []) or []
+    result = {
+        "ok": True,
+        "project_id": req.project_id,
+        "container_name": name,
+        "environment": redact_container_env(env_items),
+    }
+    audit("project_docker_container_env_safe", req.project_id, {"project_id": req.project_id, "container_name": name}, result)
+    return result
