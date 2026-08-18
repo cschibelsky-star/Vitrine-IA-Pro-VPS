@@ -88,7 +88,7 @@ def main() -> None:
     backup(main_py)
     text = main_py.read_text(encoding='utf-8')
 
-    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n)\n'''
+    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_docker_container_info as _project_docker_container_info,\n    project_docker_container_env_safe as _project_docker_container_env_safe,\n)\n'''
 
     if 'from project_manager_tools import' not in text:
         marker = 'from tvsumare_migration_tools import ('
@@ -100,8 +100,17 @@ def main() -> None:
             raise RuntimeError('imports project manager: fechamento não encontrado')
         end += 2
         text = text[:end] + import_block + text[end:]
+    else:
+        if 'project_docker_container_info as _project_docker_container_info' not in text:
+            text = text.replace(
+                '    project_status as _project_status,\n',
+                '    project_status as _project_status,\n'
+                '    project_docker_container_info as _project_docker_container_info,\n'
+                '    project_docker_container_env_safe as _project_docker_container_env_safe,\n',
+                1,
+            )
 
-    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_manifest(project_id: str) -> dict[str, Any]:\n    return _project_manifest(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_workspace(project_id: str) -> dict[str, Any]:\n    return _project_workspace(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_clone(project_id: str) -> dict[str, Any]:\n    return _project_clone(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_status(project_id: str) -> dict[str, Any]:\n    return _project_status(project_id)\n'''
+    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_manifest(project_id: str) -> dict[str, Any]:\n    return _project_manifest(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_workspace(project_id: str) -> dict[str, Any]:\n    return _project_workspace(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_clone(project_id: str) -> dict[str, Any]:\n    return _project_clone(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_status(project_id: str) -> dict[str, Any]:\n    return _project_status(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_info(project_id, container_name)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_env_safe(project_id, container_name)\n'''
 
     text = ensure_block_before(
         text,
@@ -110,6 +119,10 @@ def main() -> None:
         'def project_clone(project_id:',
         'registro project manager tools',
     )
+    if 'def project_docker_container_info(project_id:' not in text:
+        marker = '\nif __name__ == "__main__":\n'
+        extra = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_info(project_id, container_name)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_env_safe(project_id, container_name)\n'''
+        text = text.replace(marker, extra + marker, 1)
     main_py.write_text(text, encoding='utf-8')
 
     dockerfile = ROOT / 'Dockerfile'
@@ -161,6 +174,12 @@ def main() -> None:
         compose_text,
         'ops_broker',
         'environment',
+        'PROJECT_DOCKER_ALLOWED_PREFIXES: vitrine_core_,cursos_ia_mvp_,tvsumare_,agente_compras_',
+    )
+    compose_text = ensure_compose_entry(
+        compose_text,
+        'ops_broker',
+        'environment',
         'OPS_AUDIT_LOG: /var/log/vitrine-ops/audit.jsonl',
     )
     compose_text = ensure_compose_entry(
@@ -185,6 +204,7 @@ def main() -> None:
     compose_override.write_text(compose_text, encoding='utf-8')
 
     print('PROJECT_MANAGER_INSTALLED')
+    print('PROJECT_DOCKER_DIAGNOSTICS_INSTALLED')
     print(f'BACKUP_STAMP={STAMP}')
 
 

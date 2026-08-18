@@ -42,3 +42,19 @@ def project_clone(project_id: str) -> dict[str, Any]:
 
 def project_status(project_id: str) -> dict[str, Any]:
     return _request("GET", f"/projects/{project_id}/status")
+
+
+def project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/docker/container-info",
+        {"project_id": project_id, "container_name": container_name},
+    )
+
+
+def project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/docker/container-env-safe",
+        {"project_id": project_id, "container_name": container_name},
+    )
