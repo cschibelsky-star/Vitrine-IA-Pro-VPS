@@ -58,3 +58,94 @@ def project_docker_container_env_safe(project_id: str, container_name: str) -> d
         "/projects/docker/container-env-safe",
         {"project_id": project_id, "container_name": container_name},
     )
+
+
+def project_container_exec(
+    project_id: str,
+    container_name: str,
+    command: list[str],
+    workdir: str = "/var/www/html",
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/docker/container-exec",
+        {
+            "project_id": project_id,
+            "container_name": container_name,
+            "command": command,
+            "workdir": workdir,
+            "confirm": confirm,
+        },
+    )
+
+
+def project_http_check(project_id: str, url: str, method: str = "GET") -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/http-check",
+        {"project_id": project_id, "url": url, "method": method},
+    )
+
+
+def project_port_check(project_id: str, host: str, port: int) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/port-check",
+        {"project_id": project_id, "host": host, "port": port},
+    )
+
+
+def project_compose_explicit(
+    project_id: str,
+    compose_file: str,
+    action: str = "status",
+    docker_project: str = "",
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/compose-explicit",
+        {
+            "project_id": project_id,
+            "compose_file": compose_file,
+            "action": action,
+            "docker_project": docker_project,
+            "confirm": confirm,
+        },
+    )
+
+
+def project_file_read_safe(project_id: str, path: str, max_bytes: int = 100000) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/file-read-safe",
+        {"project_id": project_id, "path": path, "max_bytes": max_bytes},
+    )
+
+
+def project_file_patch_text(
+    project_id: str,
+    path: str,
+    old: str,
+    new: str,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/file-patch-text",
+        {"project_id": project_id, "path": path, "old": old, "new": new, "confirm": confirm},
+    )
+
+
+def project_manifest_repository_update(
+    project_id: str,
+    url: str,
+    branch: str,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/manifest/repository-update",
+        {"project_id": project_id, "url": url, "branch": branch, "confirm": confirm},
+    )
