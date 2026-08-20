@@ -25,7 +25,7 @@ services:
         set -eu
         if [ -f /connector/docker-compose.yml ]; then BASE=/connector/docker-compose.yml; elif [ -f /connector/compose.yml ]; then BASE=/connector/compose.yml; else echo 'BASE_COMPOSE_NOT_FOUND'; ls -la /connector; exit 2; fi
         if [ -f /connector/docker-compose.connector-v2.override.yml ]; then
-          docker compose -f "$BASE" -f /connector/docker-compose.connector-v2.override.yml up -d --build ops_broker vps_mcp_connector
+          docker compose -f "$$BASE" -f /connector/docker-compose.connector-v2.override.yml up -d --build ops_broker vps_mcp_connector
         else
-          docker compose -f "$BASE" up -d --build ops_broker vps_mcp_connector
+          docker compose -f "$$BASE" up -d --build ops_broker vps_mcp_connector
         fi
