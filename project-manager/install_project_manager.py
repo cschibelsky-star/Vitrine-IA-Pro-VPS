@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -26,17 +27,23 @@ def ensure_compose_entry(text: str, service: str, section: str, entry: str) -> s
     service_marker = f'  {service}:\n'
     if service_marker not in text:
         raise RuntimeError(f'Compose: serviço {service} não encontrado')
+
     service_start = text.index(service_marker)
-    next_service = text.find('\n  ', service_start + len(service_marker))
-    service_end = len(text) if next_service == -1 else next_service
+    following = text[service_start + len(service_marker):]
+    next_match = re.search(r'^  [A-Za-z0-9_.-]+:\s*$', following, flags=re.MULTILINE)
+    service_end = len(text) if next_match is None else service_start + len(service_marker) + next_match.start()
     service_block = text[service_start:service_end]
-    if entry in service_block:
+
+    normalized_entry = entry.strip()
+    if any(line.strip() == normalized_entry for line in service_block.splitlines()):
         return text
+
     section_marker = f'    {section}:\n'
     section_pos = service_block.find(section_marker)
     if section_pos == -1:
         insertion = service_marker + f'    {section}:\n      {entry}\n'
-        return text.replace(service_marker, insertion, 1)
+        return text[:service_start] + text[service_start:service_start + len(service_marker)].replace(service_marker, insertion, 1) + text[service_start + len(service_marker):]
+
     absolute_section = service_start + section_pos + len(section_marker)
     return text[:absolute_section] + f'      {entry}\n' + text[absolute_section:]
 
