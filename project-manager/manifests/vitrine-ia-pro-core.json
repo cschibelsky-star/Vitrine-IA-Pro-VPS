@@ -1,0 +1,32 @@
+{
+  "id": "vitrine-ia-pro-core",
+  "name": "Vitrine IA Pro Core / Centro Operacional",
+  "workspace_root": "/srv/projects/vitrine-ia-pro-core",
+  "repository": {
+    "url": "git@github.com:cschibelsky-star/vitrine-ai-pro.git",
+    "branch": "feature/centro-ia-course-generation",
+    "directory": "repository"
+  },
+  "shared_directories": [],
+  "docker": {
+    "compose_file": "docker-compose.core-hml.yml",
+    "project_name": "vitrine-ia-pro-core-hml"
+  },
+  "domains": {
+    "homologation": ["core.hml.vitrineiapro.com.br"],
+    "production": []
+  },
+  "release": {
+    "directory": "releases",
+    "exclude": [
+      ".git",
+      ".env",
+      "shared",
+      "data",
+      "uploads",
+      "logs",
+      "vendor",
+      "node_modules"
+    ]
+  }
+}
