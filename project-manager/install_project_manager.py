@@ -148,7 +148,7 @@ def main() -> None:
     backup(main_py)
     text = main_py.read_text(encoding='utf-8')
 
-    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_write_file as _project_write_file,\n    project_php_lint as _project_php_lint,\n    project_deploy as _project_deploy,\n)\n'''
+    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_git_stage_explicit as _project_git_stage_explicit,\n    project_git_commit_explicit as _project_git_commit_explicit,\n    project_write_file as _project_write_file,\n    project_php_lint as _project_php_lint,\n    project_deploy as _project_deploy,\n)\n'''
 
     if 'from project_manager_tools import' not in text:
         marker = 'from tvsumare_migration_tools import ('
@@ -166,6 +166,8 @@ def main() -> None:
         if import_end == -1:
             raise RuntimeError('imports project manager: fechamento não encontrado')
         import_lines = (
+            '    project_git_stage_explicit as _project_git_stage_explicit,\n',
+            '    project_git_commit_explicit as _project_git_commit_explicit,\n',
             '    project_write_file as _project_write_file,\n',
             '    project_php_lint as _project_php_lint,\n',
             '    project_deploy as _project_deploy,\n',
@@ -193,6 +195,24 @@ def main() -> None:
             project_deploy_block,
             'def project_deploy(',
             'registro project deploy tool',
+        )
+    if 'def project_git_stage_explicit(' not in text:
+        project_git_stage_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_git_stage_explicit(\n    project_id: str,\n    paths: list[str],\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_git_stage_explicit(project_id, paths, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_git_stage_block,
+            'def project_git_stage_explicit(',
+            'registro project git stage explicit tool',
+        )
+    if 'def project_git_commit_explicit(' not in text:
+        project_git_commit_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_git_commit_explicit(\n    project_id: str,\n    message: str,\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_git_commit_explicit(project_id, message, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_git_commit_block,
+            'def project_git_commit_explicit(',
+            'registro project git commit explicit tool',
         )
     if 'def project_write_file(' not in text:
         project_write_file_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_write_file(\n    project_id: str,\n    path: str,\n    content: str,\n    backup: bool = True,\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_write_file(project_id, path, content, backup, confirm)\n'''
