@@ -39,7 +39,8 @@ def _request(method: str, path: str, payload: dict[str, Any] | None = None) -> d
         result = _request_once(OPS_API_URL, method, path, payload)
         result.setdefault("transport", "ops_api")
         result.setdefault("transport_url", OPS_API_URL)
-        return result
+        if result.get("ok") is not False or result.get("status_code") not in {404, 405} or not OPS_API_FALLBACK:
+            return result
     except (httpx.HTTPError, OSError) as exc:
         if not OPS_API_FALLBACK:
             return {
@@ -79,6 +80,30 @@ def project_clone(project_id: str) -> dict[str, Any]:
 
 def project_status(project_id: str) -> dict[str, Any]:
     return _request("GET", f"/projects/{project_id}/status")
+
+
+def project_git_stage_explicit(
+    project_id: str,
+    paths: list[str],
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/git/stage",
+        {"project_id": project_id, "paths": paths, "confirm": confirm},
+    )
+
+
+def project_git_commit_explicit(
+    project_id: str,
+    message: str,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/git/commit",
+        {"project_id": project_id, "message": message, "confirm": confirm},
+    )
 
 
 def project_write_file(
