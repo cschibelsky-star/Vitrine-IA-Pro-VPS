@@ -50,7 +50,18 @@ for i in $(seq 1 45); do
   sleep 2
 done
 
+echo "=== BROKER CONTAINER CONFIG ==="
+docker inspect --format 'IMAGE={{.Config.Image}} WORKDIR={{.Config.WorkingDir}} ENTRYPOINT={{json .Config.Entrypoint}} CMD={{json .Config.Cmd}}' vitrine_mcp_ops_broker || true
+echo "=== BROKER MOUNTS ==="
+docker inspect --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' vitrine_mcp_ops_broker || true
+echo "=== PYTHON IMPORT LOCATIONS ==="
+docker exec vitrine_mcp_ops_broker python -c 'import sys,ops_broker; print("PYTHON="+sys.executable); print("OPS_BROKER_FILE="+str(getattr(ops_broker,"__file__",None)))' || true
+echo "=== /app FILE CHECK ==="
+docker exec vitrine_mcp_ops_broker sh -c 'ls -l /app/ops_broker.py /app/project_read_operations.py /app/project_explicit_operations.py 2>/dev/null || true; grep -n "project_read_router\|project_explicit_router" /app/ops_broker.py 2>/dev/null || true' || true
+
 ROUTES="$(docker exec vitrine_mcp_ops_broker python -c 'import ops_broker; print("\n".join(sorted({getattr(r,"path","") for r in ops_broker.app.routes})))' 2>/dev/null || true)"
+echo "=== BROKER ROUTES ==="
+printf '%s\n' "$ROUTES"
 printf '%s\n' "$ROUTES" | grep -qx '/projects/read-file' || { echo 'ROUTE_READ_FILE=MISSING' >&2; exit 3; }
 printf '%s\n' "$ROUTES" | grep -qx '/projects/file/read-safe' || { echo 'ROUTE_FILE_READ_SAFE=MISSING' >&2; exit 3; }
 printf '%s\n' "$ROUTES" | grep -qx '/projects/file/patch-text' || { echo 'ROUTE_FILE_PATCH_TEXT=MISSING' >&2; exit 3; }
