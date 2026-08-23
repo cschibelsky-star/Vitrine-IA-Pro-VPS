@@ -48,6 +48,18 @@ class ProjectPathRequest(BaseModel):
     path: str
 
 
+class ProjectGitStageRequest(BaseModel):
+    project_id: str
+    paths: list[str]
+    confirm: str = ""
+
+
+class ProjectGitCommitRequest(BaseModel):
+    project_id: str
+    message: str
+    confirm: str = ""
+
+
 def auth(authorization: str | None = Header(default=None)) -> None:
     if not BROKER_TOKEN or authorization != f"Bearer {BROKER_TOKEN}":
         raise HTTPException(status_code=401, detail="unauthorized")
@@ -324,6 +336,84 @@ def project_status(project_id: str) -> dict[str, Any]:
         "git_status": status,
         "origin": origin,
     }
+
+
+@router.post("/git/stage", dependencies=[Depends(auth)])
+def project_git_stage_explicit(req: ProjectGitStageRequest) -> dict[str, Any]:
+    if req.confirm != "GIT_STAGE":
+        raise HTTPException(status_code=409, detail="confirmation_required:GIT_STAGE")
+    if not req.paths or len(req.paths) > 200:
+        raise HTTPException(status_code=422, detail="git_stage_paths_invalid")
+
+    manifest = load_manifest(req.project_id)
+    _, repository, _ = project_paths(manifest)
+    if not (repository / ".git").is_dir():
+        raise HTTPException(status_code=422, detail="repository_not_git")
+
+    normalized: list[str] = []
+    for raw in req.paths:
+        value = str(raw).strip()
+        candidate = Path(value)
+        if (
+            not value
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or value == "."
+            or candidate.parts[0] == ".git"
+        ):
+            raise HTTPException(status_code=422, detail="invalid_git_stage_path")
+        validated_child(repository, value, "git_stage_path")
+        normalized.append(candidate.as_posix())
+
+    result = run(["git", "add", "--", *normalized], repository)
+    staged = run(["git", "diff", "--cached", "--name-status"], repository)
+    outcome = {
+        "ok": result["ok"],
+        "project_id": req.project_id,
+        "paths": normalized,
+        "result": result,
+        "staged": staged,
+    }
+    audit("project_git_stage_explicit", req.project_id, {"paths": normalized}, outcome)
+    return outcome
+
+
+@router.post("/git/commit", dependencies=[Depends(auth)])
+def project_git_commit_explicit(req: ProjectGitCommitRequest) -> dict[str, Any]:
+    if req.confirm != "GIT_COMMIT":
+        raise HTTPException(status_code=409, detail="confirmation_required:GIT_COMMIT")
+
+    message = req.message.strip()
+    if not message or len(message) > 240 or "\n" in message or "\r" in message:
+        raise HTTPException(status_code=422, detail="git_commit_message_invalid")
+
+    manifest = load_manifest(req.project_id)
+    _, repository, _ = project_paths(manifest)
+    if not (repository / ".git").is_dir():
+        raise HTTPException(status_code=422, detail="repository_not_git")
+
+    staged = run(["git", "diff", "--cached", "--name-status"], repository)
+    if not staged["ok"]:
+        audit("project_git_commit_explicit", req.project_id, {"message": message}, staged)
+        return {"ok": False, "project_id": req.project_id, "stage": "staged_read", "result": staged}
+    if not staged["stdout"].strip():
+        raise HTTPException(status_code=409, detail="nothing_staged")
+
+    commit = run(["git", "commit", "-m", message], repository)
+    head = run(["git", "rev-parse", "HEAD"], repository) if commit["ok"] else None
+    status = run(["git", "status", "--short", "--branch"], repository)
+    outcome = {
+        "ok": commit["ok"],
+        "project_id": req.project_id,
+        "message": message,
+        "staged_before_commit": staged,
+        "commit": commit,
+        "head": head,
+        "status": status,
+        "push_performed": False,
+    }
+    audit("project_git_commit_explicit", req.project_id, {"message": message}, outcome)
+    return outcome
 
 
 @router.post("/write-file", dependencies=[Depends(auth)])
