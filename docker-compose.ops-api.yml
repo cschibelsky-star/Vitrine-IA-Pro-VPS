@@ -1,5 +1,6 @@
 services:
   vitrine_ops_api:
+    profiles: ["ops-api"]
     build:
       context: .
       dockerfile: ops-api/Dockerfile
@@ -35,6 +36,46 @@ services:
       retries: 5
       start_period: 5s
     restart: unless-stopped
+
+  connector_self_update_install:
+    image: alpine/git:2.47.2
+    working_dir: /tmp
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp:/runtime:rw
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -eu;
+        apk add --no-cache python3;
+        git clone --depth 1 --branch feature/v4-hostgator-remote-ops https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS.git /tmp/source;
+        CONNECTOR_ROOT=/runtime python3 /tmp/source/project-manager/install_project_manager.py;
+        echo CONNECTOR_SELF_UPDATE_INSTALL_OK
+    restart: "no"
+
+  connector_self_update_rebuild:
+    image: docker:27-cli
+    depends_on:
+      connector_self_update_install:
+        condition: service_completed_successfully
+    working_dir: /runtime
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp:/runtime:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - sh
+      - -c
+      - >-
+        set -eu;
+        docker compose -p vitrine-vps-mcp
+        -f /runtime/docker-compose.mcp.yml
+        -f /runtime/docker-compose.connector-v2.override.yml
+        config >/tmp/connector-compose.yml;
+        docker compose -p vitrine-vps-mcp
+        -f /runtime/docker-compose.mcp.yml
+        -f /runtime/docker-compose.connector-v2.override.yml
+        up -d --build ops_broker vps_mcp_connector;
+        echo CONNECTOR_SELF_UPDATE_REBUILD_OK
+    restart: "no"
 
 secrets:
   hostgator_ops_key:
