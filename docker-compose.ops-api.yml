@@ -11,10 +11,19 @@ services:
       OPS_AUDIT_LOG: /var/log/vitrine-ops/audit.jsonl
       OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
       VITRINE_OPS_API_VERSION: 0.1.0
+      HOSTGATOR_SSH_HOST: ${HOSTGATOR_SSH_HOST:-}
+      HOSTGATOR_SSH_USER: ${HOSTGATOR_SSH_USER:-}
+      HOSTGATOR_SSH_PORT: ${HOSTGATOR_SSH_PORT:-2222}
+      HOSTGATOR_SSH_KEY_FILE: /run/secrets/hostgator_ops_key
+      HOSTGATOR_HOME_ROOT: ${HOSTGATOR_HOME_ROOT:-/home1/cris1649}
+      HOSTGATOR_ALLOWED_ROOTS: ${HOSTGATOR_ALLOWED_ROOTS:-public_html,vitrine-ai-pro,factory.vitrineaipro.com.br,conhecasumare.com.br}
+      HOSTGATOR_OPS_TIMEOUT: ${HOSTGATOR_OPS_TIMEOUT:-60}
     volumes:
       - /srv/projects:/srv/projects:rw
       - /srv/tvsumare:/srv/tvsumare:rw
       - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
+    secrets:
+      - hostgator_ops_key
     ports:
       - "127.0.0.1:18080:8080"
     networks:
@@ -26,6 +35,10 @@ services:
       retries: 5
       start_period: 5s
     restart: unless-stopped
+
+secrets:
+  hostgator_ops_key:
+    file: ${HOSTGATOR_SSH_KEY_PATH:-/srv/secrets/hostgator_ops_key}
 
 networks:
   vitrine_net:
