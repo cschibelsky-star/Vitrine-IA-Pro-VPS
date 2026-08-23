@@ -57,7 +57,7 @@ function reply(result, summary) {
 
 function createOpsServer() {
   const server = new McpServer(
-    { name: "vitrine-vps-ops", version: "0.1.0" },
+    { name: "vitrine-vps-ops", version: "0.2.0" },
     {
       instructions:
         "Use read/status/health tools before mutating infrastructure. Never infer project IDs, paths, environments, or container names. This plugin exposes only named, allowlisted operations; it does not provide arbitrary shell access.",
@@ -138,6 +138,66 @@ function createOpsServer() {
   );
 
   server.registerTool(
+    "hostgator_health",
+    {
+      title: "HostGator health",
+      description: "Verify read-only SSH connectivity to the allowlisted HostGator shared hosting account.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async () => {
+      const result = await api("GET", "/hostgator/health");
+      return reply(result, result.ok === false ? "HostGator SSH health check failed." : "HostGator SSH connectivity is healthy.");
+    }
+  );
+
+  server.registerTool(
+    "hostgator_git_status",
+    {
+      title: "HostGator Git status",
+      description: "Read branch, HEAD, origin and working tree for one allowlisted HostGator root.",
+      inputSchema: { root: z.enum(["public_html", "vitrine-ai-pro", "factory.vitrineaipro.com.br", "conhecasumare.com.br"]) },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ root }) => {
+      const result = await api("POST", "/hostgator/git/status", { root });
+      return reply(result, result.ok === false ? `Could not read HostGator Git status for ${root}.` : `Read HostGator Git status for ${root}.`);
+    }
+  );
+
+  server.registerTool(
+    "hostgator_git_compare",
+    {
+      title: "HostGator Git compare",
+      description: "Compare the current HostGator HEAD against the remote origin HEAD for the same branch without fetching or modifying refs.",
+      inputSchema: { root: z.enum(["public_html", "vitrine-ai-pro", "factory.vitrineaipro.com.br", "conhecasumare.com.br"]) },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ root }) => {
+      const result = await api("POST", "/hostgator/git/compare", { root });
+      return reply(result, result.ok === false ? `Could not compare HostGator Git state for ${root}.` : `Compared HostGator Git state for ${root}.`);
+    }
+  );
+
+  server.registerTool(
+    "hostgator_read_file",
+    {
+      title: "HostGator read file",
+      description: "Read an allowlisted text file from one HostGator root. Sensitive paths such as .env and private keys are blocked by the Ops API.",
+      inputSchema: {
+        root: z.enum(["public_html", "vitrine-ai-pro", "factory.vitrineaipro.com.br", "conhecasumare.com.br"]),
+        path: z.string().min(1).max(400),
+        max_bytes: z.number().int().min(1).max(500000).default(100000),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ root, path, max_bytes = 100000 }) => {
+      const result = await api("POST", "/hostgator/read-file", { root, path, max_bytes });
+      return reply(result, result.ok === false ? `Could not read HostGator file ${path}.` : `Read HostGator file ${path}.`);
+    }
+  );
+
+  server.registerTool(
     "mcp_status",
     {
       title: "MCP runtime status",
@@ -188,7 +248,7 @@ const sessions = new Map();
 const httpServer = createServer(async (req, res) => {
   if (req.url === "/health" && req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, service: "vitrine-vps-ops-plugin", version: "0.1.0" }));
+    res.end(JSON.stringify({ ok: true, service: "vitrine-vps-ops-plugin", version: "0.2.0" }));
     return;
   }
 
