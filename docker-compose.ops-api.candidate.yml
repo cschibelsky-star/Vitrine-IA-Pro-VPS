@@ -46,9 +46,15 @@ services:
       - sh
       - -lc
       - >-
-        curl -sS -H "Authorization: Bearer $${OPS_BROKER_TOKEN}"
-        http://vitrine_ops_api_hostgator_candidate:8080/hostgator/health
-        -o /probe/hostgator-probe.json || true
+        {
+          echo PROBE_START;
+          curl -sS -w '\nHTTP_CODE=%{http_code}\n' -H "Authorization: Bearer $${OPS_BROKER_TOKEN}"
+          http://vitrine_ops_api_hostgator_candidate:8080/hostgator/health;
+          rc=$$?;
+          echo CURL_EXIT=$$rc;
+          echo PROBE_END;
+        } > /probe/hostgator-probe.txt 2>&1;
+        exit 0
     volumes:
       - /srv/projects/vitrine-vps-ops-hostgator/repository:/probe:rw
     networks:
