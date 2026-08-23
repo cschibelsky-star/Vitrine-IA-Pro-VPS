@@ -1,0 +1,32 @@
+{
+  "id": "vitrine-vps-mcp",
+  "name": "Vitrine IA Pro V4 — Centro Operacional",
+  "workspace_root": "/srv/projects/vitrine-vps-mcp",
+  "repository": {
+    "url": "https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS.git",
+    "branch": "feature/v4-hostgator-remote-ops",
+    "directory": "repository"
+  },
+  "shared_directories": [],
+  "docker": {
+    "compose_file": "docker-compose.ops-api.yml",
+    "project_name": "vitrine-vps-mcp"
+  },
+  "domains": {
+    "homologation": [],
+    "production": []
+  },
+  "release": {
+    "directory": "releases",
+    "exclude": [
+      ".git",
+      ".env",
+      "shared",
+      "data",
+      "uploads",
+      "logs",
+      "vendor",
+      "node_modules"
+    ]
+  }
+}
