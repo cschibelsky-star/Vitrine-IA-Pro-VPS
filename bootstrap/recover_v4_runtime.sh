@@ -22,6 +22,7 @@ git clone --depth 1 --branch "$BRANCH" "$REPO" "$TMP"
 CONNECTOR_ROOT="$RUNTIME" python3 "$TMP/connector-v2/install_connector_v2.py"
 CONNECTOR_ROOT="$RUNTIME" python3 "$TMP/connector-v2/install_hostgator_remote_ops.py"
 CONNECTOR_ROOT="$RUNTIME" python3 "$TMP/project-manager/install_project_manager.py"
+CONNECTOR_ROOT="$RUNTIME" python3 "$TMP/bootstrap/install_v4_runtime_bind_mounts.py"
 
 cd "$RUNTIME"
 python3 -m py_compile ops_broker.py main.py project_manager_operations.py project_read_operations.py project_shared_operations.py project_explicit_operations.py project_manager_tools.py
