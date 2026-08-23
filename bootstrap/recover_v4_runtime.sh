@@ -54,26 +54,26 @@ done
 echo "=== BROKER COMMAND ==="
 docker inspect --format 'CMD={{json .Config.Cmd}}' vitrine_mcp_ops_broker || true
 
-echo "=== ROUTER MODULES ==="
-docker exec vitrine_mcp_ops_broker python -c 'import project_read_operations as r, project_explicit_operations as e, v4_broker_entrypoint as v4; print("READ_MODULE="+str(r.__file__)); print("EXPLICIT_MODULE="+str(e.__file__)); print("ENTRYPOINT_MODULE="+str(v4.__file__)); print("READ_ROUTER_PATHS="+repr([getattr(x,"path",None) for x in r.router.routes])); print("EXPLICIT_ROUTER_PATHS="+repr([getattr(x,"path",None) for x in e.router.routes])); print("ENTRYPOINT_PATHS="+repr([getattr(x,"path",None) for x in v4.app.routes]))' || true
-
 echo "=== DIRECT BROKER OPENAPI ==="
-docker exec vitrine_mcp_ops_broker python -c 'import json, urllib.request; data=json.load(urllib.request.urlopen("http://127.0.0.1:8770/openapi.json", timeout=5)); print("\n".join(sorted(data.get("paths",{}).keys())))' || true
+OPENAPI_PATHS="$(docker exec vitrine_mcp_ops_broker python -c 'import json, urllib.request; data=json.load(urllib.request.urlopen("http://127.0.0.1:8770/openapi.json", timeout=5)); print("\n".join(sorted(data.get("paths",{}).keys())))')"
+printf '%s\n' "$OPENAPI_PATHS"
 
-echo "=== MCP WRAPPER ==="
-docker inspect --format 'CMD={{json .Config.Cmd}}' vitrine_vps_mcp_connector || true
-docker exec vitrine_vps_mcp_connector python -c 'import inspect, project_manager_tools as p; print("TOOLS_MODULE="+str(p.__file__)); print("FALLBACK="+str(getattr(p,"OPS_API_FALLBACK",None))); print("READ_SAFE_SOURCE="+inspect.getsource(p.project_file_read_safe).strip())' || true
-
-ROUTES="$(docker exec vitrine_mcp_ops_broker python -c 'import v4_broker_entrypoint as v4; print("\n".join(sorted({getattr(r,"path","") for r in v4.app.routes})))' 2>/dev/null || true)"
-echo "=== BROKER ROUTES ==="
-printf '%s\n' "$ROUTES"
-printf '%s\n' "$ROUTES" | grep -qx '/projects/read-file' || { echo 'ROUTE_READ_FILE=MISSING' >&2; exit 3; }
-printf '%s\n' "$ROUTES" | grep -qx '/projects/file/read-safe' || { echo 'ROUTE_FILE_READ_SAFE=MISSING' >&2; exit 3; }
-printf '%s\n' "$ROUTES" | grep -qx '/projects/file/patch-text' || { echo 'ROUTE_FILE_PATCH_TEXT=MISSING' >&2; exit 3; }
-printf '%s\n' "$ROUTES" | grep -qx '/projects/compose/explicit' || { echo 'ROUTE_COMPOSE_EXPLICIT=MISSING' >&2; exit 3; }
-printf '%s\n' "$ROUTES" | grep -qx '/projects/git/stage' || { echo 'ROUTE_GIT_STAGE=MISSING' >&2; exit 3; }
-printf '%s\n' "$ROUTES" | grep -qx '/projects/git/commit' || { echo 'ROUTE_GIT_COMMIT=MISSING' >&2; exit 3; }
+for required in \
+  /projects/read-file \
+  /projects/file/read-safe \
+  /projects/file/patch-text \
+  /projects/compose/explicit \
+  /projects/git/stage \
+  /projects/git/commit
+ do
+  printf '%s\n' "$OPENAPI_PATHS" | grep -qx "$required" || { echo "ROUTE_MISSING=$required" >&2; exit 3; }
+done
 
 echo "V4_EXPLICIT_ROUTES=PASS"
+
+echo "=== MCP INTERNAL READ SAFE ==="
+docker exec vitrine_vps_mcp_connector python -c 'import json, project_manager_tools as p; print("OPS_API_URL="+p.OPS_API_URL); print("OPS_BROKER_URL="+p.OPS_BROKER_URL); print(json.dumps(p.project_file_read_safe("vitrine-ia-pro-core","bootstrap/app.php",1,20), ensure_ascii=False))'
+
+echo "V4_MCP_INTERNAL_CALL=PASS"
 echo "V4_RUNTIME_RECOVERY=PASS"
 rm -rf "$TMP"
