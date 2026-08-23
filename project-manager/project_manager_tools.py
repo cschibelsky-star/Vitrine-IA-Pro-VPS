@@ -39,7 +39,8 @@ def _request(method: str, path: str, payload: dict[str, Any] | None = None) -> d
         result = _request_once(OPS_API_URL, method, path, payload)
         result.setdefault("transport", "ops_api")
         result.setdefault("transport_url", OPS_API_URL)
-        return result
+        if result.get("ok") is not False or result.get("status_code") not in {404, 405} or not OPS_API_FALLBACK:
+            return result
     except (httpx.HTTPError, OSError) as exc:
         if not OPS_API_FALLBACK:
             return {
@@ -83,6 +84,76 @@ def project_status(project_id: str) -> dict[str, Any]:
 
 def project_git_status(project_id: str) -> dict[str, Any]:
     return project_status(project_id)
+
+
+def project_file_read_safe(
+    project_id: str,
+    path: str,
+    start_line: int = 1,
+    end_line: int = 400,
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/file/read-safe",
+        {
+            "project_id": project_id,
+            "path": path,
+            "start_line": start_line,
+            "end_line": end_line,
+        },
+    )
+
+
+def project_read_file(
+    project_id: str,
+    path: str,
+    start_line: int = 1,
+    end_line: int = 400,
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/read-file",
+        {
+            "project_id": project_id,
+            "path": path,
+            "start_line": start_line,
+            "end_line": end_line,
+        },
+    )
+
+
+def project_file_patch_text(
+    project_id: str,
+    path: str,
+    old: str,
+    new: str,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/file/patch-text",
+        {"project_id": project_id, "path": path, "old": old, "new": new, "confirm": confirm},
+    )
+
+
+def project_compose_explicit(
+    project_id: str,
+    compose_file: str,
+    action: str = "status",
+    docker_project: str = "",
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/compose/explicit",
+        {
+            "project_id": project_id,
+            "compose_file": compose_file,
+            "docker_project": docker_project,
+            "action": action,
+            "confirm": confirm,
+        },
+    )
 
 
 def project_git_stage_explicit(
