@@ -1,5 +1,6 @@
 services:
   vitrine_ops_api:
+    profiles: ["ops-api"]
     build:
       context: .
       dockerfile: ops-api/Dockerfile
@@ -26,6 +27,43 @@ services:
       retries: 5
       start_period: 5s
     restart: unless-stopped
+
+  connector_self_update_install:
+    image: python:3.12-slim
+    working_dir: /source
+    environment:
+      CONNECTOR_ROOT: /runtime
+    volumes:
+      - ./project-manager:/source/project-manager:ro
+      - ./connector-v2:/source/connector-v2:ro
+      - /srv/connectors/vitrine-vps-mcp:/runtime:rw
+    command: ["python3", "/source/project-manager/install_project_manager.py"]
+    restart: "no"
+
+  connector_self_update_rebuild:
+    image: docker:27-cli
+    depends_on:
+      connector_self_update_install:
+        condition: service_completed_successfully
+    working_dir: /runtime
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp:/runtime:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - sh
+      - -c
+      - >-
+        set -eu;
+        docker compose -p vitrine-vps-mcp
+        -f /runtime/docker-compose.mcp.yml
+        -f /runtime/docker-compose.connector-v2.override.yml
+        config >/tmp/connector-compose.yml;
+        docker compose -p vitrine-vps-mcp
+        -f /runtime/docker-compose.mcp.yml
+        -f /runtime/docker-compose.connector-v2.override.yml
+        up -d --build ops_broker vps_mcp_connector;
+        echo CONNECTOR_SELF_UPDATE_REBUILD_OK
+    restart: "no"
 
 networks:
   vitrine_net:
