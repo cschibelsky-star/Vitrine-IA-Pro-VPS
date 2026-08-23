@@ -55,36 +55,14 @@ echo "=== BROKER COMMAND ==="
 docker inspect --format 'CMD={{json .Config.Cmd}}' vitrine_mcp_ops_broker || true
 
 echo "=== ROUTER MODULES ==="
-docker exec vitrine_mcp_ops_broker python - <<'PY' || true
-import project_read_operations as r
-import project_explicit_operations as e
-import v4_broker_entrypoint as v4
-print('READ_MODULE=' + str(r.__file__))
-print('EXPLICIT_MODULE=' + str(e.__file__))
-print('ENTRYPOINT_MODULE=' + str(v4.__file__))
-print('READ_ROUTER_PATHS=' + repr([getattr(x,'path',None) for x in r.router.routes]))
-print('EXPLICIT_ROUTER_PATHS=' + repr([getattr(x,'path',None) for x in e.router.routes]))
-print('ENTRYPOINT_PATHS=' + repr([getattr(x,'path',None) for x in v4.app.routes]))
-PY
+docker exec vitrine_mcp_ops_broker python -c 'import project_read_operations as r, project_explicit_operations as e, v4_broker_entrypoint as v4; print("READ_MODULE="+str(r.__file__)); print("EXPLICIT_MODULE="+str(e.__file__)); print("ENTRYPOINT_MODULE="+str(v4.__file__)); print("READ_ROUTER_PATHS="+repr([getattr(x,"path",None) for x in r.router.routes])); print("EXPLICIT_ROUTER_PATHS="+repr([getattr(x,"path",None) for x in e.router.routes])); print("ENTRYPOINT_PATHS="+repr([getattr(x,"path",None) for x in v4.app.routes]))' || true
 
 echo "=== DIRECT BROKER OPENAPI ==="
-docker exec vitrine_mcp_ops_broker python - <<'PY' || true
-import json, urllib.request
-try:
-    data=json.load(urllib.request.urlopen('http://127.0.0.1:8770/openapi.json', timeout=5))
-    print('\n'.join(sorted(data.get('paths',{}).keys())))
-except Exception as exc:
-    print('OPENAPI_ERROR=' + repr(exc))
-PY
+docker exec vitrine_mcp_ops_broker python -c 'import json, urllib.request; data=json.load(urllib.request.urlopen("http://127.0.0.1:8770/openapi.json", timeout=5)); print("\n".join(sorted(data.get("paths",{}).keys())))' || true
 
 echo "=== MCP WRAPPER ==="
 docker inspect --format 'CMD={{json .Config.Cmd}}' vitrine_vps_mcp_connector || true
-docker exec vitrine_vps_mcp_connector python - <<'PY' || true
-import inspect, project_manager_tools as p
-print('TOOLS_MODULE=' + str(p.__file__))
-print('FALLBACK=' + str(getattr(p,'OPS_API_FALLBACK',None)))
-print('READ_SAFE_SOURCE=' + inspect.getsource(p.project_file_read_safe).strip())
-PY
+docker exec vitrine_vps_mcp_connector python -c 'import inspect, project_manager_tools as p; print("TOOLS_MODULE="+str(p.__file__)); print("FALLBACK="+str(getattr(p,"OPS_API_FALLBACK",None))); print("READ_SAFE_SOURCE="+inspect.getsource(p.project_file_read_safe).strip())' || true
 
 ROUTES="$(docker exec vitrine_mcp_ops_broker python -c 'import v4_broker_entrypoint as v4; print("\n".join(sorted({getattr(r,"path","") for r in v4.app.routes})))' 2>/dev/null || true)"
 echo "=== BROKER ROUTES ==="
