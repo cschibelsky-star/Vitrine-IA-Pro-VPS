@@ -10,27 +10,6 @@ SOURCE = Path(__file__).resolve().parent
 STAMP = datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
-def backup(path: Path) -> None:
-    if path.exists():
-        shutil.copy2(path, path.with_name(f"{path.name}.backup-hostgator-v4-{STAMP}"))
-
-
-def ensure_line_after(text: str, anchor: str, line: str, label: str) -> str:
-    if line in text:
-        return text
-    if anchor not in text:
-        raise RuntimeError(f"{label}: marcador nao encontrado")
-    return text.replace(anchor, anchor + line, 1)
-
-
-def ensure_block_before(text: str, marker: str, block: str, sentinel: str, label: str) -> str:
-    if sentinel in text:
-        return text
-    if marker not in text:
-        raise RuntimeError(f"{label}: marcador nao encontrado")
-    return text.replace(marker, block + marker, 1)
-
-
 def restore_oldest_project_manager_backup(path: Path) -> str:
     backups = sorted(
         ROOT.glob(f"{path.name}.backup-project-manager-*"),
@@ -38,9 +17,8 @@ def restore_oldest_project_manager_backup(path: Path) -> str:
     )
     if not backups:
         raise RuntimeError(f"backup project-manager nao encontrado para {path.name}")
-
     selected = backups[0]
-    safety = ROOT / f"{path.name}.before-stability-recovery-{STAMP}"
+    safety = ROOT / f"{path.name}.before-diagnostic-{STAMP}"
     if path.exists():
         shutil.copy2(path, safety)
     shutil.copy2(selected, path)
@@ -49,17 +27,49 @@ def restore_oldest_project_manager_backup(path: Path) -> str:
 
 def disable_next_project_manager_install() -> None:
     installer = SOURCE.parent / "project-manager" / "install_project_manager.py"
-    if not installer.is_file():
-        raise RuntimeError("install_project_manager.py nao encontrado")
-
     installer.write_text(
         "from __future__ import annotations\n\n"
         "def main() -> None:\n"
-        "    print('PROJECT_MANAGER_STABILITY_RECOVERY_NOOP=SIM')\n\n"
+        "    print('PROJECT_MANAGER_DIAGNOSTIC_NOOP=SIM')\n\n"
         "if __name__ == '__main__':\n"
         "    main()\n",
         encoding="utf-8",
     )
+
+
+def instrument_connector_output() -> None:
+    override = ROOT / "docker-compose.connector-v2.override.yml"
+    text = override.read_text(encoding="utf-8")
+    service_marker = "  vps_mcp_connector:\n"
+    if service_marker not in text:
+        raise RuntimeError("vps_mcp_connector nao encontrado no override")
+
+    volume_line = "      - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/runtime-diagnostics:rw\n"
+    if volume_line not in text:
+        volumes_marker = "    volumes:\n"
+        service_start = text.index(service_marker)
+        volumes_at = text.find(volumes_marker, service_start)
+        if volumes_at == -1:
+            raise RuntimeError("volumes do vps_mcp_connector nao encontrados")
+        insert_at = volumes_at + len(volumes_marker)
+        text = text[:insert_at] + volume_line + text[insert_at:]
+
+    command_block = (
+        "    command:\n"
+        "      - sh\n"
+        "      - -lc\n"
+        "      - >-\n"
+        "        rm -f /runtime-diagnostics/mcp-startup.txt;\n"
+        "        python main.py > /runtime-diagnostics/mcp-startup.txt 2>&1;\n"
+        "        rc=$$?;\n"
+        "        echo EXIT_CODE=$$rc >> /runtime-diagnostics/mcp-startup.txt;\n"
+        "        sleep 60;\n"
+        "        exit $$rc\n"
+    )
+    if "    command:\n      - sh\n      - -lc\n" not in text[service_start:]:
+        text = text[:service_start + len(service_marker)] + command_block + text[service_start + len(service_marker):]
+
+    override.write_text(text, encoding="utf-8")
 
 
 def main() -> None:
@@ -73,15 +83,15 @@ def main() -> None:
         "Dockerfile",
         "docker-compose.connector-v2.override.yml",
     ):
-        target = ROOT / name
-        restored[name] = restore_oldest_project_manager_backup(target)
+        restored[name] = restore_oldest_project_manager_backup(ROOT / name)
 
     disable_next_project_manager_install()
+    instrument_connector_output()
 
-    print("V4_STABILITY_RECOVERY_PREPARED=SIM")
+    print("V4_DIAGNOSTIC_RECOVERY_PREPARED=SIM")
     for name, source in restored.items():
         print(f"RESTORED_{name.replace('.', '_').upper()}={source}")
-    print("PROJECT_MANAGER_REINSTALL_DISABLED_FOR_RECOVERY=SIM")
+    print("MCP_STARTUP_CAPTURE=ENABLED")
     print(f"RECOVERY_STAMP={STAMP}")
 
 
