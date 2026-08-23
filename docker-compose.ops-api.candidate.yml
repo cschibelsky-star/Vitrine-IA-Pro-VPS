@@ -34,6 +34,27 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  hostgator_candidate_probe:
+    image: curlimages/curl:8.16.0
+    container_name: vitrine_hostgator_candidate_probe
+    depends_on:
+      vitrine_ops_api_hostgator_candidate:
+        condition: service_healthy
+    environment:
+      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+    command:
+      - sh
+      - -lc
+      - >-
+        curl -sS -H "Authorization: Bearer $${OPS_BROKER_TOKEN}"
+        http://vitrine_ops_api_hostgator_candidate:8080/hostgator/health
+        -o /probe/hostgator-probe.json || true
+    volumes:
+      - /srv/projects/vitrine-vps-ops-hostgator/repository:/probe:rw
+    networks:
+      - vitrine_net
+    restart: "no"
+
 networks:
   vitrine_net:
     external: true
