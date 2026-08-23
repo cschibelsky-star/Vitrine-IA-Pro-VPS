@@ -35,7 +35,6 @@ def restore_last_healthy_project_manager_main(main_py: Path) -> str:
     backups = sorted(
         ROOT.glob("main.py.backup-project-manager-*"),
         key=lambda path: path.stat().st_mtime,
-        reverse=True,
     )
     if not backups:
         raise RuntimeError("backup project-manager do main.py nao encontrado")
