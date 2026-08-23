@@ -31,6 +31,30 @@ def ensure_block_before(text: str, marker: str, block: str, sentinel: str, label
     return text.replace(marker, block + marker, 1)
 
 
+def preserve_mcp_main_in_next_installer() -> None:
+    installer = SOURCE.parent / "project-manager" / "install_project_manager.py"
+    if not installer.is_file():
+        raise RuntimeError("install_project_manager.py nao encontrado")
+
+    text = installer.read_text(encoding="utf-8")
+    start_marker = '    main_py = ROOT / "main.py"\n'
+    end_marker = '    dockerfile = ROOT / "Dockerfile"\n'
+
+    start = text.find(start_marker)
+    end = text.find(end_marker, start if start >= 0 else 0)
+    if start == -1 or end == -1 or end <= start:
+        raise RuntimeError("bloco de mutacao do main.py nao localizado")
+
+    replacement = (
+        '    # Recovery mode: preserve the existing MCP main.py registry.\n'
+        '    # Project modules and broker routes are still updated below.\n'
+        '    main_py = ROOT / "main.py"\n'
+        '    if not main_py.exists():\n'
+        '        raise RuntimeError("main.py runtime ausente")\n\n'
+    )
+    installer.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
+
+
 def main() -> None:
     if not ROOT.exists():
         raise SystemExit(f"Raiz do conector nao encontrada: {ROOT}")
@@ -91,7 +115,10 @@ def main() -> None:
     docker_text = docker_text.replace(copy_line, updated_line, 1)
     dockerfile.write_text(docker_text, encoding="utf-8")
 
+    preserve_mcp_main_in_next_installer()
+
     print("HOSTGATOR_REMOTE_OPS_V4_PREPARED")
+    print("PROJECT_MANAGER_MAIN_PRESERVE=SIM")
     print(f"BACKUP_STAMP={STAMP}")
     print("REQUIRED_ENV=HOSTGATOR_SSH_HOST,HOSTGATOR_SSH_USER,HOSTGATOR_SSH_PORT,HOSTGATOR_SSH_KEY_FILE")
 
