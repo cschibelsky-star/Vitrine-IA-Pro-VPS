@@ -202,7 +202,7 @@ def project_compose_explicit(req: ProjectComposeExplicitRequest) -> dict[str, An
     elif action == "config":
         command = base + ["config"]
     elif action == "up":
-        if req.confirm != "EXECUTE":
+        if req.confirm != "EXECUTAR":
             raise HTTPException(status_code=403, detail="confirmation_required")
         command = base + ["up", "-d", "--build"]
     else:
