@@ -81,6 +81,30 @@ def project_status(project_id: str) -> dict[str, Any]:
     return _request("GET", f"/projects/{project_id}/status")
 
 
+def project_git_stage_explicit(
+    project_id: str,
+    paths: list[str],
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/git/stage",
+        {"project_id": project_id, "paths": paths, "confirm": confirm},
+    )
+
+
+def project_git_commit_explicit(
+    project_id: str,
+    message: str,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/git/commit",
+        {"project_id": project_id, "message": message, "confirm": confirm},
+    )
+
+
 def project_write_file(
     project_id: str,
     path: str,
