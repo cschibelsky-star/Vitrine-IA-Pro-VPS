@@ -81,6 +81,10 @@ def project_status(project_id: str) -> dict[str, Any]:
     return _request("GET", f"/projects/{project_id}/status")
 
 
+def project_git_status(project_id: str) -> dict[str, Any]:
+    return project_status(project_id)
+
+
 def project_git_stage_explicit(
     project_id: str,
     paths: list[str],
