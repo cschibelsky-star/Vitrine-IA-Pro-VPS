@@ -82,6 +82,80 @@ def project_status(project_id: str) -> dict[str, Any]:
     return _request("GET", f"/projects/{project_id}/status")
 
 
+def project_git_status(project_id: str) -> dict[str, Any]:
+    return project_status(project_id)
+
+
+def project_file_read_safe(
+    project_id: str,
+    path: str,
+    start_line: int = 1,
+    end_line: int = 400,
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/file/read-safe",
+        {
+            "project_id": project_id,
+            "path": path,
+            "start_line": start_line,
+            "end_line": end_line,
+        },
+    )
+
+
+def project_read_file(
+    project_id: str,
+    path: str,
+    start_line: int = 1,
+    end_line: int = 400,
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/read-file",
+        {
+            "project_id": project_id,
+            "path": path,
+            "start_line": start_line,
+            "end_line": end_line,
+        },
+    )
+
+
+def project_file_patch_text(
+    project_id: str,
+    path: str,
+    old: str,
+    new: str,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/file/patch-text",
+        {"project_id": project_id, "path": path, "old": old, "new": new, "confirm": confirm},
+    )
+
+
+def project_compose_explicit(
+    project_id: str,
+    compose_file: str,
+    action: str = "status",
+    docker_project: str = "",
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/compose/explicit",
+        {
+            "project_id": project_id,
+            "compose_file": compose_file,
+            "docker_project": docker_project,
+            "action": action,
+            "confirm": confirm,
+        },
+    )
+
+
 def project_git_stage_explicit(
     project_id: str,
     paths: list[str],
