@@ -34,21 +34,29 @@ docker compose -p vitrine-vps-mcp \
 docker compose -p vitrine-vps-mcp \
   -f docker-compose.mcp.yml \
   -f docker-compose.connector-v2.override.yml \
-  up -d --build ops_broker vps_mcp_connector
+  up -d --build --force-recreate ops_broker vps_mcp_connector
 
 for i in $(seq 1 45); do
   STATUS="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' vitrine_mcp_ops_broker 2>/dev/null || true)"
   if [ "$STATUS" = "healthy" ]; then
     echo "OPS_BROKER_HEALTH=PASS"
-    echo "V4_RUNTIME_RECOVERY=PASS"
-    rm -rf "$TMP"
-    exit 0
+    break
   fi
   if [ "$STATUS" = "dead" ] || [ "$STATUS" = "exited" ]; then
-    break
+    echo "OPS_BROKER_HEALTH=FAIL:$STATUS" >&2
+    exit 2
   fi
   sleep 2
 done
 
-echo "V4_RUNTIME_RECOVERY=FAIL" >&2
-exit 2
+ROUTES="$(docker exec vitrine_mcp_ops_broker python -c 'import ops_broker; print("\n".join(sorted({getattr(r,"path","") for r in ops_broker.app.routes})))' 2>/dev/null || true)"
+printf '%s\n' "$ROUTES" | grep -qx '/projects/read-file' || { echo 'ROUTE_READ_FILE=MISSING' >&2; exit 3; }
+printf '%s\n' "$ROUTES" | grep -qx '/projects/file/read-safe' || { echo 'ROUTE_FILE_READ_SAFE=MISSING' >&2; exit 3; }
+printf '%s\n' "$ROUTES" | grep -qx '/projects/file/patch-text' || { echo 'ROUTE_FILE_PATCH_TEXT=MISSING' >&2; exit 3; }
+printf '%s\n' "$ROUTES" | grep -qx '/projects/compose/explicit' || { echo 'ROUTE_COMPOSE_EXPLICIT=MISSING' >&2; exit 3; }
+printf '%s\n' "$ROUTES" | grep -qx '/projects/git/stage' || { echo 'ROUTE_GIT_STAGE=MISSING' >&2; exit 3; }
+printf '%s\n' "$ROUTES" | grep -qx '/projects/git/commit' || { echo 'ROUTE_GIT_COMMIT=MISSING' >&2; exit 3; }
+
+echo "V4_EXPLICIT_ROUTES=PASS"
+echo "V4_RUNTIME_RECOVERY=PASS"
+rm -rf "$TMP"
