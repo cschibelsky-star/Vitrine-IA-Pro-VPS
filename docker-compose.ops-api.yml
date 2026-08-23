@@ -51,6 +51,7 @@ services:
         CONNECTOR_ROOT=/runtime python3 /tmp/source/connector-v2/install_connector_v2.py;
         CONNECTOR_ROOT=/runtime python3 /tmp/source/connector-v2/install_hostgator_remote_ops.py;
         CONNECTOR_ROOT=/runtime python3 /tmp/source/project-manager/install_project_manager.py;
+        CONNECTOR_ROOT=/runtime python3 /tmp/source/project-manager/recover_mcp_main.py;
         echo CONNECTOR_SELF_UPDATE_INSTALL_OK
     restart: "no"
 
