@@ -31,6 +31,23 @@ def ensure_block_before(text: str, marker: str, block: str, sentinel: str, label
     return text.replace(marker, block + marker, 1)
 
 
+def restore_last_healthy_project_manager_main(main_py: Path) -> str:
+    backups = sorted(
+        ROOT.glob("main.py.backup-project-manager-*"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not backups:
+        raise RuntimeError("backup project-manager do main.py nao encontrado")
+
+    selected = backups[0]
+    safety = ROOT / f"main.py.before-recovery-{STAMP}"
+    if main_py.exists():
+        shutil.copy2(main_py, safety)
+    shutil.copy2(selected, main_py)
+    return selected.name
+
+
 def preserve_mcp_main_in_next_installer() -> None:
     installer = SOURCE.parent / "project-manager" / "install_project_manager.py"
     if not installer.is_file():
@@ -71,6 +88,8 @@ def main() -> None:
     for required in (ops_broker, main_py, dockerfile):
         if not required.exists():
             raise SystemExit(f"Arquivo runtime ausente: {required}")
+
+    restored_from = restore_last_healthy_project_manager_main(main_py)
 
     backup(ops_broker)
     text = ops_broker.read_text(encoding="utf-8")
@@ -118,6 +137,7 @@ def main() -> None:
     preserve_mcp_main_in_next_installer()
 
     print("HOSTGATOR_REMOTE_OPS_V4_PREPARED")
+    print(f"MCP_MAIN_RECOVERED_FROM={restored_from}")
     print("PROJECT_MANAGER_MAIN_PRESERVE=SIM")
     print(f"BACKUP_STAMP={STAMP}")
     print("REQUIRED_ENV=HOSTGATOR_SSH_HOST,HOSTGATOR_SSH_USER,HOSTGATOR_SSH_PORT,HOSTGATOR_SSH_KEY_FILE")
