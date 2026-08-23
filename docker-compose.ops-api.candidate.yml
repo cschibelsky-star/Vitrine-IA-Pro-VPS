@@ -1,0 +1,40 @@
+services:
+  vitrine_ops_api_hostgator_candidate:
+    build:
+      context: .
+      dockerfile: ops-api/Dockerfile
+    container_name: vitrine_ops_api_hostgator_candidate
+    environment:
+      PROJECT_MANIFEST_ROOT: /app/project-manifests
+      PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects
+      PROJECT_MANAGER_TIMEOUT: 1200
+      OPS_AUDIT_LOG: /var/log/vitrine-ops/audit.jsonl
+      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+      VITRINE_OPS_API_VERSION: 0.4.0-hostgator-candidate
+      HOSTGATOR_SSH_HOST: ${HOSTGATOR_SSH_HOST:-}
+      HOSTGATOR_SSH_USER: ${HOSTGATOR_SSH_USER:-}
+      HOSTGATOR_SSH_PORT: ${HOSTGATOR_SSH_PORT:-2222}
+      HOSTGATOR_SSH_KEY_FILE: /run/secrets/hostgator_ops_key
+      HOSTGATOR_HOME_ROOT: ${HOSTGATOR_HOME_ROOT:-/home1/cris1649}
+      HOSTGATOR_ALLOWED_ROOTS: ${HOSTGATOR_ALLOWED_ROOTS:-public_html,vitrine-ai-pro,factory.vitrineaipro.com.br,conhecasumare.com.br}
+      HOSTGATOR_OPS_TIMEOUT: 60
+    volumes:
+      - /srv/projects:/srv/projects:rw
+      - /srv/tvsumare:/srv/tvsumare:rw
+      - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
+    ports:
+      - "127.0.0.1:18081:8080"
+    networks:
+      - vitrine_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+networks:
+  vitrine_net:
+    external: true
+    name: vitrine_net
