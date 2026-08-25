@@ -10,9 +10,10 @@ services:
       PROJECT_MAX_READ_BYTES: 200000
       OPS_AUDIT_LOG: /var/log/vitrine-ops-v5/audit.jsonl
     volumes:
-      - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:ro
+      - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:rw
       - /srv/projects:/srv/projects:rw
       - /srv/tvsumare:/srv/tvsumare:rw
+      - /root/.ssh:/root/.ssh:ro
       - /var/log/vitrine-ops-v5:/var/log/vitrine-ops-v5:rw
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
