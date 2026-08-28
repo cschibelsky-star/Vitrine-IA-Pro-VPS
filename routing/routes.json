@@ -36,6 +36,7 @@
       "legacy_aliases": [],
       "upstream": "cursos_ia_mvp_hml:80",
       "health_path": "/health.php",
+      "hml_center_auth": true,
       "ssl": true,
       "status": "active"
     },
