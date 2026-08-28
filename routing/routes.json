@@ -15,7 +15,7 @@
       "upstream": "vitrine_hml_center:8080",
       "health_path": "/health",
       "ssl": true,
-      "status": "pending_app"
+      "status": "active"
     },
     {
       "id": "tvsumare-hml",
@@ -37,7 +37,7 @@
       "upstream": "cursos_ia_mvp_hml:80",
       "health_path": "/health.php",
       "ssl": true,
-      "status": "pending_dns_proxy"
+      "status": "active"
     },
     {
       "id": "agente-compras-ia-hml",
