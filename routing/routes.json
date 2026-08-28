@@ -7,6 +7,17 @@
   "network": "vitrine_net",
   "routes": [
     {
+      "id": "vitrine-hml-center",
+      "project_id": "vitrine-hml-center",
+      "environment": "homologation",
+      "hostname": "hml.vitrineiapro.com.br",
+      "legacy_aliases": [],
+      "upstream": "vitrine_hml_center:8080",
+      "health_path": "/health",
+      "ssl": true,
+      "status": "active"
+    },
+    {
       "id": "tvsumare-hml",
       "project_id": "tvsumare",
       "environment": "homologation",
@@ -25,6 +36,18 @@
       "legacy_aliases": [],
       "upstream": "cursos_ia_mvp_hml:80",
       "health_path": "/health.php",
+      "hml_center_auth": true,
+      "ssl": true,
+      "status": "active"
+    },
+    {
+      "id": "agente-compras-ia-hml",
+      "project_id": "agente-compras-ia",
+      "environment": "homologation",
+      "hostname": "compras.hml.vitrineiapro.com.br",
+      "legacy_aliases": [],
+      "upstream": "agente_compras_build49_hml:8502",
+      "health_path": "/_stcore/health",
       "ssl": true,
       "status": "pending_dns_proxy"
     }
