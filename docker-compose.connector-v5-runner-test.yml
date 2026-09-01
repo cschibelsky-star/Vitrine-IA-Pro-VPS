@@ -20,8 +20,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:8868:8000"
-    networks:
-      - runner_test_net
+    network_mode: bridge
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=32m
@@ -39,7 +38,3 @@ services:
       retries: 8
       start_period: 10s
     restart: "no"
-
-networks:
-  runner_test_net:
-    driver: bridge
