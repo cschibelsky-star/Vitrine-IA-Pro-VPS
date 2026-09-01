@@ -1,0 +1,45 @@
+services:
+  connector_v5_runner_test:
+    build:
+      context: .
+      dockerfile: connector-v5/Dockerfile
+    image: vitrine-mcp-v5-php-runner-test:local
+    container_name: vitrine_mcp_v5_php_runner_test
+    environment:
+      PROJECT_MANIFEST_ROOT: /app/project-manifests
+      PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
+      PROJECT_MAX_READ_BYTES: "200000"
+      PROJECT_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
+      OPS_AUDIT_LOG: /var/log/vitrine-ops-v5/audit.jsonl
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:ro
+      - /srv/projects:/srv/projects:ro
+      - /srv/tvsumare:/srv/tvsumare:ro
+      - /srv/projects/vitrine-vps-mcp-test/logs:/var/log/vitrine-ops-v5:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:8868:8000"
+    networks:
+      - runner_test_net
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),3); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+    restart: "no"
+
+networks:
+  runner_test_net:
+    driver: bridge
