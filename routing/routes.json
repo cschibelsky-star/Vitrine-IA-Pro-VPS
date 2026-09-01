@@ -59,7 +59,7 @@
       "upstream": "vitrine_social_hml_web:80",
       "health_path": "/health",
       "ssl": true,
-      "status": "pending_dns_proxy"
+      "status": "active"
     }
   ]
 }
