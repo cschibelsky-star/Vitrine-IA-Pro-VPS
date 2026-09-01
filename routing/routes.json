@@ -49,6 +49,17 @@
       "health_path": "/_stcore/health",
       "ssl": true,
       "status": "pending_dns_proxy"
+    },
+    {
+      "id": "vitrine-social-hml",
+      "project_id": "vitrine-ai-social-enterprise",
+      "environment": "homologation",
+      "hostname": "social.hml.vitrineiapro.com.br",
+      "legacy_aliases": [],
+      "upstream": "vitrine_social_hml_web:80",
+      "health_path": "/health",
+      "ssl": true,
+      "status": "pending_dns_proxy"
     }
   ]
 }
