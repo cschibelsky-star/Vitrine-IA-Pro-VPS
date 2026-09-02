@@ -52,22 +52,46 @@ services:
         import time
         import traceback
         output = pathlib.Path("/results/php-runner-smoke.json")
+        files = ["app/Marketing/Domain/Agents/AgentRegistry.php","app/Marketing/Domain/Agents/AgentType.php","app/Marketing/Domain/Approvals/ApprovalDecision.php","app/Marketing/Domain/Artifacts/ArtifactStatus.php","app/Marketing/Domain/Campaigns/CampaignStatus.php","app/Marketing/Domain/Contracts/CommonEnvelope.php","app/Marketing/Domain/Tasks/TaskStatus.php","app/Marketing/Infrastructure/Persistence/Models/Concerns/BelongsToCompany.php","app/Marketing/Infrastructure/Persistence/Models/MarketingAgentDefinition.php","app/Marketing/Infrastructure/Persistence/Models/MarketingApproval.php","app/Marketing/Infrastructure/Persistence/Models/MarketingArtifactVersion.php","app/Marketing/Infrastructure/Persistence/Models/MarketingAuditEvent.php","app/Marketing/Infrastructure/Persistence/Models/MarketingCampaign.php","app/Marketing/Infrastructure/Persistence/Models/MarketingCampaignTask.php","app/Marketing/Infrastructure/Persistence/Models/MarketingQaIssue.php","app/Marketing/Infrastructure/Persistence/Models/MarketingTaskDependency.php","config/marketing_agents.php","database/migrations/2026_09_01_190001_create_marketing_campaigns_table.php","database/migrations/2026_09_01_190002_create_marketing_agent_definitions_table.php","database/migrations/2026_09_01_190003_create_marketing_campaign_tasks_table.php","database/migrations/2026_09_01_190004_create_marketing_task_dependencies_table.php","database/migrations/2026_09_01_190005_create_marketing_artifact_versions_table.php","database/migrations/2026_09_01_190006_create_marketing_qa_issues_table.php","database/migrations/2026_09_01_190007_create_marketing_approvals_table.php","database/migrations/2026_09_01_190008_create_marketing_audit_events_table.php","tests/Unit/Marketing/AgentRegistryTest.php","tests/Unit/Marketing/CommonEnvelopeTest.php","tests/Unit/Marketing/MarketingMigrationContractTest.php","tests/Unit/Marketing/SchemaFilesTest.php"]
         try:
             import main
-            tool = main.project_php_validate
-            invoke = (
-                getattr(tool, "fn", None)
-                or getattr(tool, "function", None)
-                or getattr(tool, "_fn", None)
-            )
-            if invoke is None:
-                raise RuntimeError("function_tool_callable_missing:" + ",".join(sorted(dir(tool))))
-            results = {
-                operation: invoke("vitrine-marketing-agents-core-hml", operation)
-                for operation in ("tests_marketing", "migrate_pretend")
+            lint_tool = main.project_php_lint
+            validate_tool = main.project_php_validate
+            lint_invoke = getattr(lint_tool, "fn", None) or getattr(lint_tool, "function", None) or getattr(lint_tool, "_fn", None)
+            validate_invoke = getattr(validate_tool, "fn", None) or getattr(validate_tool, "function", None) or getattr(validate_tool, "_fn", None)
+            if lint_invoke is None or validate_invoke is None:
+                raise RuntimeError("function_tool_callable_missing")
+            lint_results = {
+                path: lint_invoke("vitrine-marketing-agents-core-hml", path)
+                for path in files
             }
-            payload = json.dumps(results, ensure_ascii=False, indent=2)
-            ok = all(result.get("ok") for result in results.values())
+            migration = validate_invoke("vitrine-marketing-agents-core-hml", "migrate_pretend")
+            payload_data = {
+                "lint": {
+                    "total": len(lint_results),
+                    "passed": sum(1 for result in lint_results.values() if result.get("ok")),
+                    "failed": {
+                        path: {
+                            "exit_code": result.get("exit_code"),
+                            "error": result.get("error"),
+                            "stderr": str(result.get("stderr") or "")[-1000:],
+                        }
+                        for path, result in lint_results.items()
+                        if not result.get("ok")
+                    },
+                },
+                "migrate_pretend": {
+                    "ok": migration.get("ok"),
+                    "exit_code": migration.get("exit_code"),
+                    "stderr": str(migration.get("stderr") or "")[-2000:],
+                },
+                "phpunit": {
+                    "executed": False,
+                    "reason": "phpunit_runtime_unavailable_in_runner_image",
+                },
+            }
+            ok = payload_data["lint"]["passed"] == payload_data["lint"]["total"] and payload_data["migrate_pretend"]["ok"]
+            payload = json.dumps(payload_data, ensure_ascii=False, indent=2)
         except BaseException as exc:
             payload = json.dumps({
                 "ok": False,
