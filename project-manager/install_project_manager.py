@@ -115,9 +115,59 @@ def main() -> None:
     for manifest in manifest_source.glob('*.json'):
         shutil.copy2(manifest, manifest_target / manifest.name)
 
+    kernel_file = ROOT / 'factory_kernel.py'
+    backup(kernel_file)
+    kernel_text = kernel_file.read_text(encoding='utf-8')
+    if 'def factory_kernel_decide_impl(capability: str)' not in kernel_text:
+        old_kernel_signature = '@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef factory_kernel_decide(capability: str) -> dict[str, Any]:\n'
+        if old_kernel_signature not in kernel_text:
+            raise RuntimeError('Factory Kernel decide: assinatura original não encontrada')
+        kernel_text = kernel_text.replace(
+            old_kernel_signature,
+            'def factory_kernel_decide_impl(capability: str) -> dict[str, Any]:\n',
+            1,
+        )
+        kernel_text = kernel_text.rstrip() + '\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef factory_kernel_decide(capability: str) -> dict[str, Any]:\n    """Decide se uma capacidade deve ser reaproveitada, evoluída ou construída, sem executar alterações."""\n    return factory_kernel_decide_impl(capability)\n'
+        kernel_file.write_text(kernel_text, encoding='utf-8')
+
     ops_broker = ROOT / 'ops_broker.py'
     backup(ops_broker)
     text = ops_broker.read_text(encoding='utf-8')
+    text = text.replace(
+        'from factory_kernel import factory_kernel_decide\n',
+        'from factory_kernel import factory_kernel_decide_impl\n',
+    )
+    text = text.replace(
+        'return factory_kernel_decide(value)',
+        'return factory_kernel_decide_impl(value)',
+    )
+
+    factory_allowlist_anchor = '    "commercial:factory-intake",\n'
+    for factory_command in ('factory:architect-request', 'factory:ai-plan', 'factory:intake-probe', 'factory:decision', 'factory:discovery-gate-probe'):
+        factory_command_line = f'    "{factory_command}",\n'
+        if factory_command_line not in text:
+            if factory_allowlist_anchor not in text:
+                raise RuntimeError('Factory allowlist: marcador commercial:factory-intake não encontrado')
+            text = text.replace(
+                factory_allowlist_anchor,
+                factory_command_line + factory_allowlist_anchor,
+                1,
+            )
+
+    factory_exec_old = '    result = run(["docker", "exec", LARAVEL_CONTAINER, "php", "artisan", req.command, *req.arguments], Path("/"))\n'
+    factory_exec_probe = '    target_container = "vitrine_factory_hml_app" if req.command == "factory:intake-probe" else LARAVEL_CONTAINER\n    result = run(["docker", "exec", target_container, "php", "artisan", req.command, *req.arguments], Path("/"))\n'
+    factory_exec_decision = '    target_container = "vitrine_factory_hml_app" if req.command in {"factory:intake-probe", "factory:decision"} else LARAVEL_CONTAINER\n    result = run(["docker", "exec", target_container, "php", "artisan", req.command, *req.arguments], Path("/"))\n'
+    factory_exec_current = '    target_container = "vitrine_factory_hml_app" if req.command in {"factory:intake-probe", "factory:decision", "factory:discovery-gate-probe"} else LARAVEL_CONTAINER\n    result = run(["docker", "exec", target_container, "php", "artisan", req.command, *req.arguments], Path("/"))\n'
+    if factory_exec_current not in text:
+        if factory_exec_decision in text:
+            text = text.replace(factory_exec_decision, factory_exec_current, 1)
+        elif factory_exec_probe in text:
+            text = text.replace(factory_exec_probe, factory_exec_current, 1)
+        elif factory_exec_old in text:
+            text = text.replace(factory_exec_old, factory_exec_current, 1)
+        else:
+            raise RuntimeError('Factory intake probe routing: marcador de execução não encontrado')
+
     text = ensure_line_after(
         text,
         'from tvsumare_migration_operations import router as tvsumare_migration_router\n',
@@ -132,6 +182,12 @@ def main() -> None:
     )
     text = ensure_line_after(
         text,
+        'from hostgator_broker_patch import build_router as build_hostgator_router\n',
+        'from factory_kernel import factory_kernel_decide_impl\n',
+        'import factory kernel decide impl',
+    )
+    text = ensure_line_after(
+        text,
         'app.include_router(tvsumare_migration_router)\n',
         'app.include_router(project_manager_router)\n',
         'include project manager router',
@@ -142,13 +198,36 @@ def main() -> None:
         'app.include_router(project_deployment_router)\n',
         'include project deployment router',
     )
+    kernel_endpoint = '''\n\n@app.get("/internal/factory-kernel/decide")\ndef internal_factory_kernel_decide(capability: str) -> dict[str, Any]:\n    value = " ".join(str(capability or "").split())[:500]\n    if len(value) < 3:\n        raise HTTPException(status_code=422, detail="capability_required")\n    return factory_kernel_decide_impl(value)\n\n\n@app.get("/internal/n8n/catalog")\ndef internal_n8n_catalog() -> dict[str, Any]:\n    try:\n        catalog = json.loads(N8N_CATALOG_RAW)\n    except json.JSONDecodeError:\n        catalog = {}\n    if not isinstance(catalog, dict):\n        catalog = {}\n    return {\"ok\": True, \"aliases\": sorted(str(key) for key in catalog.keys()), \"count\": len(catalog)}\n'''
+    text = ensure_block_before(
+        text,
+        '\n@app.post("/artisan", dependencies=[Depends(auth)])\n',
+        kernel_endpoint,
+        'def internal_factory_kernel_decide(',
+        'factory kernel internal endpoint',
+    )
+    text = text.replace(
+        'target_container = "vitrine_factory_hml_app" if req.command == "factory:intake-probe" else LARAVEL_CONTAINER',
+        'target_container = "vitrine_factory_hml_app" if req.command in {"factory:intake-probe", "factory:decision"} else LARAVEL_CONTAINER',
+    )
     ops_broker.write_text(text, encoding='utf-8')
+
+    compose_base = ROOT / 'docker-compose.mcp.yml'
+    backup(compose_base)
+    compose_base_text = compose_base.read_text(encoding='utf-8')
+    compose_base_text = ensure_compose_entry(
+        compose_base_text,
+        'ops_broker',
+        'networks',
+        '- vitrine_net',
+    )
+    compose_base.write_text(compose_base_text, encoding='utf-8')
 
     main_py = ROOT / 'main.py'
     backup(main_py)
     text = main_py.read_text(encoding='utf-8')
 
-    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_git_stage_explicit as _project_git_stage_explicit,\n    project_git_commit_explicit as _project_git_commit_explicit,\n    project_write_file as _project_write_file,\n    project_php_lint as _project_php_lint,\n    project_deploy as _project_deploy,\n)\n'''
+    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_docker_container_info as _project_docker_container_info,\n    project_docker_container_env_safe as _project_docker_container_env_safe,\n    project_compose_rm_explicit as _project_compose_rm_explicit,\n    project_git_stage_explicit as _project_git_stage_explicit,\n    project_git_commit_explicit as _project_git_commit_explicit,\n    project_write_file as _project_write_file,\n    project_php_lint as _project_php_lint,\n    project_deploy as _project_deploy,\n)\n'''
 
     if 'from project_manager_tools import' not in text:
         marker = 'from tvsumare_migration_tools import ('
@@ -166,6 +245,9 @@ def main() -> None:
         if import_end == -1:
             raise RuntimeError('imports project manager: fechamento não encontrado')
         import_lines = (
+            '    project_docker_container_info as _project_docker_container_info,\n',
+            '    project_docker_container_env_safe as _project_docker_container_env_safe,\n',
+            '    project_compose_rm_explicit as _project_compose_rm_explicit,\n',
             '    project_git_stage_explicit as _project_git_stage_explicit,\n',
             '    project_git_commit_explicit as _project_git_commit_explicit,\n',
             '    project_write_file as _project_write_file,\n',
@@ -232,6 +314,33 @@ def main() -> None:
             'def project_php_lint(',
             'registro project php lint tool',
         )
+    if 'def project_docker_container_info(' not in text:
+        docker_info_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_info(project_id, container_name)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            docker_info_block,
+            'def project_docker_container_info(',
+            'registro project docker container info tool',
+        )
+    if 'def project_docker_container_env_safe(' not in text:
+        docker_env_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_env_safe(project_id, container_name)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            docker_env_block,
+            'def project_docker_container_env_safe(',
+            'registro project docker container env safe tool',
+        )
+    if 'def project_compose_rm_explicit(' not in text:
+        compose_rm_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_compose_rm_explicit(\n    project_id: str,\n    compose_file: str,\n    services: list[str],\n    docker_project: str = "",\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_compose_rm_explicit(project_id, compose_file, services, docker_project, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            compose_rm_block,
+            'def project_compose_rm_explicit(',
+            'registro project compose rm explicit tool',
+        )
     main_py.write_text(text, encoding='utf-8')
 
     dockerfile = ROOT / 'Dockerfile'
@@ -271,6 +380,12 @@ def main() -> None:
 
     backup(compose_override)
     compose_text = compose_override.read_text(encoding='utf-8')
+    compose_text = re.sub(
+        r'^\s{6}PROJECT_DOCKER_ALLOWED_PREFIXES:.*\n?',
+        '',
+        compose_text,
+        flags=re.MULTILINE,
+    )
 
     compose_text = ensure_compose_entry(
         compose_text,
@@ -283,6 +398,12 @@ def main() -> None:
         'ops_broker',
         'environment',
         'PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects',
+    )
+    compose_text = ensure_compose_entry(
+        compose_text,
+        'ops_broker',
+        'environment',
+        'PROJECT_DOCKER_ALLOWED_PREFIXES: vitrine_core_,cursos_ia_mvp_,tvsumare_,agente_compras_,vitrine_factory_,studio_,vitrine_social_',
     )
     compose_text = ensure_compose_entry(
         compose_text,
