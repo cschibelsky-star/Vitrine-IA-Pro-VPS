@@ -86,6 +86,22 @@ def project_git_status(project_id: str) -> dict[str, Any]:
     return project_status(project_id)
 
 
+def project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/docker/container-info",
+        {"project_id": project_id, "container_name": container_name},
+    )
+
+
+def project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/docker/container-env-safe",
+        {"project_id": project_id, "container_name": container_name},
+    )
+
+
 def project_file_read_safe(
     project_id: str,
     path: str,
@@ -151,6 +167,26 @@ def project_compose_explicit(
             "compose_file": compose_file,
             "docker_project": docker_project,
             "action": action,
+            "confirm": confirm,
+        },
+    )
+
+
+def project_compose_rm_explicit(
+    project_id: str,
+    compose_file: str,
+    services: list[str],
+    docker_project: str = "",
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/compose/rm-explicit",
+        {
+            "project_id": project_id,
+            "compose_file": compose_file,
+            "services": services,
+            "docker_project": docker_project,
             "confirm": confirm,
         },
     )
@@ -224,6 +260,26 @@ def project_deploy(
             "update_repository": update_repository,
             "build": build,
             "start": start,
+        },
+    )
+
+
+def project_container_exec(
+    project_id: str,
+    container_name: str,
+    command: list[str],
+    workdir: str = "/var/www/html",
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/container/exec",
+        {
+            "project_id": project_id,
+            "container_name": container_name,
+            "command": command,
+            "workdir": workdir,
+            "confirm": confirm,
         },
     )
 
