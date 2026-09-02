@@ -9,6 +9,7 @@ services:
       PROJECT_MANIFEST_ROOT: /app/project-manifests
       PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
       PROJECT_MAX_READ_BYTES: 200000
+      PROJECT_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
       OPS_AUDIT_LOG: /var/log/vitrine-ops-v5/audit.jsonl
     volumes:
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:rw
