@@ -86,6 +86,7 @@ services:
       PROJECT_MANIFEST_ROOT: /app/project-manifests
       PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
       PROJECT_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
+      OPS_AUDIT_LOG: /tmp/audit.jsonl
       PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:ro
