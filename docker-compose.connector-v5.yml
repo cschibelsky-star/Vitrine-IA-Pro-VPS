@@ -4,16 +4,23 @@ services:
       context: .
       dockerfile: connector-v5/Dockerfile
     container_name: vitrine_mcp_v5
+    command: ["/bin/sh", "-lc", "apk add --no-cache openssh-client bash openssl && exec python /app/main.py"]
     environment:
       PROJECT_MANIFEST_ROOT: /app/project-manifests
       PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
       PROJECT_MAX_READ_BYTES: 200000
+      PROJECT_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
       OPS_AUDIT_LOG: /var/log/vitrine-ops-v5/audit.jsonl
     volumes:
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:rw
       - /srv/projects:/srv/projects:rw
       - /srv/tvsumare:/srv/tvsumare:rw
+      - /srv/vitrine/docker/nginx/conf.d:/srv/vitrine/docker/nginx/conf.d:rw
+      - /srv/vitrine/docker/nginx/html:/srv/vitrine/docker/nginx/html:rw
+      - /srv/vitrine/ssl:/srv/vitrine/ssl:rw
+      - /srv/vitrine/backups:/srv/vitrine/backups:rw
       - /var/log/vitrine-ops-v5:/var/log/vitrine-ops-v5:rw
+      - /root/.ssh:/root/.ssh:ro
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:8867:8000"

@@ -1,20 +1,30 @@
 services:
   vitrine_ops_api:
-    profiles: ["ops-api"]
     build:
       context: .
       dockerfile: ops-api/Dockerfile
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        set -eu;
+        . /run/secrets/ops.env;
+        export OPS_BROKER_TOKEN;
+        exec uvicorn main:app --host 0.0.0.0 --port 8080
     container_name: vitrine_ops_api_hml
     environment:
       PROJECT_MANIFEST_ROOT: /app/project-manifests
       PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects
       PROJECT_MANAGER_TIMEOUT: 1200
       OPS_AUDIT_LOG: /var/log/vitrine-ops/audit.jsonl
-      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+      OPS_BROKER_TOKEN_FILE: /run/secrets/ops.env
+      DOCKER_HOST: tcp://vitrine_mcp_docker_proxy:2375
       VITRINE_OPS_API_VERSION: 0.1.0
     volumes:
       - /srv/projects:/srv/projects:rw
       - /srv/tvsumare:/srv/tvsumare:rw
+      - /srv/connectors:/srv/connectors:ro
+      - /srv/connectors/vitrine-vps-mcp/secrets/ops.env:/run/secrets/ops.env:ro
       - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
     ports:
       - "127.0.0.1:18080:8080"
@@ -29,6 +39,7 @@ services:
     restart: unless-stopped
 
   connector_self_update_install:
+    profiles: ["self-update"]
     image: python:3.12-slim
     working_dir: /source
     environment:
@@ -41,6 +52,7 @@ services:
     restart: "no"
 
   connector_self_update_rebuild:
+    profiles: ["self-update"]
     image: docker:27-cli
     depends_on:
       connector_self_update_install:

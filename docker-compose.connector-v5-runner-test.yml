@@ -1,0 +1,138 @@
+services:
+  connector_v5_runner_test:
+    build:
+      context: .
+      dockerfile: connector-v5/Dockerfile
+    image: vitrine-mcp-v5-php-runner-test-v59:local
+    container_name: vitrine_mcp_v5_php_runner_test_v59
+    environment:
+      PROJECT_MANIFEST_ROOT: /app/project-manifests
+      PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
+      PROJECT_MAX_READ_BYTES: "200000"
+      PROJECT_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
+      OPS_AUDIT_LOG: /var/log/vitrine-ops-v5/audit.jsonl
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:ro
+      - /srv/projects:/srv/projects:ro
+      - /srv/tvsumare:/srv/tvsumare:ro
+      - /srv/projects/vitrine-vps-mcp-test/logs:/var/log/vitrine-ops-v5:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:8869:8000"
+    network_mode: bridge
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),3); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+    restart: "no"
+
+  php_validation_smoke:
+    image: vitrine-mcp-v5-php-runner-test-v59:local
+    container_name: vitrine_mcp_v5_php_validation_smoke_v59
+    command:
+      - python
+      - -c
+      - |
+        import json
+        import pathlib
+        import sys
+        import time
+        import traceback
+        output = pathlib.Path("/results/php-runner-smoke.json")
+        files = ["app/Marketing/Domain/Agents/AgentRegistry.php","app/Marketing/Domain/Agents/AgentType.php","app/Marketing/Domain/Approvals/ApprovalDecision.php","app/Marketing/Domain/Artifacts/ArtifactStatus.php","app/Marketing/Domain/Campaigns/CampaignStatus.php","app/Marketing/Domain/Contracts/CommonEnvelope.php","app/Marketing/Domain/Tasks/TaskStatus.php","app/Marketing/Infrastructure/Persistence/Models/Concerns/BelongsToCompany.php","app/Marketing/Infrastructure/Persistence/Models/MarketingAgentDefinition.php","app/Marketing/Infrastructure/Persistence/Models/MarketingApproval.php","app/Marketing/Infrastructure/Persistence/Models/MarketingArtifactVersion.php","app/Marketing/Infrastructure/Persistence/Models/MarketingAuditEvent.php","app/Marketing/Infrastructure/Persistence/Models/MarketingCampaign.php","app/Marketing/Infrastructure/Persistence/Models/MarketingCampaignTask.php","app/Marketing/Infrastructure/Persistence/Models/MarketingQaIssue.php","app/Marketing/Infrastructure/Persistence/Models/MarketingTaskDependency.php","config/marketing_agents.php","database/migrations/2026_09_01_190001_create_marketing_campaigns_table.php","database/migrations/2026_09_01_190002_create_marketing_agent_definitions_table.php","database/migrations/2026_09_01_190003_create_marketing_campaign_tasks_table.php","database/migrations/2026_09_01_190004_create_marketing_task_dependencies_table.php","database/migrations/2026_09_01_190005_create_marketing_artifact_versions_table.php","database/migrations/2026_09_01_190006_create_marketing_qa_issues_table.php","database/migrations/2026_09_01_190007_create_marketing_approvals_table.php","database/migrations/2026_09_01_190008_create_marketing_audit_events_table.php","tests/Unit/Marketing/AgentRegistryTest.php","tests/Unit/Marketing/CommonEnvelopeTest.php","tests/Unit/Marketing/MarketingMigrationContractTest.php","tests/Unit/Marketing/SchemaFilesTest.php"]
+        try:
+            import main
+            lint_tool = main.project_php_lint
+            validate_tool = main.project_php_validate
+            lint_invoke = getattr(lint_tool, "fn", None) or getattr(lint_tool, "function", None) or getattr(lint_tool, "_fn", None)
+            validate_invoke = getattr(validate_tool, "fn", None) or getattr(validate_tool, "function", None) or getattr(validate_tool, "_fn", None)
+            if lint_invoke is None or validate_invoke is None:
+                raise RuntimeError("function_tool_callable_missing")
+            lint_results = {
+                path: lint_invoke("vitrine-marketing-agents-core-hml", path)
+                for path in files
+            }
+            migration = validate_invoke("vitrine-marketing-agents-core-hml", "migrate_pretend")
+            payload_data = {
+                "lint": {
+                    "total": len(lint_results),
+                    "passed": sum(1 for result in lint_results.values() if result.get("ok")),
+                    "failed": {
+                        path: {
+                            "exit_code": result.get("exit_code"),
+                            "error": result.get("error"),
+                            "stderr": str(result.get("stderr") or "")[-1000:],
+                        }
+                        for path, result in lint_results.items()
+                        if not result.get("ok")
+                    },
+                },
+                "migrate_pretend": {
+                    "ok": migration.get("ok"),
+                    "exit_code": migration.get("exit_code"),
+                    "stderr": str(migration.get("stderr") or "")[-2000:],
+                },
+                "phpunit": {
+                    "executed": False,
+                    "reason": "phpunit_runtime_unavailable_in_runner_image",
+                },
+            }
+            ok = payload_data["lint"]["passed"] == payload_data["lint"]["total"] and payload_data["migrate_pretend"]["ok"]
+            payload = json.dumps(payload_data, ensure_ascii=False, indent=2)
+        except BaseException as exc:
+            payload = json.dumps({
+                "ok": False,
+                "exception": type(exc).__name__,
+                "detail": str(exc),
+                "traceback": traceback.format_exc(),
+            }, ensure_ascii=False, indent=2)
+            ok = False
+        output.write_text(payload + "\n", encoding="utf-8")
+        print(payload, flush=True)
+        if not ok:
+            sys.exit(1)
+        pathlib.Path("/tmp/validation-ok").write_text("ok\n", encoding="utf-8")
+        time.sleep(3600)
+    environment:
+      PROJECT_MANIFEST_ROOT: /app/project-manifests
+      PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
+      PROJECT_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
+      OPS_AUDIT_LOG: /tmp/audit.jsonl
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:ro
+      - /srv/projects:/srv/projects:ro
+      - /srv/tvsumare:/srv/tvsumare:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./validation-output:/results:rw
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/validation-ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
