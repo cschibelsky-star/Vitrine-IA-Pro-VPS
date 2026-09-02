@@ -55,7 +55,9 @@ services:
             operation: main.project_php_validate("vitrine-marketing-agents-core-hml", operation)
             for operation in ("tests_marketing", "migrate_pretend")
         }
-        print(json.dumps(results, ensure_ascii=False), flush=True)
+        payload = json.dumps(results, ensure_ascii=False, indent=2)
+        print(payload, flush=True)
+        pathlib.Path("/results/php-runner-smoke.json").write_text(payload + "\n", encoding="utf-8")
         if not all(result.get("ok") for result in results.values()):
             sys.exit(1)
         pathlib.Path("/tmp/validation-ok").write_text("ok\n", encoding="utf-8")
@@ -70,6 +72,7 @@ services:
       - /srv/projects:/srv/projects:ro
       - /srv/tvsumare:/srv/tvsumare:ro
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./validation-output:/results:rw
     network_mode: none
     read_only: true
     tmpfs:
