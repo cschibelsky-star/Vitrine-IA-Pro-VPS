@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: connector-v5/Dockerfile
-    image: vitrine-mcp-v5-php-runner-test:local
-    container_name: vitrine_mcp_v5_php_runner_test
+    image: vitrine-mcp-v5-php-runner-test-v59:local
+    container_name: vitrine_mcp_v5_php_runner_test_v59
     environment:
       PROJECT_MANIFEST_ROOT: /app/project-manifests
       PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
@@ -19,7 +19,7 @@ services:
       - /srv/projects/vitrine-vps-mcp-test/logs:/var/log/vitrine-ops-v5:rw
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "127.0.0.1:8868:8000"
+      - "127.0.0.1:8869:8000"
     network_mode: bridge
     read_only: true
     tmpfs:
