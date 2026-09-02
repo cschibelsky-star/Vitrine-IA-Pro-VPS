@@ -12,7 +12,7 @@ from typing import Any
 import psutil
 from fastmcp import FastMCP
 
-VERSION = "0.5.8-routing-activate"
+VERSION = "0.5.9-project-php-runner"
 MANIFEST_ROOT = Path(os.getenv("PROJECT_MANIFEST_ROOT", "/app/project-manifests")).resolve()
 ALLOWED_WORKSPACE_ROOTS = tuple(Path(p).resolve() for p in os.getenv("PROJECT_WORKSPACE_ROOTS", "/srv/projects,/srv/tvsumare").split(",") if p.strip())
 AUDIT_LOG = Path(os.getenv("OPS_AUDIT_LOG", "/var/log/vitrine-ops-v5/audit.jsonl"))
@@ -636,8 +636,94 @@ def project_php_lint(project_id: str, path: str) -> dict[str, Any]:
         _audit("project_php_lint", {"project_id": project_id, "path": relative}, {"ok": result.get("ok", False), "runtime": "project_container", "container": name, "exit_code": result.get("exit_code")})
         return result
 
-    result = {"ok": False, "error": "php_runtime_not_found", "path": relative, "docker_project": docker_project}
-    _audit("project_php_lint", {"project_id": project_id, "path": relative}, result)
+    runner_image = os.getenv("PROJECT_PHP_RUNNER_IMAGE", "vitrine-core-hml-app:latest").strip()
+    if not runner_image or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/@-" for ch in runner_image):
+        result = {"ok": False, "error": "php_runner_image_invalid", "path": relative}
+        _audit("project_php_lint", {"project_id": project_id, "path": relative}, result)
+        return result
+
+    image_check = _run(["docker", "image", "inspect", runner_image], repository, timeout=30)
+    if not image_check.get("ok"):
+        result = {"ok": False, "error": "php_runner_image_unavailable", "path": relative, "runtime_image": runner_image}
+        _audit("project_php_lint", {"project_id": project_id, "path": relative}, result)
+        return result
+
+    result = _run([
+        "docker", "run", "--rm",
+        "--network", "none",
+        "--read-only",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "--pids-limit", "64",
+        "--memory", "256m",
+        "--cpus", "1",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=32m",
+        "--entrypoint", "php",
+        "--mount", f"type=bind,src={repository},dst=/project,readonly",
+        runner_image,
+        "-l", f"/project/{relative}",
+    ], repository, timeout=30)
+    result.update({"path": relative, "runtime": "ephemeral_container", "runtime_image": runner_image})
+    _audit("project_php_lint", {"project_id": project_id, "path": relative}, {"ok": result.get("ok", False), "runtime": "ephemeral_container", "runtime_image": runner_image, "exit_code": result.get("exit_code")})
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_php_validate(project_id: str, operation: str = "tests_marketing") -> dict[str, Any]:
+    operation = str(operation or "").strip().lower()
+    commands = {
+        "tests_marketing": "php artisan test tests/Unit/Marketing --no-interaction",
+        "migrate_pretend": "php artisan migrate --pretend --no-interaction",
+    }
+    if operation not in commands:
+        return {"ok": False, "error": "unsupported_php_validation_operation", "allowed": sorted(commands)}
+
+    _, _, repository = _project_paths(project_id)
+    if not (repository / "artisan").is_file() or not (repository / "composer.json").is_file():
+        return {"ok": False, "error": "laravel_project_required", "operation": operation}
+
+    runner_image = os.getenv("PROJECT_PHP_RUNNER_IMAGE", "vitrine-core-hml-app:latest").strip()
+    if not runner_image or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/@-" for ch in runner_image):
+        return {"ok": False, "error": "php_runner_image_invalid", "operation": operation}
+
+    image_check = _run(["docker", "image", "inspect", runner_image], repository, timeout=30)
+    if not image_check.get("ok"):
+        return {"ok": False, "error": "php_runner_image_unavailable", "operation": operation, "runtime_image": runner_image}
+
+    bootstrap = (
+        "set -eu; "
+        "mkdir -p /work/project; "
+        "cp -a /var/www/html/. /work/project/; "
+        "cp -a /source/. /work/project/; "
+        "cd /work/project; "
+        + commands[operation]
+    )
+    result = _run([
+        "docker", "run", "--rm",
+        "--network", "none",
+        "--read-only",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "--pids-limit", "128",
+        "--memory", "768m",
+        "--cpus", "1",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=32m",
+        "--tmpfs", "/work:rw,nosuid,nodev,size=768m",
+        "--env", "APP_ENV=testing",
+        "--env", "APP_DEBUG=false",
+        "--env", "APP_KEY=base64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        "--env", "DB_CONNECTION=sqlite",
+        "--env", "DB_DATABASE=:memory:",
+        "--env", "CACHE_STORE=array",
+        "--env", "SESSION_DRIVER=array",
+        "--env", "QUEUE_CONNECTION=sync",
+        "--entrypoint", "sh",
+        "--mount", f"type=bind,src={repository},dst=/source,readonly",
+        runner_image,
+        "-lc", bootstrap,
+    ], repository, timeout=600)
+    result.update({"project_id": project_id, "operation": operation, "runtime": "ephemeral_container", "runtime_image": runner_image})
+    _audit("project_php_validate", {"project_id": project_id, "operation": operation}, {"ok": result.get("ok", False), "runtime_image": runner_image, "exit_code": result.get("exit_code")})
     return result
 
 
