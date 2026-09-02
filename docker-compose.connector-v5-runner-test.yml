@@ -38,3 +38,53 @@ services:
       retries: 8
       start_period: 10s
     restart: "no"
+
+  php_validation_smoke:
+    image: vitrine-mcp-v5-php-runner-test-v59:local
+    container_name: vitrine_mcp_v5_php_validation_smoke_v59
+    command:
+      - python
+      - -c
+      - |
+        import json
+        import pathlib
+        import sys
+        import time
+        import main
+        results = {
+            operation: main.project_php_validate("vitrine-marketing-agents-core-hml", operation)
+            for operation in ("tests_marketing", "migrate_pretend")
+        }
+        print(json.dumps(results, ensure_ascii=False), flush=True)
+        if not all(result.get("ok") for result in results.values()):
+            sys.exit(1)
+        pathlib.Path("/tmp/validation-ok").write_text("ok\n", encoding="utf-8")
+        time.sleep(3600)
+    environment:
+      PROJECT_MANIFEST_ROOT: /app/project-manifests
+      PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
+      PROJECT_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:ro
+      - /srv/projects:/srv/projects:ro
+      - /srv/tvsumare:/srv/tvsumare:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/validation-ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
