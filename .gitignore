@@ -1,0 +1,13 @@
+validation-output/
+
+# Vitrine operational hygiene
+.env
+.env.*
+!.env.example
+*.bak
+*.bak-*
+*.backup-connector-*
+*.tmp
+*.log
+__pycache__/
+*.py[cod]
