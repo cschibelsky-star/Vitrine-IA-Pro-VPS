@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -11,7 +12,7 @@ from typing import Any
 import psutil
 from fastmcp import FastMCP
 
-VERSION = "0.5.4-php-lint-runtime"
+VERSION = "0.5.9-project-php-runner"
 MANIFEST_ROOT = Path(os.getenv("PROJECT_MANIFEST_ROOT", "/app/project-manifests")).resolve()
 ALLOWED_WORKSPACE_ROOTS = tuple(Path(p).resolve() for p in os.getenv("PROJECT_WORKSPACE_ROOTS", "/srv/projects,/srv/tvsumare").split(",") if p.strip())
 AUDIT_LOG = Path(os.getenv("OPS_AUDIT_LOG", "/var/log/vitrine-ops-v5/audit.jsonl"))
@@ -152,6 +153,11 @@ def _runtime_config(manifest: dict[str, Any]) -> tuple[Path, set[str]]:
             "env_file": ".env.runtime",
             "allowed_keys": ["CORE_AI_HUB_URL", "CENTRO_IA_INTERNAL_TOKEN", "VIA_AI_PROJECT_ID"],
         }
+    elif not runtime and manifest.get("id") in {"cursos-ia-bridge-e2e-hml", "cursos-ia-mvp"}:
+        runtime = {
+            "env_file": ".env.runtime",
+            "allowed_keys": ["AI_BROKER_TOKEN", "AI_API_KEY"],
+        }
     relative = str(runtime.get("env_file", ".env.runtime")).strip().replace("\\", "/")
     if not relative or relative.startswith("/") or ".." in relative.split("/"):
         raise ValueError("invalid_runtime_env_file")
@@ -235,7 +241,7 @@ def project_manifest(project_id: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
-def project_manifest_create(project_id: str, name: str, workspace_root: str, repository_url: str, branch: str = "main", repository_directory: str = "repository", shared_directories: list[str] | None = None, compose_file: str = "", docker_project: str = "", release_directory: str = "releases", confirm: str = "") -> dict[str, Any]:
+def project_manifest_create(project_id: str, name: str, workspace_root: str, repository_url: str, branch: str = "main", repository_directory: str = "repository", shared_directories: list[str] | None = None, compose_file: str = "", docker_project: str = "", release_directory: str = "releases", runtime_env_file: str = ".env.runtime", runtime_allowed_keys: list[str] | None = None, confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
     project_id = _safe_project_id(project_id)
@@ -243,7 +249,7 @@ def project_manifest_create(project_id: str, name: str, workspace_root: str, rep
     if manifest_path.exists():
         return {"ok": False, "error": "manifest_already_exists", "project_id": project_id}
     workspace = _validated_workspace_root(workspace_root)
-    repo_url = _validated_repository_url(str(repository_url))
+    repo_url = _validated_repository_url(repository_url)
     repo_dir = str(repository_directory or "repository").strip().replace("\\", "/")
     release_dir = str(release_directory or "releases").strip().replace("\\", "/")
     if not repo_dir or repo_dir.startswith("/") or ".." in repo_dir.split("/"):
@@ -256,6 +262,16 @@ def project_manifest_create(project_id: str, name: str, workspace_root: str, rep
         if not value or value.startswith("/") or ".." in value.split("/"):
             raise ValueError("invalid_shared_directory")
         shared.append(value)
+    runtime_file = str(runtime_env_file or ".env.runtime").strip().replace("\\", "/")
+    if not runtime_file or runtime_file.startswith("/") or ".." in runtime_file.split("/"):
+        raise ValueError("invalid_runtime_env_file")
+    runtime_keys: list[str] = []
+    for item in runtime_allowed_keys or []:
+        key = str(item or "").strip()
+        if not key or any(ch not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" for ch in key) or key[0].isdigit():
+            raise ValueError("invalid_runtime_key")
+        if key not in runtime_keys:
+            runtime_keys.append(key)
     manifest = {
         "id": project_id,
         "name": str(name or project_id).strip() or project_id,
@@ -263,12 +279,39 @@ def project_manifest_create(project_id: str, name: str, workspace_root: str, rep
         "repository": {"url": repo_url, "branch": str(branch or "main").strip() or "main", "directory": repo_dir},
         "shared_directories": shared,
         "docker": {"compose_file": str(compose_file or "").strip(), "project_name": str(docker_project or project_id).strip() or project_id},
+        "runtime": {"env_file": runtime_file, "allowed_keys": runtime_keys},
         "domains": {"homologation": [], "production": []},
         "release": {"directory": release_dir, "exclude": [".git", ".env", "shared", "data", "uploads", "logs", "vendor", "node_modules"]},
     }
     _atomic_write_json(manifest_path, manifest)
-    _audit("project_manifest_create", {"project_id": project_id, "workspace_root": str(workspace), "repository_url": repo_url}, {"ok": True, "status": "created"})
+    _audit("project_manifest_create", {"project_id": project_id, "workspace_root": str(workspace), "repository_url": repo_url, "runtime_allowed_keys": runtime_keys}, {"ok": True, "status": "created"})
     return {"ok": True, "status": "created", "project_id": project_id, "manifest": manifest}
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_manifest_runtime_configure(project_id: str, runtime_allowed_keys: list[str], runtime_env_file: str = ".env.runtime", confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    project_id = _safe_project_id(project_id)
+    manifest_path = _manifest_path(project_id)
+    manifest = _load_manifest(project_id)
+    runtime_file = str(runtime_env_file or ".env.runtime").strip().replace("\\", "/")
+    if not runtime_file or runtime_file.startswith("/") or ".." in runtime_file.split("/"):
+        return {"ok": False, "error": "invalid_runtime_env_file", "project_id": project_id}
+    runtime_keys: list[str] = []
+    for item in runtime_allowed_keys or []:
+        key = str(item or "").strip()
+        if not key or any(ch not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" for ch in key) or key[0].isdigit():
+            return {"ok": False, "error": "invalid_runtime_key", "project_id": project_id, "key": key}
+        if key not in runtime_keys:
+            runtime_keys.append(key)
+    if not runtime_keys:
+        return {"ok": False, "error": "runtime_keys_required", "project_id": project_id}
+    manifest["runtime"] = {"env_file": runtime_file, "allowed_keys": runtime_keys}
+    _atomic_write_json(manifest_path, manifest)
+    result = {"ok": True, "status": "configured", "project_id": project_id, "runtime": manifest["runtime"]}
+    _audit("project_manifest_runtime_configure", {"project_id": project_id, "runtime_allowed_keys": runtime_keys, "runtime_env_file": runtime_file}, {"ok": True, "status": "configured"})
+    return result
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -299,7 +342,29 @@ def project_clone(project_id: str, confirm: str = "") -> dict[str, Any]:
 def project_status(project_id: str) -> dict[str, Any]:
     _, workspace, repository = _project_paths(project_id)
     is_git = (repository / ".git").is_dir()
-    return {"ok": True, "project_id": project_id, "workspace_exists": workspace.exists(), "repository_exists": repository.exists(), "repository_is_git": is_git, "git_status": _run(["git", "status", "--short", "--branch"], repository) if is_git else None, "origin": _run(["git", "remote", "get-url", "origin"], repository) if is_git else None}
+    result = {"ok": True, "project_id": project_id, "workspace_exists": workspace.exists(), "repository_exists": repository.exists(), "repository_is_git": is_git, "git_status": _run(["git", "status", "--short", "--branch"], repository) if is_git else None, "origin": _run(["git", "remote", "get-url", "origin"], repository) if is_git else None}
+    if project_id == "vitrine-ai-social-enterprise":
+        container = "studio_app"
+        migration_result = _run(["docker", "exec", "-w", "/var/www/html", container, "php", "artisan", "migrate:status", "--no-ansi"], repository, timeout=120)
+        stdout = str(migration_result.get("stdout") or "")
+        rows: list[dict[str, Any]] = []
+        for raw in stdout.splitlines():
+            line = raw.strip()
+            if not line.startswith("|") or "Migration" in line or set(line) <= {"|", "-", "+", " ", "="}:
+                continue
+            parts = [part.strip() for part in line.strip("|").split("|")]
+            if len(parts) < 3:
+                continue
+            rows.append({"migration": parts[0], "batch": parts[1], "status": parts[2]})
+        result["migration_status"] = {
+            "ok": bool(migration_result.get("ok")),
+            "container": container,
+            "exit_code": migration_result.get("exit_code"),
+            "migrations": rows,
+            "stdout": stdout[-20000:],
+            "stderr": str(migration_result.get("stderr") or "")[-4000:],
+        }
+    return result
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -308,6 +373,162 @@ def project_git_status(project_id: str) -> dict[str, Any]:
     if not (repository / ".git").is_dir():
         return {"ok": False, "error": "repository_not_git"}
     return _run(["git", "status", "--short", "--branch"], repository)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_git_compare_origin(project_id: str, branch: str = "") -> dict[str, Any]:
+    manifest, _, repository = _project_paths(project_id)
+    if not (repository / ".git").is_dir():
+        return {"ok": False, "error": "repository_not_git"}
+    target_branch = str(branch or manifest.get("repository", {}).get("branch", "main") or "main").strip()
+    if not target_branch or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/-" for ch in target_branch):
+        return {"ok": False, "error": "invalid_branch", "branch": target_branch}
+    origin = _run(["git", "remote", "get-url", "origin"], repository, timeout=30)
+    if not origin.get("ok"):
+        return {"ok": False, "error": "origin_unavailable", "detail": origin}
+    fetch = _run(["git", "fetch", "--prune", "origin", target_branch], repository, timeout=300)
+    if not fetch.get("ok"):
+        return {"ok": False, "error": "fetch_failed", "branch": target_branch, "detail": fetch}
+    local_head = _run(["git", "rev-parse", "HEAD"], repository, timeout=30)
+    remote_head = _run(["git", "rev-parse", f"origin/{target_branch}"], repository, timeout=30)
+    counts = _run(["git", "rev-list", "--left-right", "--count", f"HEAD...origin/{target_branch}"], repository, timeout=30)
+    status = _run(["git", "status", "--porcelain=v1"], repository, timeout=30)
+    ahead = behind = None
+    if counts.get("ok"):
+        parts = str(counts.get("stdout", "")).strip().split()
+        if len(parts) == 2:
+            ahead, behind = int(parts[0]), int(parts[1])
+    dirty = bool(str(status.get("stdout", "")).strip()) if status.get("ok") else None
+    relation = "unknown"
+    if ahead is not None and behind is not None:
+        if ahead == 0 and behind == 0:
+            relation = "clean" if not dirty else "dirty"
+        elif ahead > 0 and behind == 0:
+            relation = "ahead"
+        elif ahead == 0 and behind > 0:
+            relation = "behind"
+        else:
+            relation = "diverged"
+    result = {
+        "ok": True,
+        "project_id": project_id,
+        "branch": target_branch,
+        "origin": str(origin.get("stdout", "")).strip(),
+        "local_head": str(local_head.get("stdout", "")).strip() if local_head.get("ok") else None,
+        "remote_head": str(remote_head.get("stdout", "")).strip() if remote_head.get("ok") else None,
+        "ahead": ahead,
+        "behind": behind,
+        "dirty": dirty,
+        "relation": relation,
+        "status": str(status.get("stdout", ""))[-20000:],
+    }
+    _audit("project_git_compare_origin", {"project_id": project_id, "branch": target_branch}, {"ok": True, "relation": relation, "ahead": ahead, "behind": behind, "dirty": dirty})
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_git_reconcile_to_origin(project_id: str, branch: str = "", preservation_branch: str = "", confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    manifest, workspace, repository = _project_paths(project_id)
+    if not (repository / ".git").is_dir():
+        return {"ok": False, "error": "repository_not_git"}
+    target_branch = str(branch or manifest.get("repository", {}).get("branch", "main") or "main").strip()
+    preserve = str(preservation_branch or "").strip()
+    allowed_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/-"
+    if not target_branch or any(ch not in allowed_chars for ch in target_branch):
+        return {"ok": False, "error": "invalid_branch", "branch": target_branch}
+    if not preserve or any(ch not in allowed_chars for ch in preserve):
+        return {"ok": False, "error": "preservation_branch_required"}
+
+    expected_origin = _validated_repository_url(str(manifest.get("repository", {}).get("url", "")))
+    origin = _run(["git", "remote", "get-url", "origin"], repository, timeout=30)
+    if not origin.get("ok"):
+        return {"ok": False, "error": "origin_unavailable", "detail": origin}
+    actual_origin = str(origin.get("stdout", "")).strip()
+    if actual_origin != expected_origin:
+        return {"ok": False, "error": "origin_mismatch", "expected": expected_origin, "actual": actual_origin}
+
+    fetch = _run(["git", "fetch", "--prune", "origin", target_branch], repository, timeout=300)
+    if not fetch.get("ok"):
+        return {"ok": False, "error": "fetch_failed", "detail": fetch}
+    preserve_check = _run(["git", "ls-remote", "--exit-code", "--heads", "origin", f"refs/heads/{preserve}"], repository, timeout=60)
+    if not preserve_check.get("ok"):
+        return {"ok": False, "error": "preservation_branch_not_found", "preservation_branch": preserve}
+    remote_head = _run(["git", "rev-parse", f"origin/{target_branch}"], repository, timeout=30)
+    if not remote_head.get("ok"):
+        return {"ok": False, "error": "remote_branch_not_found", "branch": target_branch}
+
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    snapshot = (workspace / "snapshots" / f"git-reconcile-{stamp}").resolve()
+    if not _within(snapshot, workspace):
+        return {"ok": False, "error": "snapshot_path_blocked"}
+    snapshot.mkdir(parents=True, exist_ok=False)
+    before_status = _run(["git", "status", "--short", "--branch"], repository, timeout=30)
+    before_head = _run(["git", "rev-parse", "HEAD"], repository, timeout=30)
+    diff = _run(["git", "diff", "--binary"], repository, timeout=60)
+    cached = _run(["git", "diff", "--cached", "--binary"], repository, timeout=60)
+    untracked = _run(["git", "ls-files", "--others", "--exclude-standard"], repository, timeout=30)
+    (snapshot / "status.txt").write_text(str(before_status.get("stdout", "")), encoding="utf-8")
+    (snapshot / "head.txt").write_text(str(before_head.get("stdout", "")).strip() + "\n", encoding="utf-8")
+    (snapshot / "working.patch").write_text(str(diff.get("stdout", "")), encoding="utf-8")
+    (snapshot / "cached.patch").write_text(str(cached.get("stdout", "")), encoding="utf-8")
+    (snapshot / "untracked.txt").write_text(str(untracked.get("stdout", "")), encoding="utf-8")
+
+    quarantine = (workspace / "quarantine" / f"git-reconcile-{stamp}").resolve()
+    moved: list[str] = []
+    residual_markers = (".bak-", ".backup-connector-", "backup-connector-", "_smoke_probe.php", "_smoke_result.json", "broker_probe.php", "kairogen_probe.php", "kairogen_provider.php")
+    if untracked.get("ok"):
+        for raw in str(untracked.get("stdout", "")).splitlines():
+            rel = raw.strip().replace("\\", "/")
+            if not rel or rel.startswith("/") or ".." in rel.split("/"):
+                continue
+            if not any(marker in rel for marker in residual_markers):
+                continue
+            source = (repository / rel).resolve()
+            if not _within(source, repository) or not source.exists() or source.is_symlink():
+                continue
+            destination = (quarantine / rel).resolve()
+            if not _within(destination, quarantine):
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(destination))
+            moved.append(rel)
+
+    current_branch = _run(["git", "branch", "--show-current"], repository, timeout=30)
+    current_branch_name = str(current_branch.get("stdout", "")).strip() if current_branch.get("ok") else ""
+    if current_branch_name != target_branch:
+        checkout = _run(["git", "checkout", "-B", target_branch, f"origin/{target_branch}"], repository, timeout=120)
+        if not checkout.get("ok"):
+            _audit("project_git_reconcile_to_origin", {"project_id": project_id, "branch": target_branch, "preservation_branch": preserve}, {"ok": False, "stage": "checkout", "snapshot": str(snapshot)})
+            return {"ok": False, "error": "checkout_failed", "snapshot": str(snapshot), "quarantined": moved, "detail": checkout}
+    reset = _run(["git", "reset", "--hard", f"origin/{target_branch}"], repository, timeout=120)
+    if not reset.get("ok"):
+        _audit("project_git_reconcile_to_origin", {"project_id": project_id, "branch": target_branch, "preservation_branch": preserve}, {"ok": False, "stage": "reset", "snapshot": str(snapshot)})
+        return {"ok": False, "error": "reset_failed", "snapshot": str(snapshot), "quarantined": moved, "detail": reset}
+
+    after_head = _run(["git", "rev-parse", "HEAD"], repository, timeout=30)
+    after_status = _run(["git", "status", "--short", "--branch"], repository, timeout=30)
+    expected_head = str(remote_head.get("stdout", "")).strip()
+    actual_head = str(after_head.get("stdout", "")).strip() if after_head.get("ok") else ""
+    tracked_dirty = _run(["git", "status", "--porcelain=v1", "--untracked-files=no"], repository, timeout=30)
+    ok = bool(after_head.get("ok") and actual_head == expected_head and tracked_dirty.get("ok") and not str(tracked_dirty.get("stdout", "")).strip())
+    result = {
+        "ok": ok,
+        "project_id": project_id,
+        "branch": target_branch,
+        "preservation_branch": preserve,
+        "before_head": str(before_head.get("stdout", "")).strip() if before_head.get("ok") else None,
+        "remote_head": expected_head,
+        "after_head": actual_head,
+        "snapshot": str(snapshot),
+        "quarantine": str(quarantine) if moved else None,
+        "quarantined": moved,
+        "status": str(after_status.get("stdout", ""))[-20000:],
+        "tracked_clean": bool(tracked_dirty.get("ok") and not str(tracked_dirty.get("stdout", "")).strip()),
+    }
+    _audit("project_git_reconcile_to_origin", {"project_id": project_id, "branch": target_branch, "preservation_branch": preserve}, {"ok": ok, "before_head": result["before_head"], "after_head": actual_head, "remote_head": expected_head, "quarantined_count": len(moved), "snapshot": str(snapshot)})
+    return result
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -415,8 +636,94 @@ def project_php_lint(project_id: str, path: str) -> dict[str, Any]:
         _audit("project_php_lint", {"project_id": project_id, "path": relative}, {"ok": result.get("ok", False), "runtime": "project_container", "container": name, "exit_code": result.get("exit_code")})
         return result
 
-    result = {"ok": False, "error": "php_runtime_not_found", "path": relative, "docker_project": docker_project}
-    _audit("project_php_lint", {"project_id": project_id, "path": relative}, result)
+    runner_image = os.getenv("PROJECT_PHP_RUNNER_IMAGE", "vitrine-core-hml-app:latest").strip()
+    if not runner_image or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/@-" for ch in runner_image):
+        result = {"ok": False, "error": "php_runner_image_invalid", "path": relative}
+        _audit("project_php_lint", {"project_id": project_id, "path": relative}, result)
+        return result
+
+    image_check = _run(["docker", "image", "inspect", runner_image], repository, timeout=30)
+    if not image_check.get("ok"):
+        result = {"ok": False, "error": "php_runner_image_unavailable", "path": relative, "runtime_image": runner_image}
+        _audit("project_php_lint", {"project_id": project_id, "path": relative}, result)
+        return result
+
+    result = _run([
+        "docker", "run", "--rm",
+        "--network", "none",
+        "--read-only",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "--pids-limit", "64",
+        "--memory", "256m",
+        "--cpus", "1",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=32m",
+        "--entrypoint", "php",
+        "--mount", f"type=bind,src={repository},dst=/project,readonly",
+        runner_image,
+        "-l", f"/project/{relative}",
+    ], repository, timeout=30)
+    result.update({"path": relative, "runtime": "ephemeral_container", "runtime_image": runner_image})
+    _audit("project_php_lint", {"project_id": project_id, "path": relative}, {"ok": result.get("ok", False), "runtime": "ephemeral_container", "runtime_image": runner_image, "exit_code": result.get("exit_code")})
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_php_validate(project_id: str, operation: str = "tests_marketing") -> dict[str, Any]:
+    operation = str(operation or "").strip().lower()
+    commands = {
+        "tests_marketing": "vendor/bin/phpunit tests/Unit/Marketing --colors=never",
+        "migrate_pretend": "php artisan migrate --pretend --no-interaction",
+    }
+    if operation not in commands:
+        return {"ok": False, "error": "unsupported_php_validation_operation", "allowed": sorted(commands)}
+
+    _, _, repository = _project_paths(project_id)
+    if not (repository / "artisan").is_file() or not (repository / "composer.json").is_file():
+        return {"ok": False, "error": "laravel_project_required", "operation": operation}
+
+    runner_image = os.getenv("PROJECT_PHP_RUNNER_IMAGE", "vitrine-core-hml-app:latest").strip()
+    if not runner_image or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/@-" for ch in runner_image):
+        return {"ok": False, "error": "php_runner_image_invalid", "operation": operation}
+
+    image_check = _run(["docker", "image", "inspect", runner_image], repository, timeout=30)
+    if not image_check.get("ok"):
+        return {"ok": False, "error": "php_runner_image_unavailable", "operation": operation, "runtime_image": runner_image}
+
+    bootstrap = (
+        "set -eu; "
+        "mkdir -p /work/project; "
+        "cp -R /var/www/html/. /work/project/; "
+        "cp -R /source/. /work/project/; "
+        "cd /work/project; "
+        + commands[operation]
+    )
+    result = _run([
+        "docker", "run", "--rm",
+        "--network", "none",
+        "--read-only",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "--pids-limit", "128",
+        "--memory", "768m",
+        "--cpus", "1",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=32m",
+        "--tmpfs", "/work:rw,nosuid,nodev,size=768m",
+        "--env", "APP_ENV=testing",
+        "--env", "APP_DEBUG=false",
+        "--env", "APP_KEY=base64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        "--env", "DB_CONNECTION=sqlite",
+        "--env", "DB_DATABASE=:memory:",
+        "--env", "CACHE_STORE=array",
+        "--env", "SESSION_DRIVER=array",
+        "--env", "QUEUE_CONNECTION=sync",
+        "--entrypoint", "sh",
+        "--mount", f"type=bind,src={repository},dst=/source,readonly",
+        runner_image,
+        "-lc", bootstrap,
+    ], repository, timeout=600)
+    result.update({"project_id": project_id, "operation": operation, "runtime": "ephemeral_container", "runtime_image": runner_image})
+    _audit("project_php_validate", {"project_id": project_id, "operation": operation}, {"ok": result.get("ok", False), "runtime_image": runner_image, "exit_code": result.get("exit_code")})
     return result
 
 
@@ -444,6 +751,22 @@ def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: s
     normalized_key = str(key or "").strip()
     if normalized_key not in allowed:
         return {"ok": False, "error": "runtime_key_not_allowed", "project_id": project_id, "key": normalized_key}
+    if value == "__MIGRATE_EXISTING__":
+        if project_id not in {"cursos-ia-bridge-e2e-hml", "cursos-ia-mvp"} or normalized_key != "AI_BROKER_TOKEN":
+            return {"ok": False, "error": "runtime_migration_not_allowed", "project_id": project_id, "key": normalized_key}
+        inspected = _run(["docker", "inspect", "cursos_ia_mvp_hml"], Path("/"), timeout=30)
+        if not inspected.get("ok"):
+            return {"ok": False, "error": "runtime_migration_source_unavailable", "project_id": project_id, "key": normalized_key}
+        try:
+            payload = json.loads(inspected.get("stdout") or "[]")
+            item = payload[0] if isinstance(payload, list) and payload else {}
+            source_env = item.get("Config", {}).get("Env", []) or []
+            source_value = next((entry.split("=", 1)[1] for entry in source_env if entry.startswith(f"{normalized_key}=")), None)
+        except (json.JSONDecodeError, IndexError):
+            source_value = None
+        if source_value is None:
+            return {"ok": False, "error": "runtime_migration_key_missing", "project_id": project_id, "key": normalized_key}
+        value = source_value
     if "\n" in value or "\r" in value:
         return {"ok": False, "error": "runtime_value_invalid", "project_id": project_id, "key": normalized_key}
     backup_name = None
@@ -458,13 +781,190 @@ def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: s
     return result
 
 
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_laravel_migration_status(project_id: str) -> dict[str, Any]:
+    if project_id != "vitrine-ai-social-enterprise":
+        return {"ok": False, "error": "migration_status_not_allowed_for_project", "project_id": project_id}
+    _, _, repository = _project_paths(project_id)
+    container = "studio_app"
+    inspected = _run(["docker", "inspect", container], repository, timeout=30)
+    if not inspected.get("ok"):
+        return {"ok": False, "error": "source_runtime_unavailable", "project_id": project_id, "container": container}
+    try:
+        payload = json.loads(inspected.get("stdout") or "[]")
+        item = payload[0] if isinstance(payload, list) and payload else {}
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "source_runtime_inspect_invalid", "project_id": project_id}
+    if not item.get("State", {}).get("Running"):
+        return {"ok": False, "error": "source_runtime_not_running", "project_id": project_id, "container": container}
+    workdir = "/var/www/html"
+    result = _run(["docker", "exec", "-w", workdir, container, "php", "artisan", "migrate:status", "--no-ansi"], repository, timeout=120)
+    stdout = str(result.get("stdout") or "")
+    rows: list[dict[str, Any]] = []
+    for raw in stdout.splitlines():
+        line = raw.strip()
+        if not line.startswith("|") or "Migration" in line or set(line) <= {"|", "-", "+", " ", "="}:
+            continue
+        parts = [part.strip() for part in line.strip("|").split("|")]
+        if len(parts) < 3:
+            continue
+        migration, batch, status = parts[0], parts[1], parts[2]
+        rows.append({"migration": migration, "batch": batch, "status": status})
+    response = {
+        "ok": bool(result.get("ok")),
+        "project_id": project_id,
+        "container": container,
+        "exit_code": result.get("exit_code"),
+        "migrations": rows,
+        "stdout": stdout[-20000:],
+        "stderr": str(result.get("stderr") or "")[-4000:],
+    }
+    _audit("project_laravel_migration_status", {"project_id": project_id}, {"ok": response["ok"], "container": container, "exit_code": response["exit_code"], "migration_count": len(rows)})
+    return response
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_laravel_migrate_build1(project_id: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    if project_id != "vitrine-ai-social-enterprise":
+        return {"ok": False, "error": "migration_not_allowed_for_project", "project_id": project_id}
+    _, _, repository = _project_paths(project_id)
+    container = "studio_app"
+    migration = "database/migrations/2026_08_31_210500_create_social_entitlements_and_consumption_tables.php"
+    inspected = _run(["docker", "inspect", container], repository, timeout=30)
+    if not inspected.get("ok"):
+        return {"ok": False, "error": "source_runtime_unavailable", "project_id": project_id, "container": container}
+    try:
+        payload = json.loads(inspected.get("stdout") or "[]")
+        item = payload[0] if isinstance(payload, list) and payload else {}
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "source_runtime_inspect_invalid", "project_id": project_id}
+    if not item.get("State", {}).get("Running"):
+        return {"ok": False, "error": "source_runtime_not_running", "project_id": project_id, "container": container}
+    pre = _run(["docker", "exec", "-w", "/var/www/html", container, "php", "artisan", "migrate:status", "--no-ansi"], repository, timeout=120)
+    if not pre.get("ok"):
+        return {"ok": False, "error": "migration_status_failed_before", "detail": pre}
+    if "2026_08_31_210500_create_social_entitlements_and_consumption_tables" in str(pre.get("stdout") or ""):
+        return {"ok": True, "status": "already_ran", "project_id": project_id, "migration": migration}
+    result = _run(["docker", "exec", "-w", "/var/www/html", container, "php", "artisan", "migrate", "--path", migration, "--force", "--no-ansi"], repository, timeout=300)
+    post = _run(["docker", "exec", "-w", "/var/www/html", container, "php", "artisan", "migrate:status", "--no-ansi"], repository, timeout=120)
+    response = {
+        "ok": bool(result.get("ok")) and bool(post.get("ok")) and "2026_08_31_210500_create_social_entitlements_and_consumption_tables" in str(post.get("stdout") or ""),
+        "status": "migrated" if result.get("ok") else "failed",
+        "project_id": project_id,
+        "migration": migration,
+        "exit_code": result.get("exit_code"),
+        "stdout": str(result.get("stdout") or "")[-12000:],
+        "stderr": str(result.get("stderr") or "")[-4000:],
+        "post_status": str(post.get("stdout") or "")[-12000:],
+    }
+    _audit("project_laravel_migrate_build1", {"project_id": project_id, "migration": migration}, {"ok": response["ok"], "status": response["status"], "exit_code": response["exit_code"]})
+    return response
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_mariadb_backup(project_id: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    if project_id != "vitrine-ai-social-enterprise":
+        return {"ok": False, "error": "backup_not_allowed_for_project", "project_id": project_id}
+    manifest, workspace, repository = _project_paths(project_id)
+    source_container = "studio_app"
+    db_container = "vitrine_mariadb"
+    inspected = _run(["docker", "inspect", source_container], repository, timeout=30)
+    if not inspected.get("ok"):
+        return {"ok": False, "error": "source_runtime_unavailable", "detail": inspected}
+    try:
+        payload = json.loads(inspected.get("stdout") or "[]")
+        item = payload[0] if isinstance(payload, list) and payload else {}
+        env_items = item.get("Config", {}).get("Env", []) or []
+        env_map = {}
+        for entry in env_items:
+            key, sep, value = str(entry).partition("=")
+            if sep:
+                env_map[key] = value
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "source_runtime_inspect_invalid"}
+    expected = {
+        "DB_CONNECTION": "mysql",
+        "DB_HOST": db_container,
+        "DB_DATABASE": "vitrine_social",
+    }
+    for key, value in expected.items():
+        if env_map.get(key) != value:
+            return {"ok": False, "error": "database_runtime_mismatch", "key": key, "expected": value, "actual": env_map.get(key)}
+    username = env_map.get("DB_USERNAME", "")
+    password = env_map.get("DB_PASSWORD", "")
+    database = env_map.get("DB_DATABASE", "")
+    if not username or not password or not database:
+        return {"ok": False, "error": "database_credentials_incomplete"}
+    backup_dir = (workspace / "backups" / "database").resolve()
+    if not _within(backup_dir, workspace):
+        return {"ok": False, "error": "backup_path_blocked"}
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    target = backup_dir / f"vitrine_social-{stamp}.sql"
+    cmd = [
+        "docker", "exec", "-e", "MYSQL_PWD", db_container,
+        "mariadb-dump", "-u", username,
+        "--single-transaction", "--quick", "--routines", "--events", "--triggers",
+        "--hex-blob", "--default-character-set=utf8mb4", database,
+    ]
+    env = {**os.environ, "MYSQL_PWD": password, "LC_ALL": "C.UTF-8"}
+    try:
+        with target.open("wb") as fh:
+            proc = subprocess.run(cmd, cwd=str(repository), stdout=fh, stderr=subprocess.PIPE, timeout=1200, check=False, env=env)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if target.exists():
+            target.unlink()
+        return {"ok": False, "error": "database_backup_execution_failed", "detail": type(exc).__name__}
+    if proc.returncode != 0:
+        if target.exists():
+            target.unlink()
+        return {"ok": False, "error": "database_backup_failed", "exit_code": proc.returncode, "stderr": proc.stderr.decode("utf-8", errors="replace")[-4000:]}
+    size = target.stat().st_size if target.is_file() else 0
+    if size < 512:
+        if target.exists():
+            target.unlink()
+        return {"ok": False, "error": "database_backup_too_small", "bytes": size}
+    digest = hashlib.sha256()
+    with target.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    os.chmod(target, 0o600)
+    result = {
+        "ok": True,
+        "status": "created",
+        "project_id": project_id,
+        "database": database,
+        "backup_path": str(target),
+        "bytes": size,
+        "sha256": digest.hexdigest(),
+    }
+    _audit("project_mariadb_backup", {"project_id": project_id, "database": database}, {"ok": True, "backup_path": str(target), "bytes": size, "sha256": result["sha256"]})
+    return result
+
+
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
 def project_compose_explicit(project_id: str, compose_file: str, action: str = "status", docker_project: str = "", confirm: str = "") -> dict[str, Any]:
     target, relative = _safe_file(project_id, compose_file, True)
-    _, _, repository = _project_paths(project_id)
+    manifest, _, repository = _project_paths(project_id)
     action = str(action or "status").strip().lower()
-    project_name = docker_project.strip() or _load_manifest(project_id).get("docker", {}).get("project_name", project_id)
-    base = ["docker", "compose", "-p", project_name, "-f", str(target)]
+    project_name = docker_project.strip() or manifest.get("docker", {}).get("project_name", project_id)
+    base = ["docker", "compose"]
+    runtime_target = None
+    try:
+        runtime_target, _ = _runtime_config(manifest)
+    except PermissionError as exc:
+        if str(exc) != "runtime_keys_not_configured":
+            raise
+    if runtime_target is not None:
+        if not runtime_target.is_file():
+            runtime = manifest.get("runtime", {})
+            return {"ok": False, "error": "runtime_env_not_configured", "project_id": project_id, "runtime_env_file": str(runtime.get("env_file", ".env.runtime"))}
+        base += ["--env-file", str(runtime_target)]
+    base += ["-p", project_name, "-f", str(target)]
     if action == "status":
         cmd = base + ["ps"]
     elif action == "config":
@@ -478,6 +978,78 @@ def project_compose_explicit(project_id: str, compose_file: str, action: str = "
     result = _run(cmd, repository)
     result.update({"project_id": project_id, "compose_file": relative, "action": action, "docker_project": project_name})
     _audit("project_compose_explicit", {"project_id": project_id, "compose_file": relative, "action": action}, result)
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def activate_hml_route(route_id: str, confirm: str = "") -> dict[str, Any]:
+    """Publica uma rota HML previamente cadastrada no registry oficial. Exige confirm='EXECUTAR'."""
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    normalized = str(route_id or "").strip().lower()
+    if not normalized or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789-_" for ch in normalized):
+        return {"ok": False, "error": "invalid_route_id", "route_id": normalized}
+
+    try:
+        _, _, routing_repository = _project_paths("vitrine-ia-pro-vps")
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        return {"ok": False, "error": "routing_project_unavailable", "detail": str(exc)}
+
+    registry = routing_repository / "routing" / "routes.json"
+    script = routing_repository / "routing" / "activate_single_hml_route.sh"
+    if not registry.is_file() or not script.is_file():
+        return {"ok": False, "error": "routing_assets_missing", "registry": registry.is_file(), "script": script.is_file()}
+
+    try:
+        data = json.loads(registry.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"ok": False, "error": "routing_registry_invalid", "detail": type(exc).__name__}
+
+    route = next((item for item in data.get("routes", []) if item.get("id") == normalized), None)
+    if route is None:
+        return {"ok": False, "error": "route_not_registered", "route_id": normalized}
+    if route.get("environment") != "homologation":
+        return {"ok": False, "error": "route_environment_not_allowed", "route_id": normalized}
+    if route.get("ssl") is not True:
+        return {"ok": False, "error": "route_ssl_required", "route_id": normalized}
+    if route.get("status") not in {"pending_dns_proxy", "active"}:
+        return {"ok": False, "error": "route_status_not_publishable", "route_id": normalized, "status": route.get("status")}
+
+    env = {
+        **os.environ,
+        "ROUTE_ID": normalized,
+        "NGINX_SNI_HOST": "vitrine_nginx",
+        "LC_ALL": "C.UTF-8",
+    }
+    try:
+        proc = subprocess.run(
+            ["bash", str(script), str(routing_repository)],
+            cwd=str(routing_repository),
+            text=True,
+            capture_output=True,
+            timeout=1200,
+            check=False,
+            env=env,
+        )
+        result = {
+            "ok": proc.returncode == 0,
+            "route_id": normalized,
+            "hostname": route.get("hostname"),
+            "upstream": route.get("upstream"),
+            "exit_code": proc.returncode,
+            "stdout": proc.stdout[-30000:],
+            "stderr": proc.stderr[-10000:],
+        }
+    except subprocess.TimeoutExpired:
+        result = {"ok": False, "error": "route_activation_timeout", "route_id": normalized, "hostname": route.get("hostname")}
+    except OSError as exc:
+        result = {"ok": False, "error": "route_activation_exec_failed", "route_id": normalized, "detail": type(exc).__name__}
+
+    _audit(
+        "activate_hml_route",
+        {"route_id": normalized, "hostname": route.get("hostname")},
+        {"ok": result.get("ok", False), "exit_code": result.get("exit_code")},
+    )
     return result
 
 
