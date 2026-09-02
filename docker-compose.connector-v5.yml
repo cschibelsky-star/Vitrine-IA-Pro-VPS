@@ -9,7 +9,9 @@ services:
       PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
       PROJECT_MAX_READ_BYTES: 200000
       OPS_AUDIT_LOG: /var/log/vitrine-ops-v5/audit.jsonl
+    command: ["/bin/sh","-lc","apk add --no-cache openssh-client >/dev/null && exec python /app/main.py"]
     volumes:
+      - /root/.ssh:/root/.ssh:ro
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:rw
       - /srv/projects:/srv/projects:rw
       - /srv/tvsumare:/srv/tvsumare:rw

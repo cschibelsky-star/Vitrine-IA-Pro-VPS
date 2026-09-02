@@ -467,6 +467,8 @@ def project_compose_explicit(project_id: str, compose_file: str, action: str = "
     base = ["docker", "compose", "-p", project_name, "-f", str(target)]
     if action == "status":
         cmd = base + ["ps"]
+    elif action == "status-all":
+        cmd = base + ["ps", "-a"]
     elif action == "config":
         cmd = base + ["config", "--no-interpolate"]
     elif action in {"up", "down", "restart", "build", "pull"}:

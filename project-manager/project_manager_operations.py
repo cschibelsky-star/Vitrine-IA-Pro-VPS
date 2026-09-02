@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,20 @@ ALLOWED_WORKSPACE_ROOTS = tuple(
     if item.strip()
 )
 
+DOCKER_ALLOWED_PREFIXES = tuple(
+    item.strip()
+    for item in os.getenv(
+        "PROJECT_DOCKER_ALLOWED_PREFIXES",
+        "vitrine_core_,cursos_ia_mvp_,tvsumare_,agente_compras_",
+    ).split(",")
+    if item.strip()
+)
+SENSITIVE_ENV_MARKERS = (
+    "PASSWORD", "PASSWD", "SECRET", "TOKEN", "API_KEY", "APIKEY",
+    "PRIVATE_KEY", "ACCESS_KEY", "AUTH", "CREDENTIAL", "APP_KEY",
+)
+SAFE_CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
 class ProjectRequest(BaseModel):
     project_id: str
 
@@ -57,6 +72,11 @@ class ProjectGitStageRequest(BaseModel):
 class ProjectGitCommitRequest(BaseModel):
     project_id: str
     message: str
+    confirm: str = ""
+
+
+class ProjectGitPushRequest(BaseModel):
+    project_id: str
     confirm: str = ""
 
 
@@ -399,7 +419,12 @@ def project_git_commit_explicit(req: ProjectGitCommitRequest) -> dict[str, Any]:
     if not staged["stdout"].strip():
         raise HTTPException(status_code=409, detail="nothing_staged")
 
-    commit = run(["git", "commit", "-m", message], repository)
+    commit = run([
+        "git",
+        "-c", "user.name=Cristian Schibelsky",
+        "-c", "user.email=schibelsky69@gmail.com",
+        "commit", "-m", message,
+    ], repository)
     head = run(["git", "rev-parse", "HEAD"], repository) if commit["ok"] else None
     status = run(["git", "status", "--short", "--branch"], repository)
     outcome = {
@@ -413,6 +438,53 @@ def project_git_commit_explicit(req: ProjectGitCommitRequest) -> dict[str, Any]:
         "push_performed": False,
     }
     audit("project_git_commit_explicit", req.project_id, {"message": message}, outcome)
+    return outcome
+
+
+@router.post("/git/push", dependencies=[Depends(auth)])
+def project_git_push_explicit(req: ProjectGitPushRequest) -> dict[str, Any]:
+    if req.confirm != "GIT_PUSH":
+        raise HTTPException(status_code=409, detail="confirmation_required:GIT_PUSH")
+
+    manifest = load_manifest(req.project_id)
+    _, repository, _ = project_paths(manifest)
+    if not (repository / ".git").is_dir():
+        raise HTTPException(status_code=422, detail="repository_not_git")
+
+    expected_branch = str(manifest["repository"].get("branch", "main")).strip()
+    expected_origin = str(manifest["repository"]["url"]).strip()
+
+    current_branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], repository)
+    if not current_branch["ok"] or current_branch["stdout"].strip() != expected_branch:
+        raise HTTPException(status_code=409, detail="git_push_branch_mismatch")
+
+    origin = run(["git", "remote", "get-url", "origin"], repository)
+    if not origin["ok"] or origin["stdout"].strip() != expected_origin:
+        raise HTTPException(status_code=409, detail="git_push_origin_mismatch")
+
+    fetch = run(["git", "fetch", "origin", expected_branch], repository)
+    if not fetch["ok"]:
+        outcome = {"ok": False, "project_id": req.project_id, "stage": "fetch", "result": fetch}
+        audit("project_git_push_explicit", req.project_id, {"branch": expected_branch}, outcome)
+        return outcome
+
+    remote_ref = f"origin/{expected_branch}"
+    ff_check = run(["git", "merge-base", "--is-ancestor", remote_ref, "HEAD"], repository)
+    if not ff_check["ok"]:
+        raise HTTPException(status_code=409, detail="git_push_non_fast_forward")
+
+    push = run(["git", "push", "origin", f"HEAD:refs/heads/{expected_branch}"], repository)
+    status = run(["git", "status", "--short", "--branch"], repository)
+    outcome = {
+        "ok": push["ok"],
+        "project_id": req.project_id,
+        "branch": expected_branch,
+        "origin": expected_origin,
+        "push": push,
+        "status": status,
+        "force": False,
+    }
+    audit("project_git_push_explicit", req.project_id, {"branch": expected_branch}, outcome)
     return outcome
 
 
@@ -473,3 +545,204 @@ def project_php_lint(req: ProjectPathRequest) -> dict[str, Any]:
     except HTTPException as exc:
         _safe_audit_failure("project_php_lint", req.project_id, req.path, exc)
         raise
+
+
+class ProjectContainerRequest(BaseModel):
+    project_id: str
+    container_name: str
+
+
+class ProjectComposeRmRequest(BaseModel):
+    project_id: str
+    compose_file: str
+    services: list[str]
+    docker_project: str = ""
+    confirm: str = ""
+
+
+class ProjectContainerExecRequest(ProjectContainerRequest):
+    command: list[str]
+    workdir: str = "/var/www/html"
+    confirm: str = ""
+
+
+def run_json(command: list[str], cwd: Path) -> Any:
+    result = run(command, cwd)
+    if not result["ok"]:
+        raise HTTPException(status_code=502, detail={"command_failed": result})
+    try:
+        return json.loads(result["stdout"])
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail=f"invalid_docker_json: {exc}") from exc
+
+
+def validate_container_name(container_name: str) -> str:
+    name = container_name.strip()
+    if not SAFE_CONTAINER_RE.fullmatch(name):
+        raise HTTPException(status_code=422, detail="invalid_container_name")
+    if not DOCKER_ALLOWED_PREFIXES or not any(name.startswith(prefix) for prefix in DOCKER_ALLOWED_PREFIXES):
+        raise HTTPException(status_code=403, detail="container_not_allowed")
+    return name
+
+
+def redact_container_env(env_items: list[str]) -> dict[str, str]:
+    safe: dict[str, str] = {}
+    for item in env_items:
+        key, separator, value = item.partition("=")
+        if not separator:
+            continue
+        upper = key.upper()
+        safe[key] = "***REDACTED***" if any(marker in upper for marker in SENSITIVE_ENV_MARKERS) else value
+    return safe
+
+
+def require_confirm(value: str, expected: str) -> None:
+    if value != expected:
+        raise HTTPException(status_code=409, detail={"confirmation_required": expected})
+
+
+def validate_exec(command: list[str]) -> tuple[list[str], bool]:
+    if not command or len(command) > 20 or any(len(part) > 500 for part in command):
+        raise HTTPException(status_code=422, detail="invalid_command")
+    binary = command[0]
+    if binary not in SAFE_EXEC_BINARIES:
+        raise HTTPException(status_code=403, detail="command_not_allowed")
+    mutating = False
+    if binary == "php" and len(command) >= 3 and command[1] == "artisan":
+        artisan = command[2]
+        if artisan not in SAFE_ARTISAN_COMMANDS:
+            raise HTTPException(status_code=403, detail="artisan_command_not_allowed")
+        mutating = artisan in {"optimize:clear", "config:clear", "cache:clear", "route:clear", "view:clear", "filament:assets"}
+    elif binary in {"npm", "composer"}:
+        allowed = {("npm", "run", "build"), ("npm", "test"), ("npm", "run", "test"),
+                   ("composer", "validate"), ("composer", "install")}
+        prefix = tuple(command[:3]) if len(command) >= 3 else tuple(command[:2])
+        if not any(tuple(command[:len(item)]) == item for item in allowed):
+            raise HTTPException(status_code=403, detail="package_command_not_allowed")
+        mutating = binary == "composer" and len(command) > 1 and command[1] == "install"
+    return command, mutating
+
+
+@router.post("/compose/rm-explicit", dependencies=[Depends(auth)])
+def project_compose_rm_explicit(req: ProjectComposeRmRequest) -> dict[str, Any]:
+    if req.confirm != "EXECUTAR":
+        raise HTTPException(status_code=403, detail="confirmation_required")
+
+    manifest = load_manifest(req.project_id)
+    _, repository, _ = project_paths(manifest)
+    relative = str(req.compose_file or "").strip()
+    compose = validated_child(repository, relative, "compose_file")
+    if not compose.is_file():
+        raise HTTPException(status_code=422, detail="invalid_compose_file")
+
+    docker_project = str(req.docker_project or "").strip() or req.project_id
+    if any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for ch in docker_project):
+        raise HTTPException(status_code=422, detail="invalid_docker_project")
+
+    services = [str(item).strip() for item in req.services if str(item).strip()]
+    if not services:
+        raise HTTPException(status_code=422, detail="services_required")
+    if any(any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for ch in service) for service in services):
+        raise HTTPException(status_code=422, detail="invalid_compose_service")
+
+    command = [
+        "docker", "compose", "-p", docker_project, "-f", str(compose),
+        "rm", "-f", "-s", "-v", *services,
+    ]
+    result = run(command, repository)
+    response = {
+        "ok": result["ok"],
+        "project_id": req.project_id,
+        "compose_file": relative,
+        "docker_project": docker_project,
+        "services": services,
+        "action": "rm",
+        "result": result,
+    }
+    audit(
+        "project_compose_rm_explicit",
+        req.project_id,
+        {"compose_file": relative, "docker_project": docker_project, "services": services},
+        response,
+    )
+    return response
+
+
+@router.post("/docker/container-info", dependencies=[Depends(auth)])
+def project_docker_container_info(req: ProjectContainerRequest) -> dict[str, Any]:
+    manifest = load_manifest(req.project_id)
+    root, _, _ = project_paths(manifest)
+    name = validate_container_name(req.container_name)
+    inspected = run_json(["docker", "inspect", name], root)
+    if not isinstance(inspected, list) or not inspected:
+        raise HTTPException(status_code=404, detail="container_not_found")
+
+    item = inspected[0]
+    networks = item.get("NetworkSettings", {}).get("Networks", {}) or {}
+    state = item.get("State", {}) or {}
+    logs = run(["docker", "logs", "--tail", "120", name], root)
+    log_text = (str(logs.get("stdout", "")) + str(logs.get("stderr", "")))[-12000:]
+    log_text = re.sub(
+        r"(?i)(password|passwd|secret|token|api[_-]?key|app[_-]?key|authorization)(\s*[=:]\s*)([^\s,;]+)",
+        r"\1\2***REDACTED***",
+        log_text,
+    )
+    result = {
+        "ok": True,
+        "project_id": req.project_id,
+        "container": {
+            "name": str(item.get("Name", "")).lstrip("/"),
+            "image": item.get("Config", {}).get("Image"),
+            "status": state.get("Status"),
+            "running": bool(state.get("Running")),
+            "health": state.get("Health", {}).get("Status"),
+            "exit_code": state.get("ExitCode"),
+            "error": state.get("Error") or "",
+            "oom_killed": bool(state.get("OOMKilled")),
+            "restart_count": item.get("RestartCount", 0),
+            "started_at": state.get("StartedAt"),
+            "finished_at": state.get("FinishedAt"),
+            "networks": {
+                network_name: {
+                    "ip_address": network_data.get("IPAddress"),
+                    "gateway": network_data.get("Gateway"),
+                    "aliases": network_data.get("Aliases") or [],
+                }
+                for network_name, network_data in networks.items()
+            },
+            "ports": item.get("NetworkSettings", {}).get("Ports", {}) or {},
+            "logs_tail": log_text,
+        },
+    }
+    audit("project_docker_container_info", req.project_id, req.model_dump(), result)
+    return result
+
+
+@router.post("/docker/container-env-safe", dependencies=[Depends(auth)])
+def project_docker_container_env_safe(req: ProjectContainerRequest) -> dict[str, Any]:
+    manifest = load_manifest(req.project_id)
+    root, _, _ = project_paths(manifest)
+    name = validate_container_name(req.container_name)
+    inspected = run_json(["docker", "inspect", name], root)
+    if not isinstance(inspected, list) or not inspected:
+        raise HTTPException(status_code=404, detail="container_not_found")
+
+    env_items = inspected[0].get("Config", {}).get("Env", []) or []
+    result = {
+        "ok": True,
+        "project_id": req.project_id,
+        "container_name": name,
+        "environment": redact_container_env(env_items),
+    }
+    audit("project_docker_container_env_safe", req.project_id, {"project_id": req.project_id, "container_name": name}, result)
+    return result
+
+
+@router.post("/docker/container-exec", dependencies=[Depends(auth)])
+def project_container_exec(req: ProjectContainerExecRequest) -> dict[str, Any]:
+    manifest = load_manifest(req.project_id); root, _, _ = project_paths(manifest); name = validate_container_name(req.container_name)
+    command, mutating = validate_exec(req.command)
+    if not req.workdir.startswith("/") or ".." in Path(req.workdir).parts: raise HTTPException(status_code=422, detail="invalid_workdir")
+    if mutating: require_confirm(req.confirm, "EXECUTE")
+    result = run(["docker", "exec", "-w", req.workdir, name, *command], root)
+    audit("project_container_exec", req.project_id, req.model_dump(), result); return result

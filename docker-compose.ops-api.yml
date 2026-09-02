@@ -30,6 +30,7 @@ services:
 
   connector_self_update_install:
     image: python:3.12-slim
+    network_mode: "none"
     working_dir: /source
     environment:
       CONNECTOR_ROOT: /runtime
@@ -42,6 +43,7 @@ services:
 
   connector_self_update_rebuild:
     image: docker:27-cli
+    network_mode: "none"
     depends_on:
       connector_self_update_install:
         condition: service_completed_successfully
@@ -57,11 +59,8 @@ services:
         docker compose -p vitrine-vps-mcp
         -f /runtime/docker-compose.mcp.yml
         -f /runtime/docker-compose.connector-v2.override.yml
-        config >/tmp/connector-compose.yml;
-        docker compose -p vitrine-vps-mcp
-        -f /runtime/docker-compose.mcp.yml
-        -f /runtime/docker-compose.connector-v2.override.yml
-        up -d --build ops_broker vps_mcp_connector;
+        up -d --build ops_broker vps_mcp_connector
+        >/runtime/connector-self-update-rebuild.log 2>&1;
         echo CONNECTOR_SELF_UPDATE_REBUILD_OK
     restart: "no"
 

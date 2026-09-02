@@ -180,6 +180,17 @@ def project_git_commit_explicit(
     )
 
 
+def project_git_push_explicit(
+    project_id: str,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/git/push",
+        {"project_id": project_id, "confirm": confirm},
+    )
+
+
 def project_write_file(
     project_id: str,
     path: str,
@@ -245,6 +256,62 @@ def project_workspace_action(
             "name": name,
             "branch": branch,
             "include_untracked": include_untracked,
+            "confirm": confirm,
+        },
+    )
+
+
+def project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/docker/container-info",
+        {"project_id": project_id, "container_name": container_name},
+    )
+
+
+def project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/docker/container-env-safe",
+        {"project_id": project_id, "container_name": container_name},
+    )
+
+
+def project_compose_rm_explicit(
+    project_id: str,
+    compose_file: str,
+    services: list[str],
+    docker_project: str = "",
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/compose/rm-explicit",
+        {
+            "project_id": project_id,
+            "compose_file": compose_file,
+            "services": services,
+            "docker_project": docker_project,
+            "confirm": confirm,
+        },
+    )
+
+
+def project_container_exec(
+    project_id: str,
+    container_name: str,
+    command: list[str],
+    workdir: str = "/var/www/html",
+    confirm: str = "",
+) -> dict[str, Any]:
+    return _request(
+        "POST",
+        "/projects/docker/container-exec",
+        {
+            "project_id": project_id,
+            "container_name": container_name,
+            "command": command,
+            "workdir": workdir,
             "confirm": confirm,
         },
     )
