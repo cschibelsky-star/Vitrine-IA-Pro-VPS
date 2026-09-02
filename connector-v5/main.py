@@ -693,8 +693,8 @@ def project_php_validate(project_id: str, operation: str = "tests_marketing") ->
     bootstrap = (
         "set -eu; "
         "mkdir -p /work/project; "
-        "cp -a /var/www/html/. /work/project/; "
-        "cp -a /source/. /work/project/; "
+        "cp -R /var/www/html/. /work/project/; "
+        "cp -R /source/. /work/project/; "
         "cd /work/project; "
         + commands[operation]
     )
