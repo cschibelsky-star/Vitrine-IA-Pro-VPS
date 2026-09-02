@@ -672,7 +672,7 @@ def project_php_lint(project_id: str, path: str) -> dict[str, Any]:
 def project_php_validate(project_id: str, operation: str = "tests_marketing") -> dict[str, Any]:
     operation = str(operation or "").strip().lower()
     commands = {
-        "tests_marketing": "php artisan test tests/Unit/Marketing --no-interaction",
+        "tests_marketing": "vendor/bin/phpunit tests/Unit/Marketing --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
     }
     if operation not in commands:
