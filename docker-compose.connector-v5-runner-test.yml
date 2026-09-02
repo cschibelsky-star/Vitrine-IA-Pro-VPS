@@ -50,15 +50,27 @@ services:
         import pathlib
         import sys
         import time
-        import main
-        results = {
-            operation: main.project_php_validate("vitrine-marketing-agents-core-hml", operation)
-            for operation in ("tests_marketing", "migrate_pretend")
-        }
-        payload = json.dumps(results, ensure_ascii=False, indent=2)
+        import traceback
+        output = pathlib.Path("/results/php-runner-smoke.json")
+        try:
+            import main
+            results = {
+                operation: main.project_php_validate("vitrine-marketing-agents-core-hml", operation)
+                for operation in ("tests_marketing", "migrate_pretend")
+            }
+            payload = json.dumps(results, ensure_ascii=False, indent=2)
+            ok = all(result.get("ok") for result in results.values())
+        except BaseException as exc:
+            payload = json.dumps({
+                "ok": False,
+                "exception": type(exc).__name__,
+                "detail": str(exc),
+                "traceback": traceback.format_exc(),
+            }, ensure_ascii=False, indent=2)
+            ok = False
+        output.write_text(payload + "\n", encoding="utf-8")
         print(payload, flush=True)
-        pathlib.Path("/results/php-runner-smoke.json").write_text(payload + "\n", encoding="utf-8")
-        if not all(result.get("ok") for result in results.values()):
+        if not ok:
             sys.exit(1)
         pathlib.Path("/tmp/validation-ok").write_text("ok\n", encoding="utf-8")
         time.sleep(3600)
