@@ -54,8 +54,16 @@ services:
         output = pathlib.Path("/results/php-runner-smoke.json")
         try:
             import main
+            tool = main.project_php_validate
+            invoke = (
+                getattr(tool, "fn", None)
+                or getattr(tool, "function", None)
+                or getattr(tool, "_fn", None)
+            )
+            if invoke is None:
+                raise RuntimeError("function_tool_callable_missing:" + ",".join(sorted(dir(tool))))
             results = {
-                operation: main.project_php_validate("vitrine-marketing-agents-core-hml", operation)
+                operation: invoke("vitrine-marketing-agents-core-hml", operation)
                 for operation in ("tests_marketing", "migrate_pretend")
             }
             payload = json.dumps(results, ensure_ascii=False, indent=2)
