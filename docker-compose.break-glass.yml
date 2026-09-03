@@ -9,6 +9,7 @@ services:
       BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
       BREAK_GLASS_SOCKET_GID: "8871"
       BREAK_GLASS_EXECUTOR_AUDIT_LOG: /var/log/vitrine-break-glass/executor-audit.jsonl
+      BREAK_GLASS_DATA_DIR: /var/lib/vitrine-break-glass
       BREAK_GLASS_V5_CONTAINER: vitrine_mcp_v5
       BREAK_GLASS_MAX_LOG_LINES: "500"
       BREAK_GLASS_KNOWN_GOOD_TAG: vitrine-mcp-v5:break-glass-known-good
@@ -17,6 +18,7 @@ services:
     volumes:
       - /run/break-glass:/run/break-glass:rw
       - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
+      - /var/lib/vitrine-break-glass:/var/lib/vitrine-break-glass:rw
       - /srv/connectors/vitrine-vps-mcp:/srv/connectors/vitrine-vps-mcp:ro
       - /var/run/docker.sock:/var/run/docker.sock
     network_mode: none
