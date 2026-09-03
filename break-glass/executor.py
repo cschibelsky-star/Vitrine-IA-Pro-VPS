@@ -11,8 +11,11 @@ SOCKET_PATH = Path(os.getenv("BREAK_GLASS_EXECUTOR_SOCKET", "/run/break-glass/ex
 SOCKET_GID = int(os.getenv("BREAK_GLASS_SOCKET_GID", "8871"))
 AUDIT_LOG = Path(os.getenv("BREAK_GLASS_EXECUTOR_AUDIT_LOG", "/var/log/vitrine-break-glass/executor-audit.jsonl"))
 V5_CONTAINER = os.getenv("BREAK_GLASS_V5_CONTAINER", "vitrine_mcp_v5")
-RELEASES_FILE = Path(os.getenv("BREAK_GLASS_RELEASES_FILE", "/etc/vitrine-break-glass/releases.json"))
 MAX_LOG_LINES = int(os.getenv("BREAK_GLASS_MAX_LOG_LINES", "500"))
+KNOWN_GOOD_TAG = os.getenv("BREAK_GLASS_KNOWN_GOOD_TAG", "vitrine-mcp-v5:break-glass-known-good")
+V5_COMPOSE_FILE = os.getenv("BREAK_GLASS_V5_COMPOSE_FILE", "/srv/connectors/vitrine-vps-mcp/docker-compose.connector-v5.yml")
+V5_DOCKER_PROJECT = os.getenv("BREAK_GLASS_V5_DOCKER_PROJECT", "vitrine-mcp-v5-v59")
+RELEASE_ID = "v5-current-known-good"
 
 
 def _audit(op: str, ok: bool, detail: str = "") -> None:
@@ -27,12 +30,27 @@ def _run(argv: list[str], timeout: int = 30) -> dict:
     return {"ok": proc.returncode == 0, "exit_code": proc.returncode, "stdout": proc.stdout[-50000:], "stderr": proc.stderr[-10000:]}
 
 
-def _releases() -> dict[str, dict]:
-    if not RELEASES_FILE.is_file():
-        return {}
-    data = json.loads(RELEASES_FILE.read_text(encoding="utf-8"))
-    entries = data.get("releases", {})
-    return entries if isinstance(entries, dict) else {}
+def _inspect_format(fmt: str) -> str:
+    result = _run(["docker", "inspect", "--format", fmt, V5_CONTAINER], timeout=15)
+    if not result["ok"]:
+        raise RuntimeError("v5_inspect_failed")
+    return result["stdout"].strip()
+
+
+def _capture_known_good() -> dict:
+    try:
+        image_id = _inspect_format("{{.Image}}")
+        compose_image = _inspect_format("{{.Config.Image}}")
+        if not image_id or not compose_image:
+            raise RuntimeError("v5_image_metadata_missing")
+        tagged = _run(["docker", "tag", image_id, KNOWN_GOOD_TAG], timeout=20)
+        if not tagged["ok"]:
+            raise RuntimeError("known_good_tag_failed")
+        _audit("capture_known_good", True, f"release_id={RELEASE_ID};compose_image={compose_image}")
+        return {"ok": True, "release_id": RELEASE_ID, "compose_image": compose_image}
+    except Exception as exc:
+        _audit("capture_known_good", False, type(exc).__name__)
+        return {"ok": False, "error": "known_good_capture_failed"}
 
 
 def _handle(request: dict) -> dict:
@@ -53,43 +71,40 @@ def _handle(request: dict) -> dict:
 
     if op == "rollback":
         release_id = str(request.get("release_id", ""))
-        release = _releases().get(release_id)
-        if not isinstance(release, dict):
+        if release_id != RELEASE_ID:
             result = {"ok": False, "error": "release_not_allowed"}
             _audit("rollback", False, release_id)
             return result
-
-        image = str(release.get("image", "")).strip()
-        compose_image = str(release.get("compose_image", "")).strip()
-        compose_file = str(release.get("compose_file", "")).strip()
-        docker_project = str(release.get("docker_project", "")).strip()
-        if not image or not compose_image or not compose_file or not docker_project:
-            result = {"ok": False, "error": "release_definition_invalid"}
-            _audit("rollback", False, release_id)
-            return result
-        if not compose_file.startswith("/srv/connectors/vitrine-vps-mcp/"):
+        if not V5_COMPOSE_FILE.startswith("/srv/connectors/vitrine-vps-mcp/"):
             result = {"ok": False, "error": "compose_path_blocked"}
             _audit("rollback", False, release_id)
             return result
-        if any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for ch in docker_project):
+        if any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for ch in V5_DOCKER_PROJECT):
             result = {"ok": False, "error": "docker_project_blocked"}
             _audit("rollback", False, release_id)
             return result
 
-        inspect = _run(["docker", "image", "inspect", image], timeout=20)
+        inspect = _run(["docker", "image", "inspect", KNOWN_GOOD_TAG], timeout=20)
         if not inspect["ok"]:
             result = {"ok": False, "error": "rollback_image_missing"}
             _audit("rollback", False, release_id)
             return result
 
-        tag = _run(["docker", "tag", image, compose_image], timeout=20)
+        try:
+            compose_image = _inspect_format("{{.Config.Image}}")
+        except Exception:
+            result = {"ok": False, "error": "compose_image_unknown"}
+            _audit("rollback", False, release_id)
+            return result
+
+        tag = _run(["docker", "tag", KNOWN_GOOD_TAG, compose_image], timeout=20)
         if not tag["ok"]:
             result = {"ok": False, "error": "rollback_tag_failed", "stderr": tag.get("stderr", "")}
             _audit("rollback", False, release_id)
             return result
 
         proc = subprocess.run(
-            ["docker", "compose", "-p", docker_project, "-f", compose_file, "up", "-d", "--no-build", "--force-recreate", "connector_v5"],
+            ["docker", "compose", "-p", V5_DOCKER_PROJECT, "-f", V5_COMPOSE_FILE, "up", "-d", "--no-build", "--force-recreate", "connector_v5"],
             text=True,
             capture_output=True,
             timeout=60,
@@ -108,6 +123,7 @@ def main() -> None:
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()
+    _capture_known_good()
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
         server.bind(str(SOCKET_PATH))
         os.chown(SOCKET_PATH, -1, SOCKET_GID)
