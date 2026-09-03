@@ -38,7 +38,7 @@ def _prepare_shared_dirs() -> None:
 
 
 def _ensure_token() -> None:
-    if TOKEN_FILE.is_file() and TOKEN_FILE.read_text(encoding="utf-8").strip():
+    if TOKEN_FILE.is_file() and TOKEN_FILE.stat().st_size > 0:
         return
     tmp = TOKEN_FILE.with_suffix(".tmp")
     tmp.write_text(secrets.token_urlsafe(48) + "\n", encoding="utf-8")
@@ -143,8 +143,8 @@ def main() -> None:
     _state("token_ready")
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()
-    _capture_known_good()
-    _state("known_good_capture_attempted")
+    capture = _capture_known_good()
+    _state("known_good_ready" if capture.get("ok") else "known_good_failed", bool(capture.get("ok")), str(capture.get("error", "")))
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
         server.bind(str(SOCKET_PATH))
         os.chown(SOCKET_PATH, -1, SOCKET_GID)
