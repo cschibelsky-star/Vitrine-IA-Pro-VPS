@@ -10,12 +10,20 @@ from pathlib import Path
 SOCKET_PATH = Path(os.getenv("BREAK_GLASS_EXECUTOR_SOCKET", "/run/break-glass/executor.sock"))
 SOCKET_GID = int(os.getenv("BREAK_GLASS_SOCKET_GID", "8871"))
 AUDIT_LOG = Path(os.getenv("BREAK_GLASS_EXECUTOR_AUDIT_LOG", "/var/log/vitrine-break-glass/executor-audit.jsonl"))
+DATA_DIR = Path(os.getenv("BREAK_GLASS_DATA_DIR", "/var/lib/vitrine-break-glass"))
 V5_CONTAINER = os.getenv("BREAK_GLASS_V5_CONTAINER", "vitrine_mcp_v5")
 MAX_LOG_LINES = int(os.getenv("BREAK_GLASS_MAX_LOG_LINES", "500"))
 KNOWN_GOOD_TAG = os.getenv("BREAK_GLASS_KNOWN_GOOD_TAG", "vitrine-mcp-v5:break-glass-known-good")
 V5_COMPOSE_FILE = os.getenv("BREAK_GLASS_V5_COMPOSE_FILE", "/srv/connectors/vitrine-vps-mcp/docker-compose.connector-v5.yml")
 V5_DOCKER_PROJECT = os.getenv("BREAK_GLASS_V5_DOCKER_PROJECT", "vitrine-mcp-v5-v59")
 RELEASE_ID = "v5-current-known-good"
+
+
+def _prepare_shared_dirs() -> None:
+    for path in (SOCKET_PATH.parent, AUDIT_LOG.parent, DATA_DIR):
+        path.mkdir(parents=True, exist_ok=True)
+        os.chown(path, -1, SOCKET_GID)
+        os.chmod(path, 0o2770)
 
 
 def _audit(op: str, ok: bool, detail: str = "") -> None:
@@ -120,7 +128,7 @@ def _handle(request: dict) -> dict:
 
 
 def main() -> None:
-    SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _prepare_shared_dirs()
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()
     _capture_known_good()
