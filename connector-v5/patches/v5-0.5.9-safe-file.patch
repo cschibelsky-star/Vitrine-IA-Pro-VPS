@@ -1,0 +1,49 @@
+diff --git a/connector-v5/main.py b/connector-v5/main.py
+--- a/connector-v5/main.py
++++ b/connector-v5/main.py
+@@
+-    is_text = candidate.suffix.lower() in TEXT_SUFFIXES or name.endswith(".blade.php") or name in {"artisan", "composer.json", "composer.lock", "package.json", "package-lock.json", "README.md", "AGENTS.md"} or is_compose
++    is_text = candidate.suffix.lower() in TEXT_SUFFIXES or name.endswith(".blade.php") or name in {"artisan", "composer.json", "composer.lock", "package.json", "package-lock.json", "README.md", "AGENTS.md", ".gitignore"} or is_compose
+@@
+ def project_file_patch_text(project_id: str, path: str, old: str, new: str, confirm: str = "") -> dict[str, Any]:
+     if confirm != "EXECUTAR":
+         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+-    target, relative = _safe_file(project_id, path, True)
+-    text = target.read_text(encoding="utf-8")
+-    count = text.count(old)
+-    if count == 0:
+-        return {"ok": False, "error": "old_text_not_found", "path": relative}
+-    if count != 1:
+-        return {"ok": False, "error": "old_text_not_unique", "path": relative, "matches": count}
+-    backup = target.with_name(f".{target.name}.bak-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')}")
+-    shutil.copy2(target, backup)
+-    updated = text.replace(old, new, 1)
++    target, relative = _safe_file(project_id, path, False)
++    created = not target.exists()
++    backup_name = None
++    if created:
++        if old != "":
++            return {"ok": False, "error": "project_file_not_found", "path": relative}
++        updated = new
++    else:
++        text = target.read_text(encoding="utf-8")
++        count = text.count(old)
++        if count == 0:
++            return {"ok": False, "error": "old_text_not_found", "path": relative}
++        if count != 1:
++            return {"ok": False, "error": "old_text_not_unique", "path": relative, "matches": count}
++        backup = target.with_name(f".{target.name}.bak-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')}")
++        shutil.copy2(target, backup)
++        backup_name = backup.name
++        updated = text.replace(old, new, 1)
+     tmp = target.with_name(f".{target.name}.tmp-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')}")
+     try:
+         tmp.write_text(updated, encoding="utf-8")
+         os.replace(tmp, target)
+     finally:
+         if tmp.exists():
+             tmp.unlink()
+-    result = {"ok": True, "status": "patched", "path": relative, "backup": backup.name}
++    result = {"ok": True, "status": "created" if created else "patched", "path": relative, "backup": backup_name}
+     _audit("project_file_patch_text", {"project_id": project_id, "path": relative}, result)
+     return result
