@@ -13,12 +13,21 @@ SOCKET_GID = int(os.getenv("BREAK_GLASS_SOCKET_GID", "8871"))
 AUDIT_LOG = Path(os.getenv("BREAK_GLASS_EXECUTOR_AUDIT_LOG", "/var/log/vitrine-break-glass/executor-audit.jsonl"))
 DATA_DIR = Path(os.getenv("BREAK_GLASS_DATA_DIR", "/var/lib/vitrine-break-glass"))
 TOKEN_FILE = Path(os.getenv("BREAK_GLASS_TOKEN_FILE", "/var/lib/vitrine-break-glass/token"))
+STATE_FILE = Path(os.getenv("BREAK_GLASS_EXECUTOR_STATE", "/diagnostics/executor-state.json"))
 V5_CONTAINER = os.getenv("BREAK_GLASS_V5_CONTAINER", "vitrine_mcp_v5")
 MAX_LOG_LINES = int(os.getenv("BREAK_GLASS_MAX_LOG_LINES", "500"))
 KNOWN_GOOD_TAG = os.getenv("BREAK_GLASS_KNOWN_GOOD_TAG", "vitrine-mcp-v5:break-glass-known-good")
 V5_COMPOSE_FILE = os.getenv("BREAK_GLASS_V5_COMPOSE_FILE", "/srv/connectors/vitrine-vps-mcp/docker-compose.connector-v5.yml")
 V5_DOCKER_PROJECT = os.getenv("BREAK_GLASS_V5_DOCKER_PROJECT", "vitrine-mcp-v5-v59")
 RELEASE_ID = "v5-current-known-good"
+
+
+def _state(phase: str, ok: bool = True, error: str = "") -> None:
+    try:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATE_FILE.write_text(json.dumps({"at": datetime.now(timezone.utc).isoformat(), "phase": phase, "ok": ok, "error": error[:300]}, ensure_ascii=False) + "\n", encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _prepare_shared_dirs() -> None:
@@ -83,12 +92,10 @@ def _handle(request: dict) -> dict:
         result = _run(["docker", "logs", "--tail", str(lines), V5_CONTAINER], timeout=15)
         _audit("logs", result["ok"], f"lines={lines}")
         return result
-
     if op == "restart":
         result = _run(["docker", "restart", "--time", "10", V5_CONTAINER], timeout=30)
         _audit("restart", result["ok"], result.get("stderr", ""))
         return result
-
     if op == "rollback":
         release_id = str(request.get("release_id", ""))
         if release_id != RELEASE_ID:
@@ -103,53 +110,47 @@ def _handle(request: dict) -> dict:
             result = {"ok": False, "error": "docker_project_blocked"}
             _audit("rollback", False, release_id)
             return result
-
         inspect = _run(["docker", "image", "inspect", KNOWN_GOOD_TAG], timeout=20)
         if not inspect["ok"]:
             result = {"ok": False, "error": "rollback_image_missing"}
             _audit("rollback", False, release_id)
             return result
-
         try:
             compose_image = _inspect_format("{{.Config.Image}}")
         except Exception:
             result = {"ok": False, "error": "compose_image_unknown"}
             _audit("rollback", False, release_id)
             return result
-
         tag = _run(["docker", "tag", KNOWN_GOOD_TAG, compose_image], timeout=20)
         if not tag["ok"]:
             result = {"ok": False, "error": "rollback_tag_failed", "stderr": tag.get("stderr", "")}
             _audit("rollback", False, release_id)
             return result
-
-        proc = subprocess.run(
-            ["docker", "compose", "-p", V5_DOCKER_PROJECT, "-f", V5_COMPOSE_FILE, "up", "-d", "--no-build", "--force-recreate", "connector_v5"],
-            text=True,
-            capture_output=True,
-            timeout=60,
-            check=False,
-        )
+        proc = subprocess.run(["docker", "compose", "-p", V5_DOCKER_PROJECT, "-f", V5_COMPOSE_FILE, "up", "-d", "--no-build", "--force-recreate", "connector_v5"], text=True, capture_output=True, timeout=60, check=False)
         result = {"ok": proc.returncode == 0, "exit_code": proc.returncode, "stdout": proc.stdout[-50000:], "stderr": proc.stderr[-10000:], "release_id": release_id}
         _audit("rollback", result["ok"], release_id)
         return result
-
     result = {"ok": False, "error": "operation_not_allowed"}
     _audit(str(op), False, "operation_not_allowed")
     return result
 
 
 def main() -> None:
+    _state("starting")
     _prepare_shared_dirs()
+    _state("shared_dirs_ready")
     _ensure_token()
+    _state("token_ready")
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()
     _capture_known_good()
+    _state("known_good_capture_attempted")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
         server.bind(str(SOCKET_PATH))
         os.chown(SOCKET_PATH, -1, SOCKET_GID)
         os.chmod(SOCKET_PATH, 0o660)
         server.listen(8)
+        _state("listening")
         while True:
             conn, _ = server.accept()
             with conn:
@@ -171,4 +172,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        _state("crashed", False, f"{type(exc).__name__}:{exc}")
+        raise
