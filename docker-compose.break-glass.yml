@@ -8,13 +8,13 @@ services:
     environment:
       BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
       BREAK_GLASS_EXECUTOR_AUDIT_LOG: /var/log/vitrine-break-glass/executor-audit.jsonl
-      BREAK_GLASS_RELEASES_FILE: /etc/vitrine-break-glass/releases.json
+      BREAK_GLASS_RELEASES_FILE: /app/releases.json
       BREAK_GLASS_V5_CONTAINER: vitrine_mcp_v5
       BREAK_GLASS_MAX_LOG_LINES: "500"
     volumes:
       - /run/break-glass:/run/break-glass:rw
       - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
-      - /etc/vitrine-break-glass/releases.json:/etc/vitrine-break-glass/releases.json:ro
+      - ./break-glass/releases.runtime.json:/app/releases.json:ro
       - /srv/connectors/vitrine-vps-mcp:/srv/connectors/vitrine-vps-mcp:ro
       - /var/run/docker.sock:/var/run/docker.sock
     network_mode: none
@@ -37,7 +37,7 @@ services:
     image: vitrine-break-glass-api:0.1
     container_name: vitrine_break_glass_api
     env_file:
-      - /etc/vitrine-break-glass/api.env
+      - ../.env.runtime
     environment:
       BREAK_GLASS_HOST: 0.0.0.0
       BREAK_GLASS_PORT: "8099"
