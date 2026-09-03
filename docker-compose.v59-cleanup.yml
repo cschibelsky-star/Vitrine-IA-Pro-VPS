@@ -1,0 +1,37 @@
+services:
+  v59_workspace_stash:
+    image: python:3.12-slim
+    container_name: vitrine_factory_v59_workspace_stash
+    environment:
+      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+    command:
+      - python3
+      - -c
+      - |
+        import json, os, urllib.request
+        payload = json.dumps({
+            "project_id": "vitrine-vps-mcp-v59-integration",
+            "action": "stash",
+            "name": "pre-clean-v59-20260903",
+            "include_untracked": True,
+            "confirm": "EXECUTAR",
+        }).encode()
+        request = urllib.request.Request(
+            "http://vitrine_mcp_ops_broker:8770/projects/workspace/action",
+            data=payload,
+            headers={
+                "Authorization": "Bearer " + os.environ["OPS_BROKER_TOKEN"],
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=120) as response:
+            print(response.read().decode())
+    networks:
+      - vitrine_net
+    restart: "no"
+
+networks:
+  vitrine_net:
+    external: true
+    name: vitrine_net
