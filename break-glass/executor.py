@@ -68,10 +68,12 @@ def _handle(request: dict) -> dict:
             result = {"ok": False, "error": "release_not_allowed"}
             _audit("rollback", False, release_id)
             return result
+
         image = str(release.get("image", "")).strip()
+        compose_image = str(release.get("compose_image", "")).strip()
         compose_file = str(release.get("compose_file", "")).strip()
         docker_project = str(release.get("docker_project", "")).strip()
-        if not image or not compose_file or not docker_project:
+        if not image or not compose_image or not compose_file or not docker_project:
             result = {"ok": False, "error": "release_definition_invalid"}
             _audit("rollback", False, release_id)
             return result
@@ -79,20 +81,29 @@ def _handle(request: dict) -> dict:
             result = {"ok": False, "error": "compose_path_blocked"}
             _audit("rollback", False, release_id)
             return result
-        pull = _run(["docker", "image", "inspect", image], timeout=20)
-        if not pull["ok"]:
+        if any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for ch in docker_project):
+            result = {"ok": False, "error": "docker_project_blocked"}
+            _audit("rollback", False, release_id)
+            return result
+
+        inspect = _run(["docker", "image", "inspect", image], timeout=20)
+        if not inspect["ok"]:
             result = {"ok": False, "error": "rollback_image_missing"}
             _audit("rollback", False, release_id)
             return result
-        env = os.environ.copy()
-        env["VITRINE_MCP_V5_IMAGE"] = image
+
+        tag = _run(["docker", "tag", image, compose_image], timeout=20)
+        if not tag["ok"]:
+            result = {"ok": False, "error": "rollback_tag_failed", "stderr": tag.get("stderr", "")}
+            _audit("rollback", False, release_id)
+            return result
+
         proc = subprocess.run(
             ["docker", "compose", "-p", docker_project, "-f", compose_file, "up", "-d", "--no-build", "--force-recreate", "connector_v5"],
             text=True,
             capture_output=True,
             timeout=60,
             check=False,
-            env=env,
         )
         result = {
             "ok": proc.returncode == 0,
