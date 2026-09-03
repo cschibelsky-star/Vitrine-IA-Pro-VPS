@@ -1,0 +1,62 @@
+diff --git a/connector-v5/main.py b/connector-v5/main.py
+--- a/connector-v5/main.py
++++ b/connector-v5/main.py
+@@
+ def project_git_status(project_id: str) -> dict[str, Any]:
+     _, _, repository = _project_paths(project_id)
+     if not (repository / ".git").is_dir():
+         return {"ok": False, "error": "repository_not_git"}
+     return _run(["git", "status", "--short", "--branch"], repository)
++
++
++@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
++def project_git_push_explicit(project_id: str, confirm: str = "") -> dict[str, Any]:
++    if confirm != "EXECUTAR":
++        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
++
++    manifest, _, repository = _project_paths(project_id)
++    if not (repository / ".git").is_dir():
++        return {"ok": False, "error": "repository_not_git"}
++
++    expected_branch = str(manifest.get("repository", {}).get("branch", "main") or "main").strip()
++    expected_origin = _validated_repository_url(str(manifest.get("repository", {}).get("url", "")))
++    allowed_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/-"
++    if not expected_branch or any(ch not in allowed_chars for ch in expected_branch):
++        return {"ok": False, "error": "invalid_manifest_branch", "branch": expected_branch}
++
++    current_branch = _run(["git", "branch", "--show-current"], repository, timeout=30)
++    actual_branch = str(current_branch.get("stdout", "")).strip() if current_branch.get("ok") else ""
++    if actual_branch != expected_branch:
++        return {"ok": False, "error": "git_push_branch_mismatch", "expected": expected_branch, "actual": actual_branch}
++
++    origin = _run(["git", "remote", "get-url", "origin"], repository, timeout=30)
++    actual_origin = str(origin.get("stdout", "")).strip() if origin.get("ok") else ""
++    if not origin.get("ok") or actual_origin != expected_origin:
++        return {"ok": False, "error": "git_push_origin_mismatch", "expected": expected_origin, "actual": actual_origin}
++
++    fetch = _run(["git", "fetch", "--prune", "origin", expected_branch], repository, timeout=300)
++    if not fetch.get("ok"):
++        result = {"ok": False, "error": "fetch_failed", "project_id": project_id, "branch": expected_branch, "detail": fetch}
++        _audit("project_git_push_explicit", {"project_id": project_id, "branch": expected_branch}, {"ok": False, "stage": "fetch", "exit_code": fetch.get("exit_code")})
++        return result
++
++    remote_ref = f"origin/{expected_branch}"
++    ff_check = _run(["git", "merge-base", "--is-ancestor", remote_ref, "HEAD"], repository, timeout=30)
++    if not ff_check.get("ok"):
++        result = {"ok": False, "error": "git_push_non_fast_forward", "project_id": project_id, "branch": expected_branch}
++        _audit("project_git_push_explicit", {"project_id": project_id, "branch": expected_branch}, result)
++        return result
++
++    push = _run(["git", "push", "origin", f"HEAD:refs/heads/{expected_branch}"], repository, timeout=300)
++    status = _run(["git", "status", "--short", "--branch"], repository, timeout=30)
++    result = {
++        "ok": bool(push.get("ok")),
++        "project_id": project_id,
++        "branch": expected_branch,
++        "origin": expected_origin,
++        "push": push,
++        "status": status,
++        "force": False,
++    }
++    _audit("project_git_push_explicit", {"project_id": project_id, "branch": expected_branch}, {"ok": result["ok"], "exit_code": push.get("exit_code"), "force": False})
++    return result
