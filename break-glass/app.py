@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 import hmac
 import json
 import os
+import secrets
 import socket
 import time
 from datetime import datetime, timezone
@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlparse
 
 HOST = os.getenv("BREAK_GLASS_HOST", "0.0.0.0")
 PORT = int(os.getenv("BREAK_GLASS_PORT", "8099"))
-TOKEN = os.getenv("BREAK_GLASS_TOKEN", "")
+TOKEN_FILE = Path(os.getenv("BREAK_GLASS_TOKEN_FILE", "/var/lib/vitrine-break-glass/token"))
 SOCKET_PATH = os.getenv("BREAK_GLASS_EXECUTOR_SOCKET", "/run/break-glass/executor.sock")
 AUDIT_LOG = Path(os.getenv("BREAK_GLASS_AUDIT_LOG", "/var/log/vitrine-break-glass/audit.jsonl"))
 MAX_LOG_LINES = int(os.getenv("BREAK_GLASS_MAX_LOG_LINES", "500"))
@@ -33,8 +33,28 @@ def _audit(action: str, client: str, ok: bool, detail: str = "") -> None:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def _load_or_create_token() -> str:
+    env_token = os.getenv("BREAK_GLASS_TOKEN", "").strip()
+    if env_token:
+        return env_token
+    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if TOKEN_FILE.is_file():
+        value = TOKEN_FILE.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+    value = secrets.token_urlsafe(48)
+    tmp = TOKEN_FILE.with_suffix(".tmp")
+    tmp.write_text(value + "\n", encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, TOKEN_FILE)
+    return value
+
+
+TOKEN = _load_or_create_token()
+
+
 def _authorized(value: str | None) -> bool:
-    if not TOKEN or not value or not value.startswith("Bearer "):
+    if not value or not value.startswith("Bearer "):
         return False
     return hmac.compare_digest(value[7:].encode(), TOKEN.encode())
 
@@ -155,6 +175,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    if not TOKEN:
-        raise SystemExit("BREAK_GLASS_TOKEN is required")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
