@@ -38,7 +38,7 @@ services:
       - ./project-manager:/source/project-manager:ro
       - ./connector-v2:/source/connector-v2:ro
       - /srv/connectors/vitrine-vps-mcp:/runtime:rw
-    command: ["python3", "/source/project-manager/install_project_manager.py"]
+    command: ["python3", "/source/project-manager/install_project_manager_safe.py"]
     restart: "no"
 
   connector_self_update_rebuild:
@@ -56,6 +56,10 @@ services:
       - -c
       - >-
         set -eu;
+        docker compose -p vitrine-vps-mcp
+        -f /runtime/docker-compose.mcp.yml
+        -f /runtime/docker-compose.connector-v2.override.yml
+        config >/runtime/connector-self-update-config.log 2>&1;
         docker compose -p vitrine-vps-mcp
         -f /runtime/docker-compose.mcp.yml
         -f /runtime/docker-compose.connector-v2.override.yml
