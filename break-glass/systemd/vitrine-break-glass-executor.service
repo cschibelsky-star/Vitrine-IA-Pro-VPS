@@ -12,7 +12,7 @@ Environment=BREAK_GLASS_EXECUTOR_SOCKET=/run/break-glass/executor.sock
 Environment=BREAK_GLASS_EXECUTOR_AUDIT_LOG=/var/log/vitrine-break-glass/executor-audit.jsonl
 Environment=BREAK_GLASS_RELEASES_FILE=/etc/vitrine-break-glass/releases.json
 Environment=BREAK_GLASS_V5_CONTAINER=vitrine_mcp_v5
-RuntimeDirectory=vitrine-break-glass
+RuntimeDirectory=break-glass
 RuntimeDirectoryMode=0750
 NoNewPrivileges=true
 PrivateTmp=true
