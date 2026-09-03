@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SOCKET_PATH = Path(os.getenv("BREAK_GLASS_EXECUTOR_SOCKET", "/run/break-glass/executor.sock"))
+SOCKET_GID = int(os.getenv("BREAK_GLASS_SOCKET_GID", "8871"))
 AUDIT_LOG = Path(os.getenv("BREAK_GLASS_EXECUTOR_AUDIT_LOG", "/var/log/vitrine-break-glass/executor-audit.jsonl"))
 V5_CONTAINER = os.getenv("BREAK_GLASS_V5_CONTAINER", "vitrine_mcp_v5")
 RELEASES_FILE = Path(os.getenv("BREAK_GLASS_RELEASES_FILE", "/etc/vitrine-break-glass/releases.json"))
@@ -16,25 +17,14 @@ MAX_LOG_LINES = int(os.getenv("BREAK_GLASS_MAX_LOG_LINES", "500"))
 
 def _audit(op: str, ok: bool, detail: str = "") -> None:
     AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
-    record = {
-        "at": datetime.now(timezone.utc).isoformat(),
-        "component": "break-glass-executor",
-        "operation": op,
-        "ok": ok,
-        "detail": detail[:500],
-    }
+    record = {"at": datetime.now(timezone.utc).isoformat(), "component": "break-glass-executor", "operation": op, "ok": ok, "detail": detail[:500]}
     with AUDIT_LOG.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def _run(argv: list[str], timeout: int = 30) -> dict:
     proc = subprocess.run(argv, text=True, capture_output=True, timeout=timeout, check=False)
-    return {
-        "ok": proc.returncode == 0,
-        "exit_code": proc.returncode,
-        "stdout": proc.stdout[-50000:],
-        "stderr": proc.stderr[-10000:],
-    }
+    return {"ok": proc.returncode == 0, "exit_code": proc.returncode, "stdout": proc.stdout[-50000:], "stderr": proc.stderr[-10000:]}
 
 
 def _releases() -> dict[str, dict]:
@@ -105,13 +95,7 @@ def _handle(request: dict) -> dict:
             timeout=60,
             check=False,
         )
-        result = {
-            "ok": proc.returncode == 0,
-            "exit_code": proc.returncode,
-            "stdout": proc.stdout[-50000:],
-            "stderr": proc.stderr[-10000:],
-            "release_id": release_id,
-        }
+        result = {"ok": proc.returncode == 0, "exit_code": proc.returncode, "stdout": proc.stdout[-50000:], "stderr": proc.stderr[-10000:], "release_id": release_id}
         _audit("rollback", result["ok"], release_id)
         return result
 
@@ -126,6 +110,7 @@ def main() -> None:
         SOCKET_PATH.unlink()
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
         server.bind(str(SOCKET_PATH))
+        os.chown(SOCKET_PATH, -1, SOCKET_GID)
         os.chmod(SOCKET_PATH, 0o660)
         server.listen(8)
         while True:
