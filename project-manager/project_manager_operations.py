@@ -337,25 +337,67 @@ def project_clone(req: ProjectRequest) -> dict[str, Any]:
 def project_status(project_id: str) -> dict[str, Any]:
     manifest = load_manifest(project_id)
     root, repository, _ = project_paths(manifest)
-    status = (
-        run(["git", "status", "--short", "--branch"], repository)
-        if (repository / ".git").is_dir()
-        else None
-    )
-    origin = (
-        run(["git", "remote", "get-url", "origin"], repository)
-        if (repository / ".git").is_dir()
-        else None
-    )
-    return {
+    is_git = (repository / ".git").is_dir()
+    status = run(["git", "status", "--short", "--branch"], repository) if is_git else None
+    origin = run(["git", "remote", "get-url", "origin"], repository) if is_git else None
+    result: dict[str, Any] = {
         "ok": True,
         "project_id": project_id,
         "workspace_exists": root.exists(),
         "repository_exists": repository.exists(),
-        "repository_is_git": (repository / ".git").is_dir(),
+        "repository_is_git": is_git,
         "git_status": status,
         "origin": origin,
     }
+    if not is_git:
+        return result
+
+    target_branch = str(manifest["repository"].get("branch", "main") or "main").strip()
+    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/-"
+    if not target_branch or any(ch not in allowed for ch in target_branch):
+        result["compare_origin"] = {"ok": False, "error": "invalid_branch", "branch": target_branch}
+        return result
+
+    fetch = run(["git", "fetch", "--prune", "origin", target_branch], repository)
+    if not fetch["ok"]:
+        result["compare_origin"] = {"ok": False, "error": "fetch_failed", "branch": target_branch, "detail": fetch}
+        return result
+
+    local_head = run(["git", "rev-parse", "HEAD"], repository)
+    remote_head = run(["git", "rev-parse", f"origin/{target_branch}"], repository)
+    counts = run(["git", "rev-list", "--left-right", "--count", f"HEAD...origin/{target_branch}"], repository)
+    porcelain = run(["git", "status", "--porcelain=v1"], repository)
+    ahead = behind = None
+    if counts["ok"]:
+        parts = counts["stdout"].strip().split()
+        if len(parts) == 2:
+            ahead, behind = int(parts[0]), int(parts[1])
+    dirty = bool(porcelain["stdout"].strip()) if porcelain["ok"] else None
+    relation = "unknown"
+    if ahead is not None and behind is not None:
+        if ahead == 0 and behind == 0:
+            relation = "clean" if not dirty else "dirty"
+        elif ahead > 0 and behind == 0:
+            relation = "ahead"
+        elif ahead == 0 and behind > 0:
+            relation = "behind"
+        else:
+            relation = "diverged"
+
+    result["compare_origin"] = {
+        "ok": True,
+        "branch": target_branch,
+        "local_head": local_head["stdout"].strip() if local_head["ok"] else None,
+        "remote_head": remote_head["stdout"].strip() if remote_head["ok"] else None,
+        "ahead": ahead,
+        "behind": behind,
+        "dirty": dirty,
+        "relation": relation,
+        "fetch_performed": True,
+        "worktree_modified": False,
+    }
+    audit("project_git_compare_origin", project_id, {"branch": target_branch}, result["compare_origin"])
+    return result
 
 
 @router.post("/git/stage", dependencies=[Depends(auth)])
