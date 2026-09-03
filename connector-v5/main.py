@@ -12,7 +12,7 @@ from typing import Any
 import psutil
 from fastmcp import FastMCP
 
-VERSION = "0.5.9-project-php-runner"
+VERSION = "0.5.10-project-phpunit-runner"
 MANIFEST_ROOT = Path(os.getenv("PROJECT_MANIFEST_ROOT", "/app/project-manifests")).resolve()
 ALLOWED_WORKSPACE_ROOTS = tuple(Path(p).resolve() for p in os.getenv("PROJECT_WORKSPACE_ROOTS", "/srv/projects,/srv/tvsumare").split(",") if p.strip())
 AUDIT_LOG = Path(os.getenv("OPS_AUDIT_LOG", "/var/log/vitrine-ops-v5/audit.jsonl"))
@@ -364,6 +364,7 @@ def project_status(project_id: str) -> dict[str, Any]:
             "stdout": stdout[-20000:],
             "stderr": str(migration_result.get("stderr") or "")[-4000:],
         }
+        return result
     return result
 
 
@@ -373,6 +374,38 @@ def project_git_status(project_id: str) -> dict[str, Any]:
     if not (repository / ".git").is_dir():
         return {"ok": False, "error": "repository_not_git"}
     return _run(["git", "status", "--short", "--branch"], repository)
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_git_push_explicit(project_id: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    manifest, _, repository = _project_paths(project_id)
+    if not (repository / ".git").is_dir():
+        return {"ok": False, "error": "repository_not_git"}
+    branch = _run(["git", "branch", "--show-current"], repository, timeout=30)
+    if not branch.get("ok"):
+        return {"ok": False, "error": "branch_detection_failed", "detail": branch}
+    current_branch = str(branch.get("stdout", "")).strip()
+    expected = str(manifest.get("repository", {}).get("branch", "main") or "main")
+    if current_branch != expected:
+        return {"ok": False, "error": "branch_mismatch", "expected": expected, "actual": current_branch}
+    status = _run(["git", "status", "--porcelain=v1"], repository, timeout=30)
+    if not status.get("ok"):
+        return {"ok": False, "error": "status_failed", "detail": status}
+    if str(status.get("stdout", "")).strip():
+        return {"ok": False, "error": "working_tree_dirty", "status": status.get("stdout")}
+    origin = _run(["git", "remote", "get-url", "origin"], repository, timeout=30)
+    if not origin.get("ok"):
+        return {"ok": False, "error": "origin_unavailable", "detail": origin}
+    expected_origin = _validated_repository_url(str(manifest.get("repository", {}).get("url", "")))
+    actual_origin = str(origin.get("stdout", "")).strip()
+    if actual_origin != expected_origin:
+        return {"ok": False, "error": "origin_mismatch", "expected": expected_origin, "actual": actual_origin}
+    result = _run(["git", "push", "origin", current_branch], repository, timeout=300)
+    result.update({"project_id": project_id, "branch": current_branch, "origin": actual_origin})
+    _audit("project_git_push_explicit", {"project_id": project_id, "branch": current_branch}, {"ok": result.get("ok", False), "exit_code": result.get("exit_code")})
+    return result
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -696,11 +729,16 @@ def project_php_validate(project_id: str, operation: str = "tests_marketing") ->
         "cp -R /var/www/html/. /work/project/; "
         "cp -R /source/. /work/project/; "
         "cd /work/project; "
+        "if [ \"$PHP_VALIDATION_OPERATION\" = \"tests_marketing\" ]; then "
+        "rm -rf vendor; "
+        "COMPOSER_ALLOW_SUPERUSER=1 composer install --no-interaction --prefer-dist --no-scripts --no-autoloader; "
+        "COMPOSER_ALLOW_SUPERUSER=1 composer dump-autoload --optimize; "
+        "fi; "
         + commands[operation]
     )
     result = _run([
         "docker", "run", "--rm",
-        "--network", "none",
+        "--network", "bridge" if operation == "tests_marketing" else "none",
         "--read-only",
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
@@ -709,6 +747,7 @@ def project_php_validate(project_id: str, operation: str = "tests_marketing") ->
         "--cpus", "1",
         "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=32m",
         "--tmpfs", "/work:rw,nosuid,nodev,size=768m",
+        "--env", "PHP_VALIDATION_OPERATION=" + operation,
         "--env", "APP_ENV=testing",
         "--env", "APP_DEBUG=false",
         "--env", "APP_KEY=base64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
@@ -861,6 +900,53 @@ def project_laravel_migrate_build1(project_id: str, confirm: str = "") -> dict[s
     }
     _audit("project_laravel_migrate_build1", {"project_id": project_id, "migration": migration}, {"ok": response["ok"], "status": response["status"], "exit_code": response["exit_code"]})
     return response
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_laravel_migrate_build11(project_id: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    if project_id != "vitrine-ai-social-enterprise":
+        return {"ok": False, "error": "migration_not_allowed_for_project", "project_id": project_id}
+    _, _, repository = _project_paths(project_id)
+    container = "studio_app"
+    migrations = [
+        "database/migrations/2026_08_31_210500_create_social_entitlements_and_consumption_tables.php",
+        "database/migrations/2026_09_01_010000_create_social_build11_campaign_tables.php",
+    ]
+    inspected = _run(["docker", "inspect", container], repository, timeout=30)
+    if not inspected.get("ok"):
+        return {"ok": False, "error": "source_runtime_unavailable", "project_id": project_id, "container": container}
+    try:
+        payload = json.loads(inspected.get("stdout") or "[]")
+        item = payload[0] if isinstance(payload, list) and payload else {}
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "source_runtime_inspect_invalid", "project_id": project_id}
+    if not item.get("State", {}).get("Running"):
+        return {"ok": False, "error": "source_runtime_not_running", "project_id": project_id, "container": container}
+    status = _run(["docker", "exec", "-w", "/var/www/html", container, "php", "artisan", "migrate:status", "--no-ansi"], repository, timeout=120)
+    if not status.get("ok"):
+        return {"ok": False, "error": "migration_status_failed_before", "detail": status}
+    applied = str(status.get("stdout") or "")
+    executed: list[dict[str, Any]] = []
+    for migration in migrations:
+        migration_name = Path(migration).stem
+        if migration_name in applied:
+            executed.append({"migration": migration, "status": "already_ran"})
+            continue
+        run = _run(["docker", "exec", "-w", "/var/www/html", container, "php", "artisan", "migrate", "--path", migration, "--force", "--no-ansi"], repository, timeout=300)
+        executed.append({"migration": migration, "status": "migrated" if run.get("ok") else "failed", "exit_code": run.get("exit_code"), "stdout": str(run.get("stdout") or "")[-8000:], "stderr": str(run.get("stderr") or "")[-4000:]})
+        if not run.get("ok"):
+            _audit("project_laravel_migrate_build11", {"project_id": project_id, "migrations": migrations}, {"ok": False, "failed_migration": migration})
+            return {"ok": False, "project_id": project_id, "executed": executed}
+        status = _run(["docker", "exec", "-w", "/var/www/html", container, "php", "artisan", "migrate:status", "--no-ansi"], repository, timeout=120)
+        applied = str(status.get("stdout") or "")
+    post = _run(["docker", "exec", "-w", "/var/www/html", container, "php", "artisan", "migrate:status", "--no-ansi"], repository, timeout=120)
+    required_names = [Path(migration).stem for migration in migrations]
+    ok = bool(post.get("ok")) and all(name in str(post.get("stdout") or "") for name in required_names)
+    result = {"ok": ok, "project_id": project_id, "executed": executed, "post_status": str(post.get("stdout") or "")[-12000:], "stderr": str(post.get("stderr") or "")[-4000:]}
+    _audit("project_laravel_migrate_build11", {"project_id": project_id, "migrations": migrations}, {"ok": ok, "executed": [{"migration": item["migration"], "status": item["status"]} for item in executed]})
+    return result
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
