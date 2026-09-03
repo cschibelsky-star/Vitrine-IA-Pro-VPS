@@ -1,4 +1,35 @@
 services:
+  break_glass_executor:
+    build:
+      context: .
+      dockerfile: break-glass/Dockerfile.executor
+    image: vitrine-break-glass-executor:0.1
+    container_name: vitrine_break_glass_executor
+    environment:
+      BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
+      BREAK_GLASS_EXECUTOR_AUDIT_LOG: /var/log/vitrine-break-glass/executor-audit.jsonl
+      BREAK_GLASS_RELEASES_FILE: /etc/vitrine-break-glass/releases.json
+      BREAK_GLASS_V5_CONTAINER: vitrine_mcp_v5
+      BREAK_GLASS_MAX_LOG_LINES: "500"
+    volumes:
+      - /run/break-glass:/run/break-glass:rw
+      - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
+      - /etc/vitrine-break-glass/releases.json:/etc/vitrine-break-glass/releases.json:ro
+      - /srv/connectors/vitrine-vps-mcp:/srv/connectors/vitrine-vps-mcp:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.25
+    restart: unless-stopped
+
   break_glass_api:
     build:
       context: .
@@ -32,10 +63,49 @@ services:
     pids_limit: 64
     mem_limit: 128m
     cpus: 0.25
+    depends_on:
+      - break_glass_executor
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8099/health', timeout=3); raise SystemExit(0 if r.status == 200 else 1)"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 5s
+    restart: unless-stopped
+
+  break_glass_watchdog:
+    build:
+      context: .
+      dockerfile: break-glass/Dockerfile.watchdog
+    image: vitrine-break-glass-watchdog:0.1
+    container_name: vitrine_break_glass_watchdog
+    environment:
+      BREAK_GLASS_WATCH_TARGET: http://host.docker.internal:8867/
+      BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
+      BREAK_GLASS_WATCH_STATE: /var/lib/vitrine-break-glass/watchdog.json
+      BREAK_GLASS_WATCH_AUDIT: /var/log/vitrine-break-glass/watchdog.jsonl
+      BREAK_GLASS_FAIL_THRESHOLD: "3"
+      BREAK_GLASS_WATCH_INTERVAL: "30"
+      BREAK_GLASS_COOLDOWN: "300"
+      BREAK_GLASS_AUTO_ROLLBACK_RELEASE: ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    group_add:
+      - "8871"
+    volumes:
+      - /run/break-glass:/run/break-glass:rw
+      - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
+      - /var/lib/vitrine-break-glass:/var/lib/vitrine-break-glass:rw
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 96m
+    cpus: 0.20
+    depends_on:
+      - break_glass_executor
     restart: unless-stopped
