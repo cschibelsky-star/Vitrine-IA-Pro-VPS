@@ -1,6 +1,6 @@
 FROM python:3.12-alpine
 
-RUN addgroup -S breakglass && adduser -S -G breakglass breakglass
+RUN addgroup -S -g 8871 breakglass && adduser -S -D -H -u 8871 -G breakglass breakglass
 WORKDIR /app
 COPY break-glass/app.py /app/app.py
 USER breakglass
