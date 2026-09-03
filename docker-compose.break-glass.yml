@@ -41,8 +41,8 @@ services:
     image: vitrine-break-glass-api:0.1
     container_name: vitrine_break_glass_api
     environment:
-      BREAK_GLASS_HOST: 0.0.0.0
-      BREAK_GLASS_PORT: "8099"
+      BREAK_GLASS_HOST: 127.0.0.1
+      BREAK_GLASS_PORT: "8871"
       BREAK_GLASS_TOKEN_FILE: /var/lib/vitrine-break-glass/token
       BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
       BREAK_GLASS_AUDIT_LOG: /var/log/vitrine-break-glass/api-audit.jsonl
@@ -55,8 +55,7 @@ services:
       - /run/break-glass:/run/break-glass:rw
       - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
       - /var/lib/vitrine-break-glass:/var/lib/vitrine-break-glass:rw
-    ports:
-      - "127.0.0.1:8871:8099"
+    network_mode: host
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8m
@@ -70,7 +69,7 @@ services:
     depends_on:
       - break_glass_executor
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8099/health', timeout=3); raise SystemExit(0 if r.status == 200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8871/health', timeout=3); raise SystemExit(0 if r.status == 200 else 1)"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -84,7 +83,7 @@ services:
     image: vitrine-break-glass-watchdog:0.1
     container_name: vitrine_break_glass_watchdog
     environment:
-      BREAK_GLASS_WATCH_TARGET: http://host.docker.internal:8867/
+      BREAK_GLASS_WATCH_TARGET: http://127.0.0.1:8867/
       BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
       BREAK_GLASS_WATCH_STATE: /var/lib/vitrine-break-glass/watchdog.json
       BREAK_GLASS_WATCH_AUDIT: /var/log/vitrine-break-glass/watchdog.jsonl
@@ -92,14 +91,13 @@ services:
       BREAK_GLASS_WATCH_INTERVAL: "30"
       BREAK_GLASS_COOLDOWN: "300"
       BREAK_GLASS_AUTO_ROLLBACK_RELEASE: ""
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     group_add:
       - "8871"
     volumes:
       - /run/break-glass:/run/break-glass:rw
       - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
       - /var/lib/vitrine-break-glass:/var/lib/vitrine-break-glass:rw
+    network_mode: host
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8m
