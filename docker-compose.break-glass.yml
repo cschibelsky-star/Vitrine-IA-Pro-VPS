@@ -7,14 +7,16 @@ services:
     container_name: vitrine_break_glass_executor
     environment:
       BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
+      BREAK_GLASS_SOCKET_GID: "8871"
       BREAK_GLASS_EXECUTOR_AUDIT_LOG: /var/log/vitrine-break-glass/executor-audit.jsonl
-      BREAK_GLASS_RELEASES_FILE: /app/releases.json
       BREAK_GLASS_V5_CONTAINER: vitrine_mcp_v5
       BREAK_GLASS_MAX_LOG_LINES: "500"
+      BREAK_GLASS_KNOWN_GOOD_TAG: vitrine-mcp-v5:break-glass-known-good
+      BREAK_GLASS_V5_COMPOSE_FILE: /srv/connectors/vitrine-vps-mcp/docker-compose.connector-v5.yml
+      BREAK_GLASS_V5_DOCKER_PROJECT: vitrine-mcp-v5-v59
     volumes:
       - /run/break-glass:/run/break-glass:rw
       - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
-      - ./break-glass/releases.runtime.json:/app/releases.json:ro
       - /srv/connectors/vitrine-vps-mcp:/srv/connectors/vitrine-vps-mcp:ro
       - /var/run/docker.sock:/var/run/docker.sock
     network_mode: none
@@ -36,11 +38,10 @@ services:
       dockerfile: break-glass/Dockerfile
     image: vitrine-break-glass-api:0.1
     container_name: vitrine_break_glass_api
-    env_file:
-      - ../.env.runtime
     environment:
       BREAK_GLASS_HOST: 0.0.0.0
       BREAK_GLASS_PORT: "8099"
+      BREAK_GLASS_TOKEN_FILE: /var/lib/vitrine-break-glass/token
       BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
       BREAK_GLASS_AUDIT_LOG: /var/log/vitrine-break-glass/api-audit.jsonl
       BREAK_GLASS_MAX_LOG_LINES: "500"
@@ -51,6 +52,7 @@ services:
     volumes:
       - /run/break-glass:/run/break-glass:rw
       - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
+      - /var/lib/vitrine-break-glass:/var/lib/vitrine-break-glass:rw
     ports:
       - "127.0.0.1:8871:8099"
     read_only: true
