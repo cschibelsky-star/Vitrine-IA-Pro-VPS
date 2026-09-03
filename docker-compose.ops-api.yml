@@ -38,7 +38,14 @@ services:
       - ./project-manager:/source/project-manager:ro
       - ./connector-v2:/source/connector-v2:ro
       - /srv/connectors/vitrine-vps-mcp:/runtime:rw
-    command: ["python3", "/source/project-manager/install_project_manager_safe.py"]
+    command:
+      - sh
+      - -c
+      - >-
+        set -eu;
+        python3 /source/project-manager/install_project_manager_safe.py;
+        python3 /source/project-manager/patch_project_workspace_action_runtime.py;
+        echo CONNECTOR_SELF_UPDATE_INSTALL_OK
     restart: "no"
 
   connector_self_update_rebuild:
