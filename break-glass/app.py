@@ -3,7 +3,6 @@ from __future__ import annotations
 import hmac
 import json
 import os
-import secrets
 import socket
 import time
 from datetime import datetime, timezone
@@ -27,30 +26,24 @@ def _now() -> str:
 
 
 def _audit(action: str, client: str, ok: bool, detail: str = "") -> None:
-    AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
     record = {"at": _now(), "component": "break-glass-api", "action": action, "client": client, "ok": ok, "detail": detail[:500]}
     with AUDIT_LOG.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def _load_or_create_token() -> str:
+def _load_token() -> str:
     env_token = os.getenv("BREAK_GLASS_TOKEN", "").strip()
     if env_token:
         return env_token
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    if TOKEN_FILE.is_file():
-        value = TOKEN_FILE.read_text(encoding="utf-8").strip()
-        if value:
-            return value
-    value = secrets.token_urlsafe(48)
-    tmp = TOKEN_FILE.with_suffix(".tmp")
-    tmp.write_text(value + "\n", encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, TOKEN_FILE)
+    if not TOKEN_FILE.is_file():
+        raise RuntimeError("break_glass_token_missing")
+    value = TOKEN_FILE.read_text(encoding="utf-8").strip()
+    if not value:
+        raise RuntimeError("break_glass_token_empty")
     return value
 
 
-TOKEN = _load_or_create_token()
+TOKEN = _load_token()
 
 
 def _authorized(value: str | None) -> bool:
