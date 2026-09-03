@@ -1,0 +1,39 @@
+services:
+  break_glass_api:
+    build:
+      context: .
+      dockerfile: break-glass/Dockerfile
+    image: vitrine-break-glass-api:0.1
+    container_name: vitrine_break_glass_api
+    env_file:
+      - /etc/vitrine-break-glass/api.env
+    environment:
+      BREAK_GLASS_HOST: 0.0.0.0
+      BREAK_GLASS_PORT: "8099"
+      BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
+      BREAK_GLASS_AUDIT_LOG: /var/log/vitrine-break-glass/api-audit.jsonl
+      BREAK_GLASS_MAX_LOG_LINES: "500"
+      BREAK_GLASS_RATE_WINDOW: "60"
+      BREAK_GLASS_RATE_MAX: "20"
+    volumes:
+      - /run/break-glass:/run/break-glass:rw
+      - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
+    ports:
+      - "127.0.0.1:8871:8099"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8099/health', timeout=3); raise SystemExit(0 if r.status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
