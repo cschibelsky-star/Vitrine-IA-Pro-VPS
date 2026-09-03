@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import socket
 import subprocess
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ SOCKET_PATH = Path(os.getenv("BREAK_GLASS_EXECUTOR_SOCKET", "/run/break-glass/ex
 SOCKET_GID = int(os.getenv("BREAK_GLASS_SOCKET_GID", "8871"))
 AUDIT_LOG = Path(os.getenv("BREAK_GLASS_EXECUTOR_AUDIT_LOG", "/var/log/vitrine-break-glass/executor-audit.jsonl"))
 DATA_DIR = Path(os.getenv("BREAK_GLASS_DATA_DIR", "/var/lib/vitrine-break-glass"))
+TOKEN_FILE = Path(os.getenv("BREAK_GLASS_TOKEN_FILE", "/var/lib/vitrine-break-glass/token"))
 V5_CONTAINER = os.getenv("BREAK_GLASS_V5_CONTAINER", "vitrine_mcp_v5")
 MAX_LOG_LINES = int(os.getenv("BREAK_GLASS_MAX_LOG_LINES", "500"))
 KNOWN_GOOD_TAG = os.getenv("BREAK_GLASS_KNOWN_GOOD_TAG", "vitrine-mcp-v5:break-glass-known-good")
@@ -24,6 +26,16 @@ def _prepare_shared_dirs() -> None:
         path.mkdir(parents=True, exist_ok=True)
         os.chown(path, -1, SOCKET_GID)
         os.chmod(path, 0o2770)
+
+
+def _ensure_token() -> None:
+    if TOKEN_FILE.is_file() and TOKEN_FILE.read_text(encoding="utf-8").strip():
+        return
+    tmp = TOKEN_FILE.with_suffix(".tmp")
+    tmp.write_text(secrets.token_urlsafe(48) + "\n", encoding="utf-8")
+    os.chown(tmp, -1, SOCKET_GID)
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, TOKEN_FILE)
 
 
 def _audit(op: str, ok: bool, detail: str = "") -> None:
@@ -129,6 +141,7 @@ def _handle(request: dict) -> dict:
 
 def main() -> None:
     _prepare_shared_dirs()
+    _ensure_token()
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()
     _capture_known_good()
