@@ -39,6 +39,8 @@ def _prepare_shared_dirs() -> None:
 
 def _ensure_token() -> None:
     if TOKEN_FILE.is_file() and TOKEN_FILE.stat().st_size > 0:
+        os.chown(TOKEN_FILE, -1, SOCKET_GID)
+        os.chmod(TOKEN_FILE, 0o640)
         return
     tmp = TOKEN_FILE.with_suffix(".tmp")
     tmp.write_text(secrets.token_urlsafe(48) + "\n", encoding="utf-8")
