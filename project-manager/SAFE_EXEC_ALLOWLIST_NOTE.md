@@ -1,1 +1,0 @@
-Checkpoint operacional 2026-09-04: project_container_exec depende de SAFE_EXEC_BINARIES e SAFE_ARTISAN_COMMANDS. Este arquivo documenta o diagnóstico e será removido após a correção consolidada.
