@@ -7,5 +7,6 @@ COPY connector-v5/main.py /app/main.py
 COPY connector-v5/main_ext.py /app/main_ext.py
 COPY connector-v5/marketing_live_patch.py /app/marketing_live_patch.py
 COPY connector-v5/production_publication.py /app/production_publication.py
+COPY connector-v5/n8n_integration.py /app/n8n_integration.py
 EXPOSE 8000
 CMD ["python","/app/main_ext.py"]
