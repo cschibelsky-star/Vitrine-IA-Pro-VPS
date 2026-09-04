@@ -7,6 +7,7 @@ import shutil
 import socket
 import ssl
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -385,7 +386,7 @@ def register_production_publication_tools(
         SSL_ROOT.mkdir(parents=True, exist_ok=True)
         ACME_WEBROOT.mkdir(parents=True, exist_ok=True)
         cmd = [
-            "docker", "run", "--rm", "--network", "none",
+            "docker", "run", "--rm", "--network", "bridge",
             "-v", f"{SSL_ROOT}:/etc/letsencrypt",
             "-v", f"{ACME_WEBROOT}:/var/www/html",
             CERTBOT_IMAGE,
