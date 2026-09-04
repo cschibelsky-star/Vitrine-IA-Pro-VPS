@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -8,7 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 BASE = "http://127.0.0.1:8871"
-V5_HEALTH = "http://127.0.0.1:8867/"
+V5_HOST = "127.0.0.1"
+V5_PORT = 8867
 TOKEN_FILE = Path("/var/lib/vitrine-break-glass/token")
 RESULT_FILE = Path("/results/homologation-result.json")
 RELEASE_ID = "v5-current-known-good"
@@ -50,12 +52,10 @@ def wait_v5(timeout: int = 60) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(V5_HEALTH, timeout=3) as response:
-                if response.status < 500:
-                    return True
-        except Exception:
-            pass
-        time.sleep(2)
+            with socket.create_connection((V5_HOST, V5_PORT), timeout=3):
+                return True
+        except OSError:
+            time.sleep(2)
     return False
 
 
