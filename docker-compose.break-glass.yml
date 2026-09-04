@@ -59,6 +59,8 @@ services:
       - /run/break-glass:/run/break-glass:rw
       - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
       - /var/lib/vitrine-break-glass:/var/lib/vitrine-break-glass:rw
+      - /srv/projects/vitrine-ia-pro-core/releases:/history/releases:ro
+      - /srv/projects/vitrine-ia-pro-core/snapshots:/history/snapshots:ro
     ports:
       - "127.0.0.1:8871:8099"
     networks:
