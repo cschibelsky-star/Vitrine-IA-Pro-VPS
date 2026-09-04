@@ -5,6 +5,7 @@ services:
       dockerfile: break-glass/Dockerfile.homologation
     image: vitrine-break-glass-homologation:0.1
     container_name: vitrine_break_glass_homologation
+    user: "0:8871"
     volumes:
       - /var/lib/vitrine-break-glass/token:/var/lib/vitrine-break-glass/token:ro
       - ./validation-output:/results:rw
