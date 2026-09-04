@@ -66,6 +66,7 @@ services:
                 for path in files
             }
             migration = validate_invoke("vitrine-marketing-agents-core-hml", "migrate_pretend")
+            tests_marketing = validate_invoke("vitrine-marketing-agents-core-hml", "tests_marketing")
             payload_data = {
                 "lint": {
                     "total": len(lint_results),
@@ -86,11 +87,20 @@ services:
                     "stderr": str(migration.get("stderr") or "")[-2000:],
                 },
                 "phpunit": {
-                    "executed": False,
-                    "reason": "phpunit_runtime_unavailable_in_runner_image",
+                    "executed": True,
+                    "ok": tests_marketing.get("ok"),
+                    "error": tests_marketing.get("error"),
+                    "detail": tests_marketing.get("detail"),
+                    "exit_code": tests_marketing.get("exit_code"),
+                    "stdout": str(tests_marketing.get("stdout") or "")[-4000:],
+                    "stderr": str(tests_marketing.get("stderr") or "")[-2000:],
                 },
             }
-            ok = payload_data["lint"]["passed"] == payload_data["lint"]["total"] and payload_data["migrate_pretend"]["ok"]
+            ok = (
+                payload_data["lint"]["passed"] == payload_data["lint"]["total"]
+                and payload_data["migrate_pretend"]["ok"]
+                and payload_data["phpunit"]["ok"]
+            )
             payload = json.dumps(payload_data, ensure_ascii=False, indent=2)
         except BaseException as exc:
             payload = json.dumps({

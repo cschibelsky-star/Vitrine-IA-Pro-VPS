@@ -12,7 +12,7 @@ from typing import Any
 import psutil
 from fastmcp import FastMCP
 
-VERSION = "0.5.9-project-php-runner"
+VERSION = "0.5.10-project-phpunit-runner-hardened"
 MANIFEST_ROOT = Path(os.getenv("PROJECT_MANIFEST_ROOT", "/app/project-manifests")).resolve()
 ALLOWED_WORKSPACE_ROOTS = tuple(Path(p).resolve() for p in os.getenv("PROJECT_WORKSPACE_ROOTS", "/srv/projects,/srv/tvsumare").split(",") if p.strip())
 AUDIT_LOG = Path(os.getenv("OPS_AUDIT_LOG", "/var/log/vitrine-ops-v5/audit.jsonl"))
@@ -672,7 +672,7 @@ def project_php_lint(project_id: str, path: str) -> dict[str, Any]:
 def project_php_validate(project_id: str, operation: str = "tests_marketing") -> dict[str, Any]:
     operation = str(operation or "").strip().lower()
     commands = {
-        "tests_marketing": "vendor/bin/phpunit tests/Unit/Marketing --colors=never",
+        "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
     }
     if operation not in commands:
@@ -686,15 +686,54 @@ def project_php_validate(project_id: str, operation: str = "tests_marketing") ->
     if not runner_image or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/@-" for ch in runner_image):
         return {"ok": False, "error": "php_runner_image_invalid", "operation": operation}
 
+    if operation == "tests_marketing":
+        composer_lock = repository / "composer.lock"
+        if not composer_lock.is_file():
+            return {"ok": False, "error": "composer_lock_required", "operation": operation}
+        dependency_tag = hashlib.sha256(composer_lock.read_bytes()).hexdigest()[:12]
+        dependency_image = f"vitrine-marketing-phpunit-deps:{dependency_tag}"
+        image_check = _run(["docker", "image", "inspect", dependency_image], repository, timeout=30)
+        if not image_check.get("ok"):
+            dockerfile = (
+                "FROM vitrine-marketing-agents-core-hml-app:latest\n"
+                "WORKDIR /var/www/html\n"
+                "COPY composer.json composer.lock ./\n"
+                "RUN composer install --no-interaction --prefer-dist --no-progress --no-scripts --no-plugins\n"
+            )
+            try:
+                proc = subprocess.run(
+                    ["docker", "build", "-t", dependency_image, "-f", "-", str(repository)],
+                    cwd=str(repository),
+                    input=dockerfile,
+                    text=True,
+                    capture_output=True,
+                    timeout=1200,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                return {"ok": False, "error": "phpunit_dependency_image_build_failed", "detail": type(exc).__name__, "operation": operation}
+            if proc.returncode != 0:
+                return {
+                    "ok": False,
+                    "error": "phpunit_dependency_image_build_failed",
+                    "operation": operation,
+                    "exit_code": proc.returncode,
+                    "stdout": proc.stdout[-4000:],
+                    "stderr": proc.stderr[-4000:],
+                }
+        runner_image = dependency_image
+
     image_check = _run(["docker", "image", "inspect", runner_image], repository, timeout=30)
     if not image_check.get("ok"):
         return {"ok": False, "error": "php_runner_image_unavailable", "operation": operation, "runtime_image": runner_image}
+
+    extra_mounts: list[str] = []
 
     bootstrap = (
         "set -eu; "
         "mkdir -p /work/project; "
         "cp -R /var/www/html/. /work/project/; "
-        "cp -R /source/. /work/project/; "
+        "find /source -mindepth 1 -maxdepth 1 ! -name .git -exec cp -R {} /work/project/ \\;; "
         "cd /work/project; "
         + commands[operation]
     )
@@ -719,6 +758,7 @@ def project_php_validate(project_id: str, operation: str = "tests_marketing") ->
         "--env", "QUEUE_CONNECTION=sync",
         "--entrypoint", "sh",
         "--mount", f"type=bind,src={repository},dst=/source,readonly",
+    ] + extra_mounts + [
         runner_image,
         "-lc", bootstrap,
     ], repository, timeout=600)
