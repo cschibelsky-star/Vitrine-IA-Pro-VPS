@@ -45,6 +45,11 @@ SENSITIVE_ENV_MARKERS = (
     "PRIVATE_KEY", "ACCESS_KEY", "AUTH", "CREDENTIAL", "APP_KEY",
 )
 SAFE_CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+SAFE_EXEC_BINARIES = {"php", "composer", "npm", "curl", "ffmpeg"}
+SAFE_ARTISAN_COMMANDS = {
+    "about", "config:show", "route:list", "migrate:status",
+    "optimize:clear", "config:clear", "cache:clear", "route:clear", "view:clear", "filament:assets",
+}
 
 class ProjectRequest(BaseModel):
     project_id: str
