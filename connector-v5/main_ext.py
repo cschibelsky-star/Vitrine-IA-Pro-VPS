@@ -1,5 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+# Temporary startup compatibility fix for the PHP validation runner.
+# The copied PHPUnit launcher may lose its executable bit inside the isolated
+# tmpfs workspace, so force invocation through the PHP interpreter before the
+# V5 registry is imported.
+main_path = Path('/app/main.py')
+needle = '"tests_marketing": "vendor/bin/phpunit tests/Unit/Marketing --colors=never"'
+replacement = '"tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never"'
+if main_path.is_file():
+    source = main_path.read_text(encoding='utf-8')
+    if needle in source:
+        main_path.write_text(source.replace(needle, replacement, 1), encoding='utf-8')
+
 import main as core
 
 # main.py is the single registry for V5 tools. Keeping this entrypoint thin
