@@ -5,6 +5,7 @@ import types
 from pathlib import Path
 
 from marketing_live_patch import apply as apply_marketing_live_patch
+from production_publication import register_production_publication_tools
 
 main_path = Path('/app/main.py')
 if not main_path.is_file():
@@ -18,9 +19,8 @@ core.__file__ = str(main_path)
 sys.modules['main'] = core
 exec(compile(source, str(main_path), 'exec'), core.__dict__)
 
-# main.py remains the single registry for V5 tools. The source is patched only
-# in memory so the container filesystem can stay read-only.
 mcp = core.mcp
+register_production_publication_tools(mcp, core._project_paths, core._audit, core._run)
 
 
 if __name__ == '__main__':
