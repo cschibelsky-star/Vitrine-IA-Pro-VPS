@@ -1,0 +1,10 @@
+{
+  "releases": {
+    "v5-0.5.10-known-good": {
+      "image": "vitrine-mcp-v5:0.5.10-known-good",
+      "compose_image": "vitrine-mcp-v5-v59-connector_v5:latest",
+      "compose_file": "/srv/connectors/vitrine-vps-mcp/docker-compose.connector-v5.yml",
+      "docker_project": "vitrine-mcp-v5-v59"
+    }
+  }
+}

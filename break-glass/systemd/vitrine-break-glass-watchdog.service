@@ -1,0 +1,26 @@
+[Unit]
+Description=Vitrine IA Pro Break Glass Watchdog
+After=network-online.target vitrine-break-glass-executor.service
+Wants=network-online.target
+Requires=vitrine-break-glass-executor.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/vitrine-break-glass/watchdog.py
+Restart=always
+RestartSec=10
+Environment=BREAK_GLASS_WATCH_TARGET=http://127.0.0.1:8867/
+Environment=BREAK_GLASS_EXECUTOR_SOCKET=/run/break-glass/executor.sock
+Environment=BREAK_GLASS_WATCH_STATE=/var/lib/vitrine-break-glass/watchdog.json
+Environment=BREAK_GLASS_WATCH_AUDIT=/var/log/vitrine-break-glass/watchdog.jsonl
+Environment=BREAK_GLASS_FAIL_THRESHOLD=3
+Environment=BREAK_GLASS_WATCH_INTERVAL=30
+Environment=BREAK_GLASS_COOLDOWN=300
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vitrine-break-glass /var/log/vitrine-break-glass /run/break-glass
+
+[Install]
+WantedBy=multi-user.target
