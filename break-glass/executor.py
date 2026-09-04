@@ -17,7 +17,8 @@ STATE_FILE = Path(os.getenv("BREAK_GLASS_EXECUTOR_STATE", "/diagnostics/executor
 V5_CONTAINER = os.getenv("BREAK_GLASS_V5_CONTAINER", "vitrine_mcp_v5")
 MAX_LOG_LINES = int(os.getenv("BREAK_GLASS_MAX_LOG_LINES", "500"))
 KNOWN_GOOD_TAG = os.getenv("BREAK_GLASS_KNOWN_GOOD_TAG", "vitrine-mcp-v5:break-glass-known-good")
-V5_COMPOSE_FILE = os.getenv("BREAK_GLASS_V5_COMPOSE_FILE", "/srv/connectors/vitrine-vps-mcp/docker-compose.connector-v5.yml")
+EXPECTED_V5_COMPOSE_FILE = "/srv/projects/vitrine-vps-mcp-v59-integration/repository/docker-compose.connector-v5.yml"
+V5_COMPOSE_FILE = os.getenv("BREAK_GLASS_V5_COMPOSE_FILE", EXPECTED_V5_COMPOSE_FILE)
 V5_DOCKER_PROJECT = os.getenv("BREAK_GLASS_V5_DOCKER_PROJECT", "vitrine-mcp-v5-v59")
 RELEASE_ID = "v5-current-known-good"
 
@@ -102,7 +103,7 @@ def _handle(request: dict) -> dict:
             result = {"ok": False, "error": "release_not_allowed"}
             _audit("rollback", False, release_id)
             return result
-        if not V5_COMPOSE_FILE.startswith("/srv/connectors/vitrine-vps-mcp/"):
+        if V5_COMPOSE_FILE != EXPECTED_V5_COMPOSE_FILE:
             result = {"ok": False, "error": "compose_path_blocked"}
             _audit("rollback", False, release_id)
             return result
