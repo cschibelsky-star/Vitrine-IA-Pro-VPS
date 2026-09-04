@@ -18,6 +18,21 @@ AUDIT_LOG = Path(os.getenv("BREAK_GLASS_AUDIT_LOG", "/var/log/vitrine-break-glas
 MAX_LOG_LINES = int(os.getenv("BREAK_GLASS_MAX_LOG_LINES", "500"))
 RATE_WINDOW_SECONDS = int(os.getenv("BREAK_GLASS_RATE_WINDOW", "60"))
 RATE_MAX_REQUESTS = int(os.getenv("BREAK_GLASS_RATE_MAX", "20"))
+HISTORY_ROOTS = {
+    "releases": Path("/history/releases"),
+    "snapshots": Path("/history/snapshots"),
+}
+HISTORY_MAX_TREE_ENTRIES = 500
+HISTORY_MAX_SEARCH_FILES = 2000
+HISTORY_MAX_FILE_BYTES = 1_000_000
+HISTORY_TEXT_SUFFIXES = {
+    ".php", ".blade.php", ".html", ".htm", ".css", ".js", ".ts", ".tsx",
+    ".vue", ".json", ".md", ".txt", ".yml", ".yaml", ".xml", ".py",
+}
+HISTORY_BLOCKED_PARTS = {
+    ".git", "vendor", "node_modules", "logs", "log", "credentials", "secrets",
+    "private", "keys", "certs", "certificates",
+}
 _REQUESTS: dict[str, list[float]] = {}
 
 
@@ -84,8 +99,91 @@ def _executor(payload: dict) -> dict:
     return json.loads(b"".join(chunks).decode().strip())
 
 
+def _history_root(scope: str) -> Path:
+    root = HISTORY_ROOTS.get(scope)
+    if root is None:
+        raise ValueError("invalid_scope")
+    return root
+
+
+def _history_blocked(path: Path) -> bool:
+    lowered = {part.lower() for part in path.parts}
+    if lowered & HISTORY_BLOCKED_PARTS:
+        return True
+    name = path.name.lower()
+    return name == ".env" or name.startswith(".env.") or "credential" in name or "secret" in name
+
+
+def _history_text_file(path: Path) -> bool:
+    name = path.name.lower()
+    if name.endswith(".blade.php"):
+        return True
+    return path.suffix.lower() in HISTORY_TEXT_SUFFIXES
+
+
+def _history_tree(scope: str) -> dict:
+    root = _history_root(scope)
+    if not root.exists():
+        return {"ok": True, "scope": scope, "entries": [], "count": 0}
+    entries: list[dict] = []
+    for path in sorted(root.rglob("*"), key=lambda item: item.as_posix().lower()):
+        relative = path.relative_to(root)
+        if _history_blocked(relative):
+            continue
+        if len(entries) >= HISTORY_MAX_TREE_ENTRIES:
+            break
+        entries.append({
+            "path": relative.as_posix(),
+            "type": "dir" if path.is_dir() else "file",
+            "size": path.stat().st_size if path.is_file() else None,
+        })
+    return {
+        "ok": True,
+        "scope": scope,
+        "entries": entries,
+        "count": len(entries),
+        "truncated": len(entries) >= HISTORY_MAX_TREE_ENTRIES,
+    }
+
+
+def _history_search(scope: str, query: str) -> dict:
+    query = query.strip()
+    if not query or len(query) > 120:
+        raise ValueError("invalid_query")
+    root = _history_root(scope)
+    if not root.exists():
+        return {"ok": True, "scope": scope, "query": query, "matches": [], "files_scanned": 0}
+    needle = query.casefold()
+    matches: list[dict] = []
+    scanned = 0
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        if _history_blocked(relative) or not _history_text_file(path):
+            continue
+        try:
+            if path.stat().st_size > HISTORY_MAX_FILE_BYTES:
+                continue
+        except OSError:
+            continue
+        scanned += 1
+        if scanned > HISTORY_MAX_SEARCH_FILES:
+            break
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            if needle in line.casefold():
+                matches.append({"path": relative.as_posix(), "line": line_no, "excerpt": line.strip()[:300]})
+                if len(matches) >= 100:
+                    return {"ok": True, "scope": scope, "query": query, "matches": matches, "files_scanned": scanned, "truncated": True}
+    return {"ok": True, "scope": scope, "query": query, "matches": matches, "files_scanned": scanned, "truncated": scanned > HISTORY_MAX_SEARCH_FILES}
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "VitrineBreakGlass/0.1"
+    server_version = "VitrineBreakGlass/0.2-readonly-history"
 
     def _send(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -114,7 +212,34 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/health":
-            self._send(200, {"ok": True, "service": "vitrine-break-glass", "version": "0.1"})
+            self._send(200, {"ok": True, "service": "vitrine-break-glass", "version": "0.2-readonly-history"})
+            return
+        if parsed.path == "/v1/history/tree":
+            if not self._guard("history_tree"):
+                return
+            params = parse_qs(parsed.query)
+            scope = str(params.get("scope", [""])[0]).strip()
+            try:
+                result = _history_tree(scope)
+                _audit("history_tree", self._client(), True, f"scope={scope};count={result.get('count', 0)}")
+                self._send(200, result)
+            except ValueError as exc:
+                _audit("history_tree", self._client(), False, str(exc))
+                self._send(400, {"ok": False, "error": str(exc)})
+            return
+        if parsed.path == "/v1/history/search":
+            if not self._guard("history_search"):
+                return
+            params = parse_qs(parsed.query)
+            scope = str(params.get("scope", [""])[0]).strip()
+            query = str(params.get("q", [""])[0])
+            try:
+                result = _history_search(scope, query)
+                _audit("history_search", self._client(), True, f"scope={scope};query={query[:80]};matches={len(result.get('matches', []))}")
+                self._send(200, result)
+            except ValueError as exc:
+                _audit("history_search", self._client(), False, str(exc))
+                self._send(400, {"ok": False, "error": str(exc)})
             return
         if parsed.path == "/v1/v5/logs":
             if not self._guard("logs"):
