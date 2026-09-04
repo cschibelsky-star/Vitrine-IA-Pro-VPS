@@ -14,14 +14,14 @@ services:
       BREAK_GLASS_V5_CONTAINER: vitrine_mcp_v5
       BREAK_GLASS_MAX_LOG_LINES: "500"
       BREAK_GLASS_KNOWN_GOOD_TAG: vitrine-mcp-v5:break-glass-known-good
-      BREAK_GLASS_V5_COMPOSE_FILE: /srv/connectors/vitrine-vps-mcp/docker-compose.connector-v5.yml
+      BREAK_GLASS_V5_COMPOSE_FILE: /srv/projects/vitrine-vps-mcp-v59-integration/repository/docker-compose.connector-v5.yml
       BREAK_GLASS_V5_DOCKER_PROJECT: vitrine-mcp-v5-v59
     volumes:
       - /run/break-glass:/run/break-glass:rw
       - /var/log/vitrine-break-glass:/var/log/vitrine-break-glass:rw
       - /var/lib/vitrine-break-glass:/var/lib/vitrine-break-glass:rw
       - ./break-glass/runtime-state:/diagnostics:rw
-      - /srv/connectors/vitrine-vps-mcp:/srv/connectors/vitrine-vps-mcp:ro
+      - /srv/projects/vitrine-vps-mcp-v59-integration/repository/docker-compose.connector-v5.yml:/srv/projects/vitrine-vps-mcp-v59-integration/repository/docker-compose.connector-v5.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock
     network_mode: none
     read_only: true
@@ -87,7 +87,8 @@ services:
     image: vitrine-break-glass-watchdog:0.1
     container_name: vitrine_break_glass_watchdog
     environment:
-      BREAK_GLASS_WATCH_TARGET: http://127.0.0.1:8867/
+      BREAK_GLASS_WATCH_HOST: 127.0.0.1
+      BREAK_GLASS_WATCH_PORT: "8867"
       BREAK_GLASS_EXECUTOR_SOCKET: /run/break-glass/executor.sock
       BREAK_GLASS_WATCH_STATE: /var/lib/vitrine-break-glass/watchdog.json
       BREAK_GLASS_WATCH_AUDIT: /var/log/vitrine-break-glass/watchdog.jsonl
