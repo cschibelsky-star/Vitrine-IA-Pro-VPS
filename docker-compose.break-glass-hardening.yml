@@ -1,0 +1,21 @@
+services:
+  break_glass_health_publisher:
+    image: docker:27-cli
+    container_name: vitrine_break_glass_health_publisher
+    command: ["/bin/sh", "/work/publish-health-route.sh"]
+    volumes:
+      - ./break-glass/publish-health-route.sh:/work/publish-health-route.sh:ro
+      - /srv/vitrine/docker/nginx/conf.d:/nginx-conf:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 0.20
+    restart: "no"

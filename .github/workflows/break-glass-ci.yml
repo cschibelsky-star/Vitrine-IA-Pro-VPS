@@ -1,0 +1,50 @@
+name: Break Glass CI
+
+on:
+  pull_request:
+    paths:
+      - 'break-glass/**'
+      - 'docker-compose.break-glass*.yml'
+      - '.github/workflows/break-glass-ci.yml'
+  push:
+    branches:
+      - feature/break-glass-connector
+    paths:
+      - 'break-glass/**'
+      - 'docker-compose.break-glass*.yml'
+      - '.github/workflows/break-glass-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Break Glass contract tests
+        env:
+          BREAK_GLASS_TOKEN: ci-test-token
+        run: python -m unittest discover -s break-glass/tests -v
+      - name: Compile Python sources
+        run: python -m py_compile break-glass/app.py break-glass/executor.py break-glass/watchdog.py
+
+  compose-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose files
+        run: |
+          for file in \
+            docker-compose.break-glass.yml \
+            docker-compose.break-glass-tests.yml \
+            docker-compose.break-glass-homologation.yml \
+            docker-compose.break-glass-rollback-diagnostic.yml \
+            docker-compose.break-glass-hardening.yml; do
+              docker compose -f "$file" config --quiet
+          done
