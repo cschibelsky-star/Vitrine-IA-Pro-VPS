@@ -40,6 +40,10 @@ def _load_token() -> str:
     value = TOKEN_FILE.read_text(encoding="utf-8").strip()
     if not value:
         raise RuntimeError("break_glass_token_empty")
+    try:
+        os.chmod(TOKEN_FILE, 0o640)
+    except PermissionError:
+        pass
     return value
 
 
