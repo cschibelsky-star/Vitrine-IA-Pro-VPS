@@ -1,0 +1,16 @@
+# V5 Nginx dynamic-upstream hardening
+#
+# Purpose: prevent the public gateway from failing to start when
+# vitrine_mcp_v5 is temporarily absent from Docker DNS during rebuild/recreate.
+#
+# Apply only to the existing mcp-v5.conf location block.
+
+-        proxy_pass http://vitrine_mcp_v5:8000/mcp;
++        resolver 127.0.0.11 valid=10s ipv6=off;
++        set $mcp_v5_backend vitrine_mcp_v5;
++        proxy_pass http://$mcp_v5_backend:8000/mcp;
+
+# Expected behavior after hardening:
+# - vitrine_mcp_v5 healthy: mcp-v5 endpoint works normally.
+# - vitrine_mcp_v5 unavailable: only the V5 endpoint fails temporarily.
+# - vitrine_nginx must remain able to start/reload.

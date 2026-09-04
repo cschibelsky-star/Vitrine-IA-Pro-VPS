@@ -148,7 +148,7 @@ def main() -> None:
     backup(main_py)
     text = main_py.read_text(encoding='utf-8')
 
-    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_write_file as _project_write_file,\n    project_php_lint as _project_php_lint,\n    project_deploy as _project_deploy,\n)\n'''
+    import_block = '''\nfrom project_manager_tools import (\n    project_manifest as _project_manifest,\n    project_workspace as _project_workspace,\n    project_clone as _project_clone,\n    project_status as _project_status,\n    project_docker_container_info as _project_docker_container_info,\n    project_docker_container_env_safe as _project_docker_container_env_safe,\n    project_container_exec as _project_container_exec,\n    project_compose_rm_explicit as _project_compose_rm_explicit,\n    project_git_stage_explicit as _project_git_stage_explicit,\n    project_git_commit_explicit as _project_git_commit_explicit,\n    project_git_push_explicit as _project_git_push_explicit,\n    project_write_file as _project_write_file,\n    project_php_lint as _project_php_lint,\n    project_deploy as _project_deploy,\n)\n'''
 
     if 'from project_manager_tools import' not in text:
         marker = 'from tvsumare_migration_tools import ('
@@ -166,6 +166,13 @@ def main() -> None:
         if import_end == -1:
             raise RuntimeError('imports project manager: fechamento não encontrado')
         import_lines = (
+            '    project_docker_container_info as _project_docker_container_info,\n',
+            '    project_docker_container_env_safe as _project_docker_container_env_safe,\n',
+            '    project_container_exec as _project_container_exec,\n',
+            '    project_compose_rm_explicit as _project_compose_rm_explicit,\n',
+            '    project_git_stage_explicit as _project_git_stage_explicit,\n',
+            '    project_git_commit_explicit as _project_git_commit_explicit,\n',
+            '    project_git_push_explicit as _project_git_push_explicit,\n',
             '    project_write_file as _project_write_file,\n',
             '    project_php_lint as _project_php_lint,\n',
             '    project_deploy as _project_deploy,\n',
@@ -185,6 +192,46 @@ def main() -> None:
         'def project_clone(project_id:',
         'registro project manager tools',
     )
+    if 'def project_docker_container_info(' not in text:
+        project_docker_container_info_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_info(project_id, container_name)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_docker_container_info_block,
+            'def project_docker_container_info(',
+            'registro project docker container info tool',
+        )
+
+    if 'def project_docker_container_env_safe(' not in text:
+        project_docker_container_env_safe_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_env_safe(project_id, container_name)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_docker_container_env_safe_block,
+            'def project_docker_container_env_safe(',
+            'registro project docker container env safe tool',
+        )
+
+    if 'def project_container_exec(' not in text:
+        project_container_exec_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_container_exec(\n    project_id: str,\n    container_name: str,\n    command: list[str],\n    workdir: str = "/var/www/html",\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_container_exec(project_id, container_name, command, workdir, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_container_exec_block,
+            'def project_container_exec(',
+            'registro project container exec tool',
+        )
+
+    if 'def project_compose_rm_explicit(' not in text:
+        project_compose_rm_explicit_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_compose_rm_explicit(\n    project_id: str,\n    compose_file: str,\n    services: list[str],\n    docker_project: str = "",\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_compose_rm_explicit(project_id, compose_file, services, docker_project, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_compose_rm_explicit_block,
+            'def project_compose_rm_explicit(',
+            'registro project compose rm explicit tool',
+        )
+
     if 'def project_deploy(' not in text:
         project_deploy_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_deploy(\n    project_id: str,\n    environment: str = "homologation",\n    update_repository: bool = True,\n    build: bool = True,\n    start: bool = True,\n) -> dict[str, Any]:\n    return _project_deploy(project_id, environment, update_repository, build, start)\n'''
         text = ensure_block_before(
@@ -193,6 +240,33 @@ def main() -> None:
             project_deploy_block,
             'def project_deploy(',
             'registro project deploy tool',
+        )
+    if 'def project_git_stage_explicit(' not in text:
+        project_git_stage_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_git_stage_explicit(\n    project_id: str,\n    paths: list[str],\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_git_stage_explicit(project_id, paths, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_git_stage_block,
+            'def project_git_stage_explicit(',
+            'registro project git stage explicit tool',
+        )
+    if 'def project_git_commit_explicit(' not in text:
+        project_git_commit_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_git_commit_explicit(\n    project_id: str,\n    message: str,\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_git_commit_explicit(project_id, message, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_git_commit_block,
+            'def project_git_commit_explicit(',
+            'registro project git commit explicit tool',
+        )
+    if 'def project_git_push_explicit(' not in text:
+        project_git_push_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_git_push_explicit(\n    project_id: str,\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_git_push_explicit(project_id, confirm)\n'''
+        text = ensure_block_before(
+            text,
+            '\nif __name__ == "__main__":\n',
+            project_git_push_block,
+            'def project_git_push_explicit(',
+            'registro project git push explicit tool',
         )
     if 'def project_write_file(' not in text:
         project_write_file_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_write_file(\n    project_id: str,\n    path: str,\n    content: str,\n    backup: bool = True,\n    confirm: str = "",\n) -> dict[str, Any]:\n    return _project_write_file(project_id, path, content, backup, confirm)\n'''
@@ -263,6 +337,16 @@ def main() -> None:
         'ops_broker',
         'environment',
         'PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects',
+    )
+    compose_text = compose_text.replace(
+        'PROJECT_DOCKER_ALLOWED_PREFIXES: vitrine_core_,cursos_ia_mvp_,tvsumare_,agente_compras_',
+        'PROJECT_DOCKER_ALLOWED_PREFIXES: vitrine_core_,cursos_ia_mvp_,tvsumare_,agente_compras_,vitrine_marketing_',
+    )
+    compose_text = ensure_compose_entry(
+        compose_text,
+        'ops_broker',
+        'environment',
+        'PROJECT_DOCKER_ALLOWED_PREFIXES: vitrine_core_,cursos_ia_mvp_,tvsumare_,agente_compras_,vitrine_marketing_',
     )
     compose_text = ensure_compose_entry(
         compose_text,

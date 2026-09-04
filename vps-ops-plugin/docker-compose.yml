@@ -1,0 +1,52 @@
+services:
+  vps_ops_plugin:
+    build:
+      context: ..
+      dockerfile: vps-ops-plugin/Dockerfile
+    container_name: vitrine_vps_ops_plugin_hml
+    restart: unless-stopped
+    environment:
+      OPS_API_URL: http://vitrine_ops_api_hml:8080
+      OPS_BROKER_URL: http://ops_broker:8770
+      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+      OPS_REQUEST_TIMEOUT_MS: 120000
+      HOST: 0.0.0.0
+      PORT: 8181
+    networks:
+      - vitrine_net
+    ports:
+      - "127.0.0.1:18181:8181"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  mcp_runtime_inspector:
+    image: docker:27-cli
+    container_name: vitrine_vps_ops_mcp_runtime_inspector
+    restart: "no"
+    command:
+      - sh
+      - -lc
+      - >-
+        mkdir -p /bootstrap;
+        rm -f /bootstrap/mcp-runtime-diagnostic.txt;
+        {
+          echo 'MCP_RUNTIME_DIAGNOSTIC=START';
+          date -u '+AT=%Y-%m-%dT%H:%M:%SZ';
+          echo '--- INSPECT ---';
+          docker inspect vitrine_vps_mcp_connector --format 'STATUS={{.State.Status}} RESTARTING={{.State.Restarting}} EXIT={{.State.ExitCode}} ERROR={{.State.Error}} RESTART_COUNT={{.RestartCount}} HEALTH={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}';
+          echo '--- LOGS ---';
+          docker logs --tail 200 vitrine_vps_mcp_connector 2>&1;
+          echo 'MCP_RUNTIME_DIAGNOSTIC=END';
+        } > /bootstrap/mcp-runtime-diagnostic.txt 2>&1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/projects/vitrine-vps-ops/repository/storage/app/factory/vps-ops:/bootstrap:rw
+
+networks:
+  vitrine_net:
+    external: true
+    name: vitrine_net

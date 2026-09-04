@@ -1,0 +1,81 @@
+services:
+  vitrine_ops_api:
+    profiles: ["ops-api"]
+    build:
+      context: .
+      dockerfile: ops-api/Dockerfile
+    container_name: vitrine_ops_api_hml
+    environment:
+      PROJECT_MANIFEST_ROOT: /app/project-manifests
+      PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects
+      PROJECT_MANAGER_TIMEOUT: 1200
+      OPS_AUDIT_LOG: /var/log/vitrine-ops/audit.jsonl
+      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+      VITRINE_OPS_API_VERSION: 0.1.0
+    volumes:
+      - /srv/projects:/srv/projects:rw
+      - /srv/tvsumare:/srv/tvsumare:rw
+      - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
+    ports:
+      - "127.0.0.1:18080:8080"
+    networks:
+      - vitrine_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  connector_self_update_install:
+    image: python:3.12-slim
+    network_mode: "none"
+    working_dir: /source
+    environment:
+      CONNECTOR_ROOT: /runtime
+    volumes:
+      - ./project-manager:/source/project-manager:ro
+      - ./connector-v2:/source/connector-v2:ro
+      - /srv/connectors/vitrine-vps-mcp:/runtime:rw
+    command:
+      - sh
+      - -c
+      - >-
+        set -eu;
+        python3 /source/project-manager/install_project_manager_safe.py;
+        python3 /source/project-manager/patch_project_workspace_action_runtime.py;
+        echo CONNECTOR_SELF_UPDATE_INSTALL_OK
+    restart: "no"
+
+  connector_self_update_rebuild:
+    image: docker:27-cli
+    network_mode: "none"
+    depends_on:
+      connector_self_update_install:
+        condition: service_completed_successfully
+    working_dir: /runtime
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp:/runtime:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - sh
+      - -c
+      - >-
+        set -eu;
+        docker compose -p vitrine-vps-mcp
+        -f /runtime/docker-compose.mcp.yml
+        -f /runtime/docker-compose.connector-v2.override.yml
+        config >/runtime/connector-self-update-config.log 2>&1;
+        docker compose -p vitrine-vps-mcp
+        -f /runtime/docker-compose.mcp.yml
+        -f /runtime/docker-compose.connector-v2.override.yml
+        up -d --build ops_broker vps_mcp_connector
+        >/runtime/connector-self-update-rebuild.log 2>&1;
+        echo CONNECTOR_SELF_UPDATE_REBUILD_OK
+    restart: "no"
+
+networks:
+  vitrine_net:
+    external: true
+    name: vitrine_net

@@ -1,0 +1,22 @@
+services:
+  mcp_runtime_diagnostic:
+    image: docker:27-cli
+    container_name: vitrine_mcp_runtime_diagnostic
+    restart: "no"
+    command:
+      - sh
+      - -lc
+      - >-
+        mkdir -p /output;
+        {
+          echo 'MCP_RUNTIME_DIAGNOSTIC=START';
+          date -u '+AT=%Y-%m-%dT%H:%M:%SZ';
+          echo '--- INSPECT ---';
+          docker inspect vitrine_vps_mcp_connector --format 'STATUS={{.State.Status}} RESTARTING={{.State.Restarting}} EXIT={{.State.ExitCode}} ERROR={{.State.Error}} RESTART_COUNT={{.RestartCount}} HEALTH={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}';
+          echo '--- LOGS ---';
+          docker logs --tail 300 vitrine_vps_mcp_connector 2>&1;
+          echo 'MCP_RUNTIME_DIAGNOSTIC=END';
+        } > /output/mcp-runtime-diagnostic.txt 2>&1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/projects/vitrine-vps-ops/shared/diagnostics:/output:rw

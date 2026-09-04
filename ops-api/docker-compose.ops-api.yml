@@ -1,0 +1,27 @@
+services:
+  vitrine_ops_api:
+    build:
+      context: ..
+      dockerfile: ops-api/Dockerfile
+    container_name: vitrine_ops_api
+    restart: unless-stopped
+    environment:
+      OPS_BROKER_TOKEN: ${OPS_BROKER_TOKEN}
+      PROJECT_MANIFEST_ROOT: /app/project-manifests
+      PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects
+      PROJECT_MANAGER_TIMEOUT: 1200
+      OPS_AUDIT_LOG: /var/log/vitrine-ops/audit.jsonl
+    volumes:
+      - ../project-manager/manifests:/app/project-manifests:ro
+      - /srv/tvsumare:/srv/tvsumare:rw
+      - /srv/projects:/srv/projects:rw
+      - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:18080:8080"
+    networks:
+      - vitrine_mcp_internal
+
+networks:
+  vitrine_mcp_internal:
+    external: true
