@@ -18,14 +18,21 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def request(path: str, method: str = "GET", token: str | None = None, body: dict | None = None) -> tuple[int, dict]:
+def persist(result: dict) -> None:
+    RESULT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    snapshot = dict(result)
+    snapshot["updated_at"] = now()
+    RESULT_FILE.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def request(path: str, method: str = "GET", token: str | None = None, body: dict | None = None, timeout: int = 25) -> tuple[int, dict]:
     data = None if body is None else json.dumps(body).encode()
     headers = {"Content-Type": "application/json"}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=20) as response:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
             raw = response.read().decode()
             return response.status, json.loads(raw or "{}")
     except urllib.error.HTTPError as exc:
@@ -35,9 +42,11 @@ def request(path: str, method: str = "GET", token: str | None = None, body: dict
         except json.JSONDecodeError:
             payload = {"raw": raw[:500]}
         return exc.code, payload
+    except Exception as exc:
+        return 599, {"ok": False, "error": f"transport_{type(exc).__name__}"}
 
 
-def wait_v5(timeout: int = 45) -> bool:
+def wait_v5(timeout: int = 60) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -52,13 +61,24 @@ def wait_v5(timeout: int = 45) -> bool:
 
 def main() -> None:
     result: dict = {"started_at": now(), "checks": {}}
-    token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+    persist(result)
+
+    try:
+        token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+    except Exception as exc:
+        result["checks"]["token_read"] = {"ok": False, "error": type(exc).__name__}
+        result["ok"] = False
+        result["finished_at"] = now()
+        persist(result)
+        raise SystemExit(1)
 
     status, payload = request("/health")
-    result["checks"]["health"] = {"ok": status == 200 and payload.get("ok") is True, "status": status}
+    result["checks"]["health"] = {"ok": status == 200 and payload.get("ok") is True, "status": status, "error": payload.get("error")}
+    persist(result)
 
     status, payload = request("/v1/v5/logs?lines=5")
     result["checks"]["auth_denied"] = {"ok": status == 401, "status": status, "error": payload.get("error")}
+    persist(result)
 
     status, payload = request("/v1/v5/logs?lines=5", token=token)
     result["checks"]["logs"] = {
@@ -66,9 +86,11 @@ def main() -> None:
         "status": status,
         "exit_code": payload.get("exit_code"),
         "stdout_chars": len(str(payload.get("stdout") or "")),
+        "error": payload.get("error"),
     }
+    persist(result)
 
-    status, payload = request("/v1/v5/restart", method="POST", token=token)
+    status, payload = request("/v1/v5/restart", method="POST", token=token, timeout=35)
     restart_api_ok = status == 200 and payload.get("ok") is True
     restart_health_ok = wait_v5()
     result["checks"]["restart"] = {
@@ -77,10 +99,12 @@ def main() -> None:
         "api_ok": restart_api_ok,
         "v5_recovered": restart_health_ok,
         "exit_code": payload.get("exit_code"),
+        "error": payload.get("error"),
     }
+    persist(result)
 
     if restart_health_ok:
-        status, payload = request("/v1/v5/rollback", method="POST", token=token, body={"release_id": RELEASE_ID})
+        status, payload = request("/v1/v5/rollback", method="POST", token=token, body={"release_id": RELEASE_ID}, timeout=70)
         rollback_api_ok = status == 200 and payload.get("ok") is True
         rollback_health_ok = wait_v5()
         result["checks"]["rollback"] = {
@@ -93,11 +117,11 @@ def main() -> None:
         }
     else:
         result["checks"]["rollback"] = {"ok": False, "skipped": True, "reason": "restart_health_failed"}
+    persist(result)
 
     result["finished_at"] = now()
     result["ok"] = all(check.get("ok") is True for check in result["checks"].values())
-    RESULT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    RESULT_FILE.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    persist(result)
     print(json.dumps({"ok": result["ok"], "checks": {k: v.get("ok") for k, v in result["checks"].items()}}, ensure_ascii=False))
     raise SystemExit(0 if result["ok"] else 1)
 
