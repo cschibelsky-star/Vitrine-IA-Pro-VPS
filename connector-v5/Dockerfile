@@ -1,5 +1,5 @@
 FROM python:3.12-alpine
-RUN apk add --no-cache docker-cli docker-cli-compose git openssh-client
+RUN apk add --no-cache docker-cli docker-cli-compose git openssh-client bash openssl
 WORKDIR /app
 COPY connector-v5/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
