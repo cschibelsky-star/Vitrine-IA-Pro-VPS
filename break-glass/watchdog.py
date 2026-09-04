@@ -4,11 +4,11 @@ import json
 import os
 import socket
 import time
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-TARGET = os.getenv("BREAK_GLASS_WATCH_TARGET", "http://127.0.0.1:8867/")
+WATCH_HOST = os.getenv("BREAK_GLASS_WATCH_HOST", "127.0.0.1")
+WATCH_PORT = int(os.getenv("BREAK_GLASS_WATCH_PORT", "8867"))
 SOCKET_PATH = os.getenv("BREAK_GLASS_EXECUTOR_SOCKET", "/run/break-glass/executor.sock")
 STATE_FILE = Path(os.getenv("BREAK_GLASS_WATCH_STATE", "/var/lib/vitrine-break-glass/watchdog.json"))
 AUDIT_LOG = Path(os.getenv("BREAK_GLASS_WATCH_AUDIT", "/var/log/vitrine-break-glass/watchdog.jsonl"))
@@ -42,9 +42,9 @@ def _save(state: dict) -> None:
 
 def _healthy() -> bool:
     try:
-        with urllib.request.urlopen(TARGET, timeout=5) as response:
-            return 200 <= response.status < 500
-    except Exception:
+        with socket.create_connection((WATCH_HOST, WATCH_PORT), timeout=3):
+            return True
+    except OSError:
         return False
 
 
