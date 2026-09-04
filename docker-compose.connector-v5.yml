@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: connector-v5/Dockerfile
     container_name: vitrine_mcp_v5
-    command: ["/bin/sh", "-lc", "apk add --no-cache openssh-client bash openssl && exec python /app/main.py"]
+    command: ["/bin/sh", "-lc", "apk add --no-cache openssh-client bash openssl && exec python /app/main_ext.py"]
     environment:
       PROJECT_MANIFEST_ROOT: /app/project-manifests
       PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
