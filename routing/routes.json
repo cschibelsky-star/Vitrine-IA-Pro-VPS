@@ -60,6 +60,17 @@
       "health_path": "/health",
       "ssl": true,
       "status": "active"
+    },
+    {
+      "id": "vitrine-social-prod",
+      "project_id": "vitrine-ai-social-enterprise",
+      "environment": "production",
+      "hostname": "social.vitrineiapro.com.br",
+      "legacy_aliases": [],
+      "upstream": "studio_web:80",
+      "health_path": "/app/login",
+      "ssl": true,
+      "status": "pending_publication"
     }
   ]
 }
