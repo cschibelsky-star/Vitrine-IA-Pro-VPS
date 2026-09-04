@@ -1,0 +1,22 @@
+services:
+  break_glass_homologation:
+    build:
+      context: .
+      dockerfile: break-glass/Dockerfile.homologation
+    image: vitrine-break-glass-homologation:0.1
+    container_name: vitrine_break_glass_homologation
+    volumes:
+      - /var/lib/vitrine-break-glass/token:/var/lib/vitrine-break-glass/token:ro
+      - ./validation-output:/results:rw
+    network_mode: host
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 0.20
+    restart: "no"
