@@ -65,7 +65,10 @@ def main() -> int:
     # Apply the complete project manager registry layer.
     run([sys.executable, "project-manager/install_project_manager.py"], env=env)
 
-    # HostGator must still be registered after both installers.
+    # Register VIA tools in the MCP registry only after the previous installers finish editing main.py.
+    run([sys.executable, "connector-v2/install_via_mcp_tools.py"], env=env)
+
+    # HostGator must still be registered after all installers.
     assert_marker(ROOT / "ops_broker.py", "from hostgator_operations import router as hostgator_router")
     assert_marker(ROOT / "ops_broker.py", "app.include_router(hostgator_router)")
     assert_marker(ROOT / "main.py", "hostgator_health")
@@ -74,6 +77,7 @@ def main() -> int:
         "main.py",
         "ops_broker.py",
         "via_operations.py",
+        "via_tools.py",
         "hostgator_operations.py",
         "hostgator_tools.py",
         "connector_runtime.py",
@@ -100,10 +104,16 @@ def main() -> int:
         "def project_php_lint(",
         "def project_deploy(",
         "def hostgator_health(",
+        "def via_health(",
+        "def via_list_files(",
+        "def via_read_file(",
+        "def via_write_file(",
+        "def via_execute_command(",
     ):
         assert_marker(ROOT / "main.py", marker)
 
     print("MCP_MAIN_CATALOG_FILESYSTEM_GATE=PASS", flush=True)
+    print("VIA_MCP_REGISTRY_GATE=PASS", flush=True)
     print("DOCKER_REBUILD_PERFORMED=NAO", flush=True)
     print(f"ROLLBACK_SOURCE={BACKUP_ROOT}", flush=True)
     return 0
