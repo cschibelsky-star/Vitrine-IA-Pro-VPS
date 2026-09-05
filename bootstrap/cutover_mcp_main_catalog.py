@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(os.getenv("CONNECTOR_ROOT", "/srv/connectors/vitrine-vps-mcp-main")).resolve()
-ROLLBACK_SOURCE = Path(os.getenv("ROLLBACK_SOURCE", "/srv/vitrine/backups/mcp-main-catalog/20260905-200451")).resolve()
+ROLLBACK_SOURCE = Path(os.getenv("ROLLBACK_SOURCE", "/srv/vitrine/backups/mcp-main-catalog/20260905-200833")).resolve()
 ENV_FILE = ROOT / ".env.mcp-runtime"
 BASE_COMPOSE = ROOT / "docker-compose.mcp.yml"
 CATALOG_OVERRIDE = ROOT / "docker-compose.connector-v2.override.yml"
@@ -139,7 +139,6 @@ def restore_source() -> None:
 def rollback() -> None:
     print("ROLLBACK_START=SIM", file=sys.stderr, flush=True)
     restore_source()
-    # Rollback source predates the catalog override; use only files that exist there.
     files = [BASE_COMPOSE]
     if (ROOT / "docker-compose.main.override.yml").exists():
         files.append(ROOT / "docker-compose.main.override.yml")
