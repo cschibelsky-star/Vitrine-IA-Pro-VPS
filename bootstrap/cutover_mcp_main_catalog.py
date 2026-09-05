@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(os.getenv("CONNECTOR_ROOT", "/srv/connectors/vitrine-vps-mcp-main")).resolve()
-ROLLBACK_SOURCE = Path(os.getenv("ROLLBACK_SOURCE", "/srv/vitrine/backups/mcp-main-catalog/20260905-200833")).resolve()
+ROLLBACK_SOURCE = Path(os.getenv("ROLLBACK_SOURCE", "/srv/vitrine/backups/mcp-main-catalog/20260905-200451")).resolve()
 ENV_FILE = ROOT / ".env.mcp-runtime"
 BASE_COMPOSE = ROOT / "docker-compose.mcp.yml"
 CATALOG_OVERRIDE = ROOT / "docker-compose.connector-v2.override.yml"
@@ -64,6 +64,11 @@ def wait_health(container: str, timeout: int = 180) -> None:
             raise RuntimeError(f"container {container} became {status}")
         time.sleep(2)
     raise TimeoutError(f"container {container} not healthy within {timeout}s")
+
+
+def image_import_gate(service: str, module: str, label: str) -> None:
+    code = f"import {module}; print('{label}=PASS')"
+    run(compose("run", "--rm", "--no-deps", service, "python", "-c", code))
 
 
 def broker_get(path: str) -> dict:
@@ -158,6 +163,7 @@ def main() -> int:
     for p in (ROOT, ROLLBACK_SOURCE, ENV_FILE, BASE_COMPOSE, CATALOG_OVERRIDE, MAIN_OVERRIDE, ROOT / "probe_streamable_http.py"):
         require(p)
 
+    runtime_touched = False
     try:
         run(compose("config", "--quiet"))
         print("COMPOSE_CONFIG_GATE=PASS", flush=True)
@@ -165,6 +171,11 @@ def main() -> int:
         run(compose("build", "--no-cache", "ops_broker", "vps_mcp_connector"))
         print("BUILD_GATE=PASS", flush=True)
 
+        image_import_gate("ops_broker", "ops_broker", "OPS_BROKER_IMAGE_IMPORT_GATE")
+        image_import_gate("vps_mcp_connector", "main", "MCP_IMAGE_IMPORT_GATE")
+        print("PRE_CUTOVER_IMAGE_GATES=PASS", flush=True)
+
+        runtime_touched = True
         run(compose("up", "-d", "docker_socket_proxy", "ops_broker", "vps_mcp_connector"))
         wait_health("vitrine_mcp_ops_broker")
         wait_health("vitrine_vps_mcp_connector")
@@ -187,7 +198,11 @@ def main() -> int:
         return 0
     except Exception as exc:
         print(f"CUTOVER_FAILED={type(exc).__name__}:{exc}", file=sys.stderr, flush=True)
-        rollback()
+        if runtime_touched:
+            rollback()
+        else:
+            print("RUNTIME_UNTOUCHED=SIM", file=sys.stderr, flush=True)
+            print("ROLLBACK_SKIPPED=PRE_CUTOVER_GATE", file=sys.stderr, flush=True)
         raise
 
 
