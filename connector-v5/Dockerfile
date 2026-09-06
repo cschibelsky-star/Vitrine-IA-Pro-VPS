@@ -6,5 +6,6 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY connector-v5/main.py /app/main.py
 COPY connector-v5/main_ext.py /app/main_ext.py
 COPY connector-v5/marketing_live_patch.py /app/marketing_live_patch.py
+COPY connector-v5/controlled_operations_patch.py /app/controlled_operations_patch.py
 EXPOSE 8000
 CMD ["python","/app/main_ext.py"]
