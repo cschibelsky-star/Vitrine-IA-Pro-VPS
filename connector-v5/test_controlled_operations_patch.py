@@ -15,5 +15,7 @@ def test_recovered_controlled_operations_layer():
     assert '"vitrine-ai-pro-factory"' in source
     assert '"vps-ops-full-catalog-candidate"' in source
     assert '"vps_mcp_snapshot_candidate"' in source
+    assert '"v5-0-5-13-recovery-validation"' in source
+    assert '"connector_v5_recovery_candidate"' in source
     assert 'broad_compose_mutation_disabled' in source
     assert 'project_compose_service_execute' in source
