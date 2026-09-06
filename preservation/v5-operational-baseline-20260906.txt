@@ -1,0 +1,93 @@
+Vitrine IA Pro V5 - preservation artifact
+Date: 2026-09-06
+Source branch: backup/v5-pre-production-publication-20260904
+Source local HEAD before preservation: c42cc3fce15fb26a7877d09c758c52306cb1d39e
+Target source version: 0.5.12-operational-baseline
+Purpose: recover/reapply the operational baseline if local dirty source is lost before normal Git reconciliation.
+
+VERSION change:
+VERSION = "0.5.12-operational-baseline"
+
+Implemented tools/policy:
+- _backup_config(project_id): manifest-driven backup policy; backup.enabled must be true; supported type mariadb.
+- project_backup_configure(project_id, backup_type, source_container, db_container, database, expected_host, directory, retention_days, min_bytes, confirm): writes manifest backup policy; pre_mutation_required=true.
+- project_backup_status(project_id): read-only backup configuration/status.
+- project_docker_status(project_id): read-only docker compose/project status based on manifest.
+- project_database_backup(project_id, confirm): validated MariaDB backup via docker exec/mariadb-dump; runtime DB host/database validation; size validation; chmod 0600; SHA-256 evidence; audit log.
+- project_mariadb_backup(project_id, confirm): backward-compatible alias to project_database_backup.
+
+Recovery invariants:
+- no backup operation without confirm='EXECUTAR'.
+- backup directory must remain inside workspace_root.
+- container/database identifiers are validated.
+- source runtime DB_CONNECTION must be mysql or mariadb.
+- DB_HOST and DB_DATABASE must match manifest policy when configured.
+- credentials are read from source container runtime and never returned.
+- failed/small dumps are removed.
+- successful dump includes bytes, sha256 and retention_days in result/audit.
+
+Representative source block preserved from local main.py:
+
+def _backup_config(project_id: str) -> tuple[dict[str, Any], Path, Path, dict[str, Any]]:
+    manifest, workspace, repository = _project_paths(project_id)
+    backup = manifest.get("backup", {})
+    if not isinstance(backup, dict) or backup.get("enabled") is not True:
+        raise PermissionError("backup_not_configured")
+    backup_type = str(backup.get("type", "")).strip().lower()
+    if backup_type != "mariadb":
+        raise ValueError("backup_type_not_supported")
+    return manifest, workspace, repository, backup
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_backup_configure(project_id: str, backup_type: str, source_container: str, db_container: str, database: str, expected_host: str = "", directory: str = "backups/database", retention_days: int = 14, min_bytes: int = 512, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    normalized_type = str(backup_type or "").strip().lower()
+    if normalized_type != "mariadb":
+        return {"ok": False, "error": "backup_type_not_supported", "allowed": ["mariadb"]}
+    allowed_container = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
+    for field, value in {"source_container": source_container, "db_container": db_container}.items():
+        normalized = str(value or "").strip()
+        if not normalized or any(ch not in allowed_container for ch in normalized):
+            return {"ok": False, "error": "invalid_backup_container", "field": field, "project_id": project_id}
+    normalized_database = str(database or "").strip()
+    if not normalized_database or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for ch in normalized_database):
+        return {"ok": False, "error": "invalid_backup_database", "project_id": project_id}
+    relative_dir = str(directory or "backups/database").strip().replace("\\", "/")
+    if not relative_dir or relative_dir.startswith("/") or ".." in relative_dir.split("/"):
+        return {"ok": False, "error": "invalid_backup_directory", "project_id": project_id}
+    retention = int(retention_days)
+    minimum = int(min_bytes)
+    if retention < 0 or retention > 3650:
+        return {"ok": False, "error": "invalid_retention_days", "project_id": project_id}
+    if minimum < 512 or minimum > 1073741824:
+        return {"ok": False, "error": "invalid_backup_min_bytes", "project_id": project_id}
+    manifest_path = _manifest_path(project_id)
+    manifest = _load_manifest(project_id)
+    workspace = Path(str(manifest["workspace_root"])).resolve()
+    target_dir = (workspace / relative_dir).resolve()
+    if not _within(target_dir, workspace):
+        return {"ok": False, "error": "backup_path_blocked", "project_id": project_id}
+    manifest["backup"] = {
+        "enabled": True,
+        "type": normalized_type,
+        "source_container": str(source_container).strip(),
+        "db_container": str(db_container).strip(),
+        "database": normalized_database,
+        "expected_host": str(expected_host or db_container).strip(),
+        "directory": relative_dir,
+        "retention_days": retention,
+        "min_bytes": minimum,
+        "pre_mutation_required": True,
+    }
+    _atomic_write_json(manifest_path, manifest)
+    result = {"ok": True, "status": "configured", "project_id": project_id, "backup": manifest["backup"]}
+    _audit("project_backup_configure", {"project_id": project_id, "type": normalized_type, "database": normalized_database}, {"ok": True, "status": "configured"})
+    return result
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_mariadb_backup(project_id: str, confirm: str = "") -> dict[str, Any]:
+    # Backward-compatible alias. All project backups now use manifest-driven policy.
+    return project_database_backup(project_id, confirm)
+
+The full local source remains additionally protected by automatic local file backups created by project_file_patch_text before each mutation.
