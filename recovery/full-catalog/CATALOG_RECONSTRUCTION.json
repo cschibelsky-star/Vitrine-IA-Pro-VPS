@@ -1,0 +1,63 @@
+{
+  "scope": "VPS Operations full catalog reconstruction",
+  "created_on": "2026-09-06",
+  "production_cutover_authorized": false,
+  "current_runtime": {
+    "version": "2.1.0-stabilization.1",
+    "registry": "single-fastmcp-main",
+    "observed_tool_count": 47
+  },
+  "historical_baseline": {
+    "read_only_minimum": 66,
+    "total_minimum_exclusive": 80,
+    "exact_count_status": "pending_materialized_snapshot_probe"
+  },
+  "preserved_refs": {
+    "pre_recovery": "preserve/vps-ops-pre-recovery-20260904",
+    "recovery_20260905": "preserve/vps-ops-recovery-20260905",
+    "v4_source": "preserve/vps-ops-v4-source-20260906"
+  },
+  "candidate_branch": "recovery/vps-ops-full-catalog-20260906",
+  "historical_layers": [
+    {
+      "name": "historical_base_supervisor_factory_n8n",
+      "repository": "cschibelsky-star/vitrine-ai-pro",
+      "ref": "agent/connector-git-preservation",
+      "modules": ["supervisor.py", "workflow_catalog.py", "factory_kernel.py"]
+    },
+    {
+      "name": "ai_dev_hub",
+      "repository": "cschibelsky-star/Vitrine-IA-Pro-VPS",
+      "ref": "feature/ai-dev-hub-connector",
+      "head": "c680693fe925d48830b3b27c2b350ec6fae013d4",
+      "tools": {
+        "read_only": ["ai_dev_models", "ai_dev_usage"],
+        "operational": ["ai_dev_chat", "ai_dev_compare", "ai_dev_code_review"]
+      }
+    },
+    {
+      "name": "project_manager_runtime_patches",
+      "repository": "cschibelsky-star/Vitrine-IA-Pro-VPS",
+      "pre_recovery_head": "39f2445634d6c29014d9bef5bac6b1ec42a8c224",
+      "confirmed_runtime_patch": "2b73233c14068e3974a843d76756a65cba2e01e1",
+      "confirmed_tool": "project_workspace_action"
+    },
+    {
+      "name": "canonical_packaging_regression",
+      "repository": "cschibelsky-star/Vitrine-IA-Pro-VPS",
+      "rule_commit": "47ec7ebcc9ac485be345ae1ae899e6cd37bbd619",
+      "activation_commit": "545f892c0525fa85d493c143d1dbc400e646eb72",
+      "runtime_file_allowlist_count": 19
+    }
+  ],
+  "gates": [
+    "candidate_must_not_target_active_connector_root",
+    "all_historical_sources_must_be_pinned",
+    "python_compile_must_pass",
+    "mcp_tools_list_must_have_no_duplicates",
+    "read_only_count_must_be_at_least_66",
+    "total_count_must_be_greater_than_80",
+    "current_47_tools_must_be_preserved_or_explicitly_superseded",
+    "no_cutover_without_separate_explicit_authorization"
+  ]
+}
