@@ -227,6 +227,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": {"vps_mcp_snapshot_candidate"},
         "up": {"vps_mcp_snapshot_candidate"},
     },
+    "v5-0-5-13-recovery-validation": {
+        "compose_files": {"docker-compose.v5-recovery-candidate.yml"},
+        "services": {"connector_v5_recovery_candidate"},
+        "run_once": set(),
+        "build": {"connector_v5_recovery_candidate"},
+        "up": {"connector_v5_recovery_candidate"},
+    },
 }
 
 
