@@ -1,0 +1,19 @@
+services:
+  vps_mcp_snapshot_candidate:
+    build:
+      context: /srv/vitrine/backups/mcp-main-catalog/20260905-200451
+    container_name: vitrine_vps_mcp_snapshot_candidate
+    env_file:
+      - /srv/vitrine/backups/mcp-main-catalog/20260905-200451/.env.mcp-runtime
+    environment:
+      OPS_BROKER_URL: http://vitrine_mcp_ops_broker:8770
+    ports:
+      - "127.0.0.1:18765:8765"
+    networks:
+      - vitrine_mcp_internal
+    restart: "no"
+
+networks:
+  vitrine_mcp_internal:
+    external: true
+    name: vitrine_mcp_internal
