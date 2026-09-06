@@ -1,0 +1,25 @@
+name: VPS Operations Full Catalog Gate
+
+on:
+  push:
+    branches:
+      - recovery/vps-ops-full-catalog-20260906
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-catalog-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile recovery sources
+        run: |
+          python -m py_compile recovery/full-catalog/*.py
+      - name: Static MCP catalog audit
+        run: |
+          python recovery/full-catalog/static_catalog_audit.py
