@@ -197,10 +197,11 @@ def project_git_stage_explicit(
     paths: list[str],
     confirm: str = "",
 ) -> dict[str, Any]:
+    broker_confirm = "GIT_STAGE" if confirm == "EXECUTAR" else confirm
     return _request(
         "POST",
         "/projects/git/stage",
-        {"project_id": project_id, "paths": paths, "confirm": confirm},
+        {"project_id": project_id, "paths": paths, "confirm": broker_confirm},
     )
 
 
@@ -209,10 +210,11 @@ def project_git_commit_explicit(
     message: str,
     confirm: str = "",
 ) -> dict[str, Any]:
+    broker_confirm = "GIT_COMMIT" if confirm == "EXECUTAR" else confirm
     return _request(
         "POST",
         "/projects/git/commit",
-        {"project_id": project_id, "message": message, "confirm": confirm},
+        {"project_id": project_id, "message": message, "confirm": broker_confirm},
     )
 
 
