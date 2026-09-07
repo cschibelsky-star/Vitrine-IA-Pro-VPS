@@ -15,6 +15,9 @@ services:
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:rw
       - /srv/projects:/srv/projects:rw
       - /srv/tvsumare:/srv/tvsumare:rw
+      - /srv/backups:/srv/backups:ro
+      - /srv/connectors:/srv/connectors:ro
+      - /srv-backupzip:/srv-backupzip:ro
       - /srv/vitrine/docker/nginx/conf.d:/srv/vitrine/docker/nginx/conf.d:rw
       - /srv/vitrine/docker/nginx/html:/srv/vitrine/docker/nginx/html:rw
       - /srv/vitrine/ssl:/srv/vitrine/ssl:rw
