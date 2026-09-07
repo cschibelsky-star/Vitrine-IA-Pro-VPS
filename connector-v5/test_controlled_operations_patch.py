@@ -19,3 +19,5 @@ def test_recovered_controlled_operations_layer():
     assert '"connector_v5_recovery_candidate"' in source
     assert 'broad_compose_mutation_disabled' in source
     assert 'project_compose_service_execute' in source
+    assert 'def project_manifest_docker_configure(' in source
+    assert 'project_manifest_docker_configure' in source

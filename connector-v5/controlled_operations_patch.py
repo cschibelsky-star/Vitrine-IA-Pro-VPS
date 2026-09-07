@@ -205,6 +205,38 @@ def project_mariadb_backup(project_id: str, confirm: str = "") -> dict[str, Any]
 
     activate_start = '@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef activate_hml_route('
     compose_block = r'''
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_manifest_docker_configure(project_id: str, compose_file: str, docker_project: str = "", confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    try:
+        project_id = _safe_project_id(project_id)
+        manifest_path = _manifest_path(project_id)
+        manifest = _load_manifest(project_id)
+        _, relative = _safe_file(project_id, compose_file, True)
+    except (ValueError, PermissionError, FileNotFoundError) as exc:
+        return {"ok": False, "error": str(exc), "project_id": str(project_id or "").strip()}
+    normalized_project = str(docker_project or project_id).strip()
+    if not normalized_project or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for ch in normalized_project):
+        return {"ok": False, "error": "invalid_docker_project", "project_id": project_id}
+    previous = dict(manifest.get("docker", {}) or {})
+    manifest["docker"] = {"compose_file": relative, "project_name": normalized_project}
+    _atomic_write_json(manifest_path, manifest)
+    result = {
+        "ok": True,
+        "status": "configured",
+        "project_id": project_id,
+        "docker": manifest["docker"],
+        "previous": previous,
+    }
+    _audit(
+        "project_manifest_docker_configure",
+        {"project_id": project_id, "compose_file": relative, "docker_project": normalized_project},
+        {"ok": True, "status": "configured"},
+    )
+    return result
+
+
 CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
     "vitrine-ia-pro-core": {
         "compose_files": {"docker-compose.core-hml.yml"},
@@ -233,6 +265,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "run_once": set(),
         "build": {"connector_v5_recovery_candidate"},
         "up": {"connector_v5_recovery_candidate"},
+    },
+    "vitrine-ai-social-enterprise": {
+        "compose_files": {"compose.studio.yml"},
+        "services": {"studio_app", "studio_web", "studio_worker", "studio_scheduler"},
+        "run_once": set(),
+        "build": {"studio_app", "studio_worker", "studio_scheduler"},
+        "up": {"studio_app", "studio_web", "studio_worker", "studio_scheduler"},
     },
 }
 
