@@ -37,7 +37,25 @@ def patch_dockerfile() -> None:
         raise SystemExit("dockerfile_missing")
     backup(dockerfile)
     text = dockerfile.read_text(encoding="utf-8")
-    if "docker.io" not in text and "docker-ce-cli" not in text:
+
+    has_docker_cli = "docker.io" in text or "docker-ce-cli" in text
+    has_compose = "docker-compose" in text or "docker-compose-plugin" in text
+
+    if has_docker_cli and not has_compose:
+        marker = "apt-get install -y --no-install-recommends docker.io"
+        if marker in text:
+            text = text.replace(marker, marker + " docker-compose", 1)
+        else:
+            lines = text.splitlines()
+            if not lines or not lines[0].startswith("FROM "):
+                raise SystemExit("dockerfile_from_missing")
+            install = (
+                "\nRUN apt-get update \\\n"
+                "    && apt-get install -y --no-install-recommends docker-compose \\\n"
+                "    && rm -rf /var/lib/apt/lists/*\n"
+            )
+            text = lines[0] + install + "\n" + "\n".join(lines[1:]) + ("\n" if text.endswith("\n") else "")
+    elif not has_docker_cli:
         lines = text.splitlines()
         if not lines or not lines[0].startswith("FROM "):
             raise SystemExit("dockerfile_from_missing")
@@ -47,7 +65,8 @@ def patch_dockerfile() -> None:
             "    && rm -rf /var/lib/apt/lists/*\n"
         )
         text = lines[0] + install + "\n" + "\n".join(lines[1:]) + ("\n" if text.endswith("\n") else "")
-        dockerfile.write_text(text, encoding="utf-8")
+
+    dockerfile.write_text(text, encoding="utf-8")
 
 
 def install_manifest_and_tools() -> None:
