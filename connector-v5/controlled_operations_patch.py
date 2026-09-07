@@ -71,7 +71,7 @@ def project_backup_configure(project_id: str, backup_type: str, source_container
     normalized_database = str(database or "").strip()
     if not normalized_database or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for ch in normalized_database):
         return {"ok": False, "error": "invalid_backup_database", "project_id": project_id}
-    relative_dir = str(directory or "backups/database").strip().replace("\\", "/")
+    relative_dir = str(directory or "backups/database")).strip().replace("\\", "/")
     if not relative_dir or relative_dir.startswith("/") or ".." in relative_dir.split("/"):
         return {"ok": False, "error": "invalid_backup_directory", "project_id": project_id}
     retention = int(retention_days)
@@ -238,6 +238,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "up": {"vps_mcp_snapshot_candidate", "vitrine_backup"},
     },
     "v5-0-5-13-recovery-validation": {
+        "compose_files": {"docker-compose.v5-recovery-candidate.yml"},
+        "services": {"connector_v5_recovery_candidate"},
+        "run_once": set(),
+        "build": {"connector_v5_recovery_candidate"},
+        "up": {"connector_v5_recovery_candidate"},
+    },
+    "v5-global-inventory-validation": {
         "compose_files": {"docker-compose.v5-recovery-candidate.yml"},
         "services": {"connector_v5_recovery_candidate"},
         "run_once": set(),
