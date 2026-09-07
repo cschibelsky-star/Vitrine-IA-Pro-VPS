@@ -17,6 +17,9 @@ def test_recovered_controlled_operations_layer():
     assert '"vps_mcp_snapshot_candidate"' in source
     assert '"v5-0-5-13-recovery-validation"' in source
     assert '"connector_v5_recovery_candidate"' in source
+    assert '"tvsumare"' in source
+    assert '"docker-compose.vps.yml"' in source
+    assert '"web"' in source
     assert 'broad_compose_mutation_disabled' in source
     assert 'project_compose_service_execute' in source
     assert 'def project_manifest_docker_configure(' in source

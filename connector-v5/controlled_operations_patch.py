@@ -251,6 +251,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": {"studio_app", "studio_worker", "studio_scheduler"},
         "up": {"studio_app", "studio_web", "studio_worker", "studio_scheduler"},
     },
+    "tvsumare": {
+        "compose_files": {"docker-compose.vps.yml"},
+        "services": {"web"},
+        "run_once": set(),
+        "build": set(),
+        "up": {"web"},
+    },
 }
 
 
