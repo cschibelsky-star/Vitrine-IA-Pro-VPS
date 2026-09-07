@@ -289,6 +289,38 @@ def project_manifest_create(project_id: str, name: str, workspace_root: str, rep
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_manifest_docker_configure(project_id: str, compose_file: str, docker_project: str = "", confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    try:
+        project_id = _safe_project_id(project_id)
+        manifest_path = _manifest_path(project_id)
+        manifest = _load_manifest(project_id)
+        _, relative = _safe_file(project_id, compose_file, True)
+    except (ValueError, PermissionError, FileNotFoundError) as exc:
+        return {"ok": False, "error": str(exc), "project_id": str(project_id or "").strip()}
+    normalized_project = str(docker_project or project_id).strip()
+    if not normalized_project or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for ch in normalized_project):
+        return {"ok": False, "error": "invalid_docker_project", "project_id": project_id}
+    previous = dict(manifest.get("docker", {}) or {})
+    manifest["docker"] = {"compose_file": relative, "project_name": normalized_project}
+    _atomic_write_json(manifest_path, manifest)
+    result = {
+        "ok": True,
+        "status": "configured",
+        "project_id": project_id,
+        "docker": manifest["docker"],
+        "previous": previous,
+    }
+    _audit(
+        "project_manifest_docker_configure",
+        {"project_id": project_id, "compose_file": relative, "docker_project": normalized_project},
+        {"ok": True, "status": "configured"},
+    )
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def project_manifest_runtime_configure(project_id: str, runtime_allowed_keys: list[str], runtime_env_file: str = ".env.runtime", confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
@@ -792,16 +824,26 @@ def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: s
     if normalized_key not in allowed:
         return {"ok": False, "error": "runtime_key_not_allowed", "project_id": project_id, "key": normalized_key}
     if value == "__MIGRATE_EXISTING__":
-        if project_id not in {"cursos-ia-bridge-e2e-hml", "cursos-ia-mvp"} or normalized_key != "AI_BROKER_TOKEN":
+        migration_sources = {
+            ("cursos-ia-bridge-e2e-hml", "AI_BROKER_TOKEN"): ("cursos_ia_mvp_hml", "AI_BROKER_TOKEN"),
+            ("cursos-ia-mvp", "AI_BROKER_TOKEN"): ("cursos_ia_mvp_hml", "AI_BROKER_TOKEN"),
+            ("vitrine-ai-pro-factory", "FACTORY_APP_KEY"): ("vitrine_factory_hml_app", "APP_KEY"),
+            ("vitrine-ai-pro-factory", "FACTORY_DB_PASSWORD"): ("vitrine_factory_hml_app", "DB_PASSWORD"),
+            ("vitrine-ai-pro-factory", "CENTRO_IA_INTERNAL_TOKEN"): ("vitrine_factory_hml_app", "CENTRO_IA_INTERNAL_TOKEN"),
+            ("vitrine-ai-pro-factory", "FACTORY_DB_ROOT_PASSWORD"): ("vitrine_factory_hml_db", "MARIADB_ROOT_PASSWORD"),
+        }
+        migration_source = migration_sources.get((project_id, normalized_key))
+        if migration_source is None:
             return {"ok": False, "error": "runtime_migration_not_allowed", "project_id": project_id, "key": normalized_key}
-        inspected = _run(["docker", "inspect", "cursos_ia_mvp_hml"], Path("/"), timeout=30)
+        source_container, source_key = migration_source
+        inspected = _run(["docker", "inspect", source_container], Path("/"), timeout=30)
         if not inspected.get("ok"):
             return {"ok": False, "error": "runtime_migration_source_unavailable", "project_id": project_id, "key": normalized_key}
         try:
             payload = json.loads(inspected.get("stdout") or "[]")
             item = payload[0] if isinstance(payload, list) and payload else {}
             source_env = item.get("Config", {}).get("Env", []) or []
-            source_value = next((entry.split("=", 1)[1] for entry in source_env if entry.startswith(f"{normalized_key}=")), None)
+            source_value = next((entry.split("=", 1)[1] for entry in source_env if entry.startswith(f"{source_key}=")), None)
         except (json.JSONDecodeError, IndexError):
             source_value = None
         if source_value is None:
