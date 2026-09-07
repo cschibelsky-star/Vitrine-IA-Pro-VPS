@@ -94,6 +94,14 @@ def run(command: list[str], cwd: Path) -> dict[str, Any]:
         }
     except subprocess.TimeoutExpired:
         return {"ok": False, "exit_code": 124, "stdout": "", "stderr": "timeout"}
+    except OSError as exc:
+        return {
+            "ok": False,
+            "exit_code": 127,
+            "stdout": "",
+            "stderr": f"{type(exc).__name__}:{exc}",
+            "error": "command_unavailable",
+        }
 
 
 def repository_for(project_id: str) -> Path:
@@ -110,6 +118,18 @@ def safe_relative(value: str, detail: str) -> str:
     if not raw or path.is_absolute() or ".." in path.parts or raw == ".":
         raise HTTPException(status_code=422, detail=detail)
     return raw
+
+
+def compose_base(docker_project: str, compose: Path, cwd: Path) -> list[str]:
+    docker = shutil.which("docker")
+    if docker:
+        probe = run([docker, "compose", "version"], cwd)
+        if probe.get("ok"):
+            return [docker, "compose", "-p", docker_project, "-f", str(compose)]
+    classic = shutil.which("docker-compose")
+    if classic:
+        return [classic, "-p", docker_project, "-f", str(compose)]
+    return ["docker", "compose", "-p", docker_project, "-f", str(compose)]
 
 
 @router.post("/file/read-safe", dependencies=[Depends(auth)])
@@ -196,7 +216,7 @@ def project_compose_explicit(req: ProjectComposeExplicitRequest) -> dict[str, An
         raise HTTPException(status_code=422, detail="invalid_docker_project")
 
     action = str(req.action or "status").strip().lower()
-    base = ["docker", "compose", "-p", docker_project, "-f", str(compose)]
+    base = compose_base(docker_project, compose, repository)
     if action == "status":
         command = base + ["ps"]
     elif action == "config":
