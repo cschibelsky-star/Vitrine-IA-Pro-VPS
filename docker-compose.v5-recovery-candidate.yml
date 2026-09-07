@@ -15,8 +15,11 @@ services:
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:ro
       - /srv/projects:/srv/projects:ro
       - /srv/tvsumare:/srv/tvsumare:ro
+      - /srv/backups:/srv/backups:ro
+      - /srv/vitrine/backups:/srv/vitrine/backups:ro
+      - /srv/connectors:/srv/connectors:ro
+      - /srv-backupzip:/srv-backupzip:ro
       - /var/log/vitrine-ops-v5-recovery:/var/log/vitrine-ops-v5-recovery:rw
-      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:18867:8000"
     networks:
