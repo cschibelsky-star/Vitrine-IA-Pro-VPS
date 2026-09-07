@@ -18,7 +18,9 @@ V5_CONTAINER = os.getenv("BREAK_GLASS_V5_CONTAINER", "vitrine_mcp_v5")
 MAX_LOG_LINES = int(os.getenv("BREAK_GLASS_MAX_LOG_LINES", "500"))
 KNOWN_GOOD_TAG = os.getenv("BREAK_GLASS_KNOWN_GOOD_TAG", "vitrine-mcp-v5:break-glass-known-good")
 EXPECTED_V5_COMPOSE_FILE = "/srv/projects/vitrine-vps-mcp-v59-integration/repository/docker-compose.connector-v5.yml"
+EXPECTED_V5_TRAEFIK_COMPOSE_FILE = "/srv/connectors/vitrine-vps-mcp/docker-compose.traefik-v5.yml"
 V5_COMPOSE_FILE = os.getenv("BREAK_GLASS_V5_COMPOSE_FILE", EXPECTED_V5_COMPOSE_FILE)
+V5_TRAEFIK_COMPOSE_FILE = os.getenv("BREAK_GLASS_V5_TRAEFIK_COMPOSE_FILE", EXPECTED_V5_TRAEFIK_COMPOSE_FILE)
 V5_DOCKER_PROJECT = os.getenv("BREAK_GLASS_V5_DOCKER_PROJECT", "vitrine-mcp-v5-v59")
 RELEASE_ID = "v5-current-known-good"
 
@@ -103,7 +105,7 @@ def _handle(request: dict) -> dict:
             result = {"ok": False, "error": "release_not_allowed"}
             _audit("rollback", False, release_id)
             return result
-        if V5_COMPOSE_FILE != EXPECTED_V5_COMPOSE_FILE:
+        if V5_COMPOSE_FILE != EXPECTED_V5_COMPOSE_FILE or V5_TRAEFIK_COMPOSE_FILE != EXPECTED_V5_TRAEFIK_COMPOSE_FILE:
             result = {"ok": False, "error": "compose_path_blocked"}
             _audit("rollback", False, release_id)
             return result
@@ -127,7 +129,7 @@ def _handle(request: dict) -> dict:
             result = {"ok": False, "error": "rollback_tag_failed", "stderr": tag.get("stderr", "")}
             _audit("rollback", False, release_id)
             return result
-        proc = subprocess.run(["docker", "compose", "-p", V5_DOCKER_PROJECT, "-f", V5_COMPOSE_FILE, "up", "-d", "--no-build", "--force-recreate", "connector_v5"], text=True, capture_output=True, timeout=60, check=False)
+        proc = subprocess.run(["docker", "compose", "-p", V5_DOCKER_PROJECT, "-f", V5_COMPOSE_FILE, "-f", V5_TRAEFIK_COMPOSE_FILE, "up", "-d", "--no-build", "--force-recreate", "connector_v5"], text=True, capture_output=True, timeout=60, check=False)
         result = {"ok": proc.returncode == 0, "exit_code": proc.returncode, "stdout": proc.stdout[-50000:], "stderr": proc.stderr[-10000:], "release_id": release_id}
         _audit("rollback", result["ok"], release_id)
         return result
