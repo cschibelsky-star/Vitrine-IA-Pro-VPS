@@ -52,8 +52,8 @@ def _inventory_iso(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
 
-def _inventory_branch(path: Path) -> str:
-    head = path / '.git' / 'HEAD'
+def _inventory_branch(repository: Path) -> str:
+    head = repository / '.git' / 'HEAD'
     try:
         raw = head.read_text(encoding='utf-8', errors='replace').strip()
     except OSError:
@@ -64,8 +64,8 @@ def _inventory_branch(path: Path) -> str:
     return raw[:40] if raw else ''
 
 
-def _inventory_registered_workspaces() -> dict[str, str]:
-    result: dict[str, str] = {}
+def _inventory_registered_workspaces() -> dict[str, dict[str, str]]:
+    result: dict[str, dict[str, str]] = {}
     try:
         manifests = sorted(core.MANIFEST_ROOT.glob('*.json'))
     except OSError:
@@ -75,8 +75,17 @@ def _inventory_registered_workspaces() -> dict[str, str]:
             data = json.loads(manifest_path.read_text(encoding='utf-8'))
             project_id = str(data.get('id', '')).strip()
             workspace_root = str(data.get('workspace_root', '')).strip()
+            repository_dir = str(data.get('repository', {}).get('directory', 'repository')).strip() or 'repository'
             if project_id and workspace_root:
-                result[str(Path(workspace_root).resolve())] = project_id
+                workspace = Path(workspace_root).resolve()
+                repository = (workspace / repository_dir).resolve()
+                if not core._within(repository, workspace):
+                    continue
+                result[str(workspace)] = {
+                    'project_id': project_id,
+                    'repository_path': str(repository),
+                    'repository_directory': repository_dir,
+                }
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             continue
     return result
@@ -126,17 +135,31 @@ def _inventory_tree_stats(root: Path) -> dict[str, object]:
     }
 
 
-def _inventory_entry(path: Path, registered: dict[str, str], category: str) -> dict[str, object]:
+def _inventory_entry(path: Path, registered: dict[str, dict[str, str]], category: str) -> dict[str, object]:
     resolved = str(path.resolve())
+    registration = registered.get(resolved)
+    if registration:
+        repository = Path(registration['repository_path'])
+        project_id = registration['project_id']
+        repository_directory = registration['repository_directory']
+    else:
+        direct_repo = path if (path / '.git').is_dir() else None
+        nested_repo = path / 'repository' if (path / 'repository' / '.git').is_dir() else None
+        repository = direct_repo or nested_repo
+        project_id = None
+        repository_directory = 'repository' if nested_repo else ('.' if direct_repo else '')
     stats = _inventory_tree_stats(path)
+    git_present = bool(repository and (repository / '.git').is_dir())
     return {
         'name': path.name,
         'path': resolved,
         'category': category,
-        'project_id': registered.get(resolved),
-        'registered': resolved in registered,
-        'git': (path / '.git').is_dir(),
-        'branch': _inventory_branch(path),
+        'project_id': project_id,
+        'registered': registration is not None,
+        'repository_path': str(repository.resolve()) if repository else None,
+        'repository_directory': repository_directory or None,
+        'git': git_present,
+        'branch': _inventory_branch(repository) if git_present and repository else '',
         **stats,
     }
 
@@ -218,8 +241,12 @@ def vps_global_inventory() -> dict[str, object]:
 
     seen_registered = {str(Path(str(e['path'])).resolve()) for e in entries if e.get('registered')}
     missing_registered = [
-        {'project_id': project_id, 'workspace_root': workspace_root}
-        for workspace_root, project_id in sorted(registered.items(), key=lambda kv: kv[1])
+        {
+            'project_id': registration['project_id'],
+            'workspace_root': workspace_root,
+            'repository_path': registration['repository_path'],
+        }
+        for workspace_root, registration in sorted(registered.items(), key=lambda kv: kv[1]['project_id'])
         if workspace_root not in seen_registered
     ]
 
