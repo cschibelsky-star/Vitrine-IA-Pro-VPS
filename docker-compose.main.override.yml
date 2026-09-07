@@ -1,0 +1,41 @@
+services:
+  ops_broker:
+    environment:
+      HOSTGATOR_SSH_HOST: ${HOSTGATOR_SSH_HOST}
+      HOSTGATOR_SSH_USER: ${HOSTGATOR_SSH_USER}
+      HOSTGATOR_SSH_PORT: ${HOSTGATOR_SSH_PORT}
+      HOSTGATOR_SSH_KEY_FILE: ${HOSTGATOR_SSH_KEY_FILE}
+      HOSTGATOR_HOME_ROOT: ${HOSTGATOR_HOME_ROOT}
+    volumes:
+      - /root/.ssh:/root/.ssh:ro
+    networks:
+      - vitrine_mcp_internal
+      - ops_egress
+
+  vps_mcp_connector:
+    networks:
+      - vitrine_mcp_internal
+      - traefik_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=n8n-traefik_app_network"
+      - "traefik.http.routers.mcp-main.rule=Host(`mcp.vitrineiapro.com.br`)"
+      - "traefik.http.routers.mcp-main.entrypoints=websecure"
+      - "traefik.http.routers.mcp-main.tls=true"
+      - "traefik.http.routers.mcp-main.tls.certresolver=le"
+      - "traefik.http.services.mcp-main.loadbalancer.server.port=8765"
+      - "traefik.http.routers.mcp-v4.rule=Host(`mcp-v3.vitrineiapro.com.br`) && Path(`/mcp-v4`)"
+      - "traefik.http.routers.mcp-v4.entrypoints=websecure"
+      - "traefik.http.routers.mcp-v4.tls=true"
+      - "traefik.http.routers.mcp-v4.tls.certresolver=le"
+      - "traefik.http.routers.mcp-v4.service=mcp-main"
+      - "traefik.http.routers.mcp-v4.middlewares=mcp-v4-rewrite"
+      - "traefik.http.middlewares.mcp-v4-rewrite.replacepath.path=/mcp"
+
+networks:
+  ops_egress:
+    driver: bridge
+
+  traefik_net:
+    external: true
+    name: n8n-traefik_app_network
