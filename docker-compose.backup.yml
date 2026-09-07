@@ -1,0 +1,19 @@
+services:
+  vitrine_backup:
+    build:
+      context: .
+      dockerfile: backup/Dockerfile
+    container_name: vitrine_backup
+    environment:
+      TZ: America/Sao_Paulo
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-21600}
+      RETENTION_DAYS: ${RETENTION_DAYS:-14}
+      RCLONE_REMOTE: ${RCLONE_REMOTE:-vitrine-drive}
+      RCLONE_PREFIX: ${RCLONE_PREFIX:-Vitrine-IA-Pro-Backups}
+      RCLONE_CONFIG: /config/rclone/rclone.conf
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/vitrine/backups:/backups
+      - /srv/vitrine/backup-rclone:/config/rclone:ro
+      - /var/log/vitrine-backup:/var/log/vitrine-backup
+    restart: unless-stopped
