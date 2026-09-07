@@ -1,0 +1,32 @@
+{
+  "id": "vitrine-vps-mcp-v59-integration",
+  "name": "Vitrine IA Pro V5 — Centro Operacional",
+  "workspace_root": "/srv/projects/vitrine-vps-mcp-v59-integration",
+  "repository": {
+    "url": "https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS.git",
+    "branch": "backup/v5-pre-production-publication-20260904",
+    "directory": "repository"
+  },
+  "shared_directories": [],
+  "docker": {
+    "compose_file": "docker-compose.connector-v5.yml",
+    "project_name": "vitrine-mcp-v5-v59"
+  },
+  "domains": {
+    "homologation": [],
+    "production": ["mcp-v5.vitrineiapro.com.br"]
+  },
+  "release": {
+    "directory": "releases",
+    "exclude": [
+      ".git",
+      ".env",
+      "shared",
+      "data",
+      "uploads",
+      "logs",
+      "vendor",
+      "node_modules"
+    ]
+  }
+}
