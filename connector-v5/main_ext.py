@@ -33,12 +33,13 @@ INVENTORY_ROOTS = (
     Path('/srv/projects'),
     Path('/srv/tvsumare'),
     Path('/srv/backups'),
+    Path('/srv/vitrine/backups'),
     Path('/srv/connectors'),
     Path('/srv-backupzip'),
 )
 INVENTORY_EXCLUDED_DIR_NAMES = {
     '.git', 'vendor', 'node_modules', '__pycache__', 'secrets', 'credentials',
-    'private', '.cache', 'cache', 'storage/logs', 'storage/oauth',
+    'private', '.cache', 'cache', 'oauth',
 }
 INVENTORY_MAX_FILES_PER_ENTRY = 50000
 INVENTORY_MAX_DIRS_PER_ENTRY = 10000
@@ -150,7 +151,7 @@ def _inventory_sha256(path: Path) -> str:
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
 def vps_global_inventory() -> dict[str, object]:
-    """Read-only inventory of fixed Vitrine IA Pro VPS roots; never reads file contents or secrets."""
+    """Inventory fixed VPS roots without exposing file contents, secrets, or arbitrary paths."""
     registered = _inventory_registered_workspaces()
     entries: list[dict[str, object]] = []
     archives: list[dict[str, object]] = []
@@ -173,7 +174,12 @@ def vps_global_inventory() -> dict[str, object]:
         except OSError as exc:
             warnings.append(f'root_unreadable:{base}:{type(exc).__name__}')
             continue
-        category = 'backup' if base == Path('/srv/backups') else ('connector' if base == Path('/srv/connectors') else 'project')
+        if base in {Path('/srv/backups'), Path('/srv/vitrine/backups')}:
+            category = 'backup'
+        elif base == Path('/srv/connectors'):
+            category = 'connector'
+        else:
+            category = 'project'
         for child in children:
             entries.append(_inventory_entry(child, registered, category))
 
@@ -210,12 +216,11 @@ def vps_global_inventory() -> dict[str, object]:
             except OSError as exc:
                 warnings.append(f'archive_unreadable:{item.name}:{type(exc).__name__}')
 
-    known_paths = set(registered)
     seen_registered = {str(Path(str(e['path'])).resolve()) for e in entries if e.get('registered')}
     missing_registered = [
         {'project_id': project_id, 'workspace_root': workspace_root}
         for workspace_root, project_id in sorted(registered.items(), key=lambda kv: kv[1])
-        if workspace_root not in seen_registered and workspace_root in known_paths
+        if workspace_root not in seen_registered
     ]
 
     summary = {
