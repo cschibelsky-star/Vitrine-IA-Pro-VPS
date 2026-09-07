@@ -81,6 +81,7 @@ def main() -> None:
         "project_read_operations.py",
         "project_shared_operations.py",
         "project_explicit_operations.py",
+        "container_diagnostics.py",
     )
     for item in modules:
         source = SOURCE / item
@@ -101,6 +102,7 @@ def main() -> None:
         ("from project_shared_operations import router as project_shared_router\n", "project_shared_router"),
         ("from project_explicit_operations import router as project_explicit_router\n", "project_explicit_router"),
         ("from project_deployment_engine import router as project_deployment_router\n", "project_deployment_router"),
+        ("from container_diagnostics import router as container_diagnostics_router\n", "container_diagnostics_router"),
     )
     for line, identity in imports:
         text = ensure_after(text, import_anchor, line, identity)
@@ -113,6 +115,7 @@ def main() -> None:
         ("app.include_router(project_shared_router)\n", "include_router(project_shared_router)"),
         ("app.include_router(project_explicit_router)\n", "include_router(project_explicit_router)"),
         ("app.include_router(project_deployment_router)\n", "include_router(project_deployment_router)"),
+        ("app.include_router(container_diagnostics_router)\n", "include_router(container_diagnostics_router)"),
     )
     for line, identity in includes:
         text = ensure_after(text, include_anchor, line, identity)
