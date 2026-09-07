@@ -23,11 +23,24 @@ git -C "$SOURCE" rev-parse HEAD > "$SNAPSHOT/source-head.txt"
 docker ps -a --no-trunc > "$SNAPSHOT/docker-ps-before.txt"
 : > "$CUTOVER_FILE"
 
+capture_failed_cutover() {
+  for name in vitrine_mcp_ops_broker vitrine_mcp_docker_proxy vitrine_vps_mcp_connector; do
+    if docker container inspect "$name" >/dev/null 2>&1; then
+      docker inspect "$name" > "$SNAPSHOT/${name}.failed.inspect.json" 2>/dev/null || true
+      docker logs --tail 300 "$name" > "$SNAPSHOT/${name}.failed.log" 2>&1 || true
+      docker inspect -f '{{json .State.Health}}' "$name" > "$SNAPSHOT/${name}.failed.health.json" 2>/dev/null || true
+    fi
+  done
+  docker ps -a --no-trunc > "$SNAPSHOT/docker-ps-failed-cutover.txt" 2>/dev/null || true
+}
+
 rollback_cutover() {
   code=$?
   if [ "$CUTOVER_DONE" -eq 1 ]; then
     exit "$code"
   fi
+  echo '--- capture failed V4 cutover evidence ---' >&2
+  capture_failed_cutover
   echo '--- rollback V4 cutover ---' >&2
   for name in vitrine_mcp_ops_broker vitrine_mcp_docker_proxy vitrine_vps_mcp_connector; do
     if docker container inspect "$name" >/dev/null 2>&1; then
