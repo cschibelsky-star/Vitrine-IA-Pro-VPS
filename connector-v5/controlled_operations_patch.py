@@ -28,9 +28,19 @@ def apply(source: str) -> str:
     source = _replace_once(
         source,
         'VERSION = "0.5.11-marketing-live-homologation"',
-        'VERSION = "0.5.13-controlled-operations"',
+        'VERSION = "0.5.14-runtime-secret-import"',
         "version",
     )
+
+    runtime_import_marker = '@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_laravel_migration_status('
+    runtime_import_block = r'''
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_runtime_secret_import_from_container(project_id: str, key: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    return project_runtime_secret_set(project_id, key, "__MIGRATE_EXISTING__", confirm)
+'''
+    source = _replace_once(source, runtime_import_marker, runtime_import_block + "\n\n" + runtime_import_marker, "runtime_secret_import")
 
     backup_start = '@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_mariadb_backup('
     compose_start = '@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef project_compose_explicit('
@@ -221,11 +231,11 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "up": {"vitrine_factory_hml_db", "vitrine_factory_hml_app", "vitrine_factory_hml_web"},
     },
     "vps-ops-full-catalog-candidate": {
-        "compose_files": {"recovery/full-catalog/docker-compose.snapshot-candidate.yml"},
-        "services": {"vps_mcp_snapshot_candidate"},
+        "compose_files": {"recovery/full-catalog/docker-compose.snapshot-candidate.yml", "docker-compose.backup.yml"},
+        "services": {"vps_mcp_snapshot_candidate", "vitrine_backup"},
         "run_once": set(),
-        "build": {"vps_mcp_snapshot_candidate"},
-        "up": {"vps_mcp_snapshot_candidate"},
+        "build": {"vps_mcp_snapshot_candidate", "vitrine_backup"},
+        "up": {"vps_mcp_snapshot_candidate", "vitrine_backup"},
     },
     "v5-0-5-13-recovery-validation": {
         "compose_files": {"docker-compose.v5-recovery-candidate.yml"},
@@ -233,6 +243,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "run_once": set(),
         "build": {"connector_v5_recovery_candidate"},
         "up": {"connector_v5_recovery_candidate"},
+    },
+    "vitrine-ai-social-enterprise": {
+        "compose_files": {"compose.studio.yml"},
+        "services": {"studio_app", "studio_web", "studio_worker", "studio_scheduler"},
+        "run_once": set(),
+        "build": {"studio_app", "studio_worker", "studio_scheduler"},
+        "up": {"studio_app", "studio_web", "studio_worker", "studio_scheduler"},
     },
 }
 
