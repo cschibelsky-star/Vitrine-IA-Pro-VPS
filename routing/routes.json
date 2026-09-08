@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "id": "tvsumare",
+      "hostname": "tv-hml.vitrineiapro.com.br",
+      "upstream": "http://tvsumare_web:80",
+      "network": "vitrine_net",
+      "environment": "homologation",
+      "ssl": true,
+      "cert_resolver": "le",
+      "entrypoint": "websecure",
+      "status": "pending_dns_proxy"
+    }
+  ]
+}
