@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import main
@@ -22,15 +21,16 @@ CAPABILITY_REQUIREMENTS = {
     "docker": {"docker", "logs"},
 }
 
+# Only capabilities actually exposed by the Super v0.2 foundation should be
+# advertised here. Missing capabilities are intentional: the gap report must
+# be truthful and drive the next implementation wave.
 AVAILABLE_CAPABILITIES = {
     "health",
     "projects",
     "discovery",
     "git",
-    "files",
     "docker",
     "logs",
-    "php",
     "laravel",
 }
 
