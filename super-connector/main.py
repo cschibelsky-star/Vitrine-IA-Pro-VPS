@@ -377,7 +377,9 @@ def laravel_test(project_id: str) -> dict[str, Any]:
         "set -eu; mkdir -p /work/project; "
         "cp -R /var/www/html/. /work/project/; "
         "find /source -mindepth 1 -maxdepth 1 ! -name .git -exec cp -R {} /work/project/ \\;; "
-        "cd /work/project; php artisan test --colors=never"
+        "cd /work/project; "
+        "mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache; "
+        "php artisan test --colors=never"
     )
     result = _run([
         "docker", "run", "--rm",
