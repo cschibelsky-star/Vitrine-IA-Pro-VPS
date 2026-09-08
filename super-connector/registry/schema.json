@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Vitrine IA Pro Super Connector Project Registry",
+  "type": "object",
+  "required": ["id", "repository", "workspace", "policies"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+    "name": {"type": "string"},
+    "repository": {
+      "type": "object",
+      "required": ["url", "branch"],
+      "properties": {
+        "url": {"type": "string"},
+        "branch": {"type": "string"},
+        "directory": {"type": "string", "default": "repository"}
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "required": ["root"],
+      "properties": {"root": {"type": "string"}}
+    },
+    "docker": {
+      "type": "object",
+      "properties": {
+        "compose": {"type": "string"},
+        "project": {"type": "string"},
+        "health_port": {"type": ["integer", "null"]}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "env_file": {"type": "string"},
+        "allowed_secrets": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "engine": {"type": "string"},
+        "container": {"type": "string"},
+        "database": {"type": "string"}
+      }
+    },
+    "backup": {
+      "type": "object",
+      "properties": {
+        "required_before_mutation": {"type": "boolean"},
+        "directory": {"type": "string"}
+      }
+    },
+    "policies": {
+      "type": "object",
+      "required": ["dirty_tree", "allow_reset", "allow_clean"],
+      "properties": {
+        "dirty_tree": {"enum": ["preserve", "block"]},
+        "allow_reset": {"type": "boolean"},
+        "allow_clean": {"type": "boolean"}
+      }
+    }
+  }
+}
