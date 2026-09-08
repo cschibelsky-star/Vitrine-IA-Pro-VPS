@@ -1,0 +1,35 @@
+services:
+  super_connector:
+    build:
+      context: ..
+      dockerfile: super-connector/Dockerfile
+    container_name: vitrine_super_connector_candidate
+    environment:
+      SUPER_REGISTRY_ROOT: /app/registry/projects
+      SUPER_LEGACY_V5_REGISTRY_ROOT: /legacy-v5-manifests
+      SUPER_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
+      SUPER_AUDIT_LOG: /var/log/vitrine-super-ops/audit.jsonl
+      SUPER_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp/project-manifests:/legacy-v5-manifests:ro
+      - /srv/projects:/srv/projects:rw
+      - /srv/tvsumare:/srv/tvsumare:rw
+      - /var/log/vitrine-super-ops:/var/log/vitrine-super-ops:rw
+      - /root/.ssh:/root/.ssh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:8870:8000"
+    networks:
+      - vitrine_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),3); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+    restart: unless-stopped
+
+networks:
+  vitrine_net:
+    external: true
+    name: vitrine_net
