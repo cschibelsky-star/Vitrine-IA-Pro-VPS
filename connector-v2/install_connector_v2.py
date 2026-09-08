@@ -106,7 +106,13 @@ def main() -> None:
     if not copy_line:
         raise RuntimeError('Dockerfile: linha COPY não encontrada')
     updated_line = copy_line
-    for required in ('connector_runtime.py', 'connector_observability.py', 'probe_streamable_http.py'):
+    for required in (
+        'tvsumare_operations.py',
+        'tvsumare_tools.py',
+        'connector_runtime.py',
+        'connector_observability.py',
+        'probe_streamable_http.py',
+    ):
         if required not in updated_line.split():
             updated_line = updated_line[:-3] + f' {required} ./'
     docker_text = docker_text.replace(copy_line, updated_line, 1)
