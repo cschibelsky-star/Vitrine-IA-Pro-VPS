@@ -12,7 +12,7 @@ from typing import Any
 import psutil
 from fastmcp import FastMCP
 
-VERSION = "0.5.10-project-phpunit-runner-hardened"
+VERSION = "0.5.11-generic-laravel-test-runner"
 MANIFEST_ROOT = Path(os.getenv("PROJECT_MANIFEST_ROOT", "/app/project-manifests")).resolve()
 ALLOWED_WORKSPACE_ROOTS = tuple(Path(p).resolve() for p in os.getenv("PROJECT_WORKSPACE_ROOTS", "/srv/projects,/srv/tvsumare").split(",") if p.strip())
 AUDIT_LOG = Path(os.getenv("OPS_AUDIT_LOG", "/var/log/vitrine-ops-v5/audit.jsonl"))
@@ -418,7 +418,8 @@ def project_git_compare_origin(project_id: str, branch: str = "") -> dict[str, A
     origin = _run(["git", "remote", "get-url", "origin"], repository, timeout=30)
     if not origin.get("ok"):
         return {"ok": False, "error": "origin_unavailable", "detail": origin}
-    fetch = _run(["git", "fetch", "--prune", "origin", target_branch], repository, timeout=300)
+    refspec = f"refs/heads/{target_branch}:refs/remotes/origin/{target_branch}"
+    fetch = _run(["git", "fetch", "--prune", "origin", refspec], repository, timeout=300)
     if not fetch.get("ok"):
         return {"ok": False, "error": "fetch_failed", "branch": target_branch, "detail": fetch}
     local_head = _run(["git", "rev-parse", "HEAD"], repository, timeout=30)
@@ -481,7 +482,8 @@ def project_git_reconcile_to_origin(project_id: str, branch: str = "", preservat
     if actual_origin != expected_origin:
         return {"ok": False, "error": "origin_mismatch", "expected": expected_origin, "actual": actual_origin}
 
-    fetch = _run(["git", "fetch", "--prune", "origin", target_branch], repository, timeout=300)
+    refspec = f"refs/heads/{target_branch}:refs/remotes/origin/{target_branch}"
+    fetch = _run(["git", "fetch", "--prune", "origin", refspec], repository, timeout=300)
     if not fetch.get("ok"):
         return {"ok": False, "error": "fetch_failed", "detail": fetch}
     preserve_check = _run(["git", "ls-remote", "--exit-code", "--heads", "origin", f"refs/heads/{preserve}"], repository, timeout=60)
@@ -705,6 +707,7 @@ def project_php_validate(project_id: str, operation: str = "tests_marketing") ->
     operation = str(operation or "").strip().lower()
     commands = {
         "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
+        "tests_laravel": "php artisan test --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
     }
     if operation not in commands:
@@ -718,16 +721,26 @@ def project_php_validate(project_id: str, operation: str = "tests_marketing") ->
     if not runner_image or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/@-" for ch in runner_image):
         return {"ok": False, "error": "php_runner_image_invalid", "operation": operation}
 
-    if operation == "tests_marketing":
+    if operation in {"tests_marketing", "tests_laravel"}:
         composer_lock = repository / "composer.lock"
         if not composer_lock.is_file():
             return {"ok": False, "error": "composer_lock_required", "operation": operation}
-        dependency_tag = hashlib.sha256(composer_lock.read_bytes()).hexdigest()[:12]
-        dependency_image = f"vitrine-marketing-phpunit-deps:{dependency_tag}"
+        lock_hash = hashlib.sha256(composer_lock.read_bytes()).hexdigest()[:12]
+        if operation == "tests_marketing":
+            dependency_image = f"vitrine-marketing-phpunit-deps:{lock_hash}"
+            dependency_base_image = "vitrine-marketing-agents-core-hml-app:latest"
+        else:
+            project_tag = hashlib.sha256(project_id.encode("utf-8")).hexdigest()[:8]
+            dependency_image = f"vitrine-laravel-test-deps:{project_tag}-{lock_hash}"
+            dependency_base_image = runner_image
         image_check = _run(["docker", "image", "inspect", dependency_image], repository, timeout=30)
         if not image_check.get("ok"):
+            base_check = _run(["docker", "image", "inspect", dependency_base_image], repository, timeout=30)
+            if not base_check.get("ok"):
+                return {"ok": False, "error": "phpunit_dependency_base_image_unavailable", "operation": operation, "runtime_image": dependency_base_image}
             dockerfile = (
-                "FROM vitrine-marketing-agents-core-hml-app:latest\n"
+                f"FROM {dependency_base_image}\n"
+                "USER root\n"
                 "WORKDIR /var/www/html\n"
                 "COPY composer.json composer.lock ./\n"
                 "RUN composer install --no-interaction --prefer-dist --no-progress --no-scripts --no-plugins\n"
@@ -814,8 +827,7 @@ def project_runtime_config_status(project_id: str) -> dict[str, Any]:
     return result
 
 
-@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
-def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: str = "") -> dict[str, Any]:
+def _project_runtime_secret_set_impl(project_id: str, key: str, value: str, confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
     manifest = _load_manifest(project_id)
@@ -831,6 +843,10 @@ def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: s
             ("vitrine-ai-pro-factory", "FACTORY_DB_PASSWORD"): ("vitrine_factory_hml_app", "DB_PASSWORD"),
             ("vitrine-ai-pro-factory", "CENTRO_IA_INTERNAL_TOKEN"): ("vitrine_factory_hml_app", "CENTRO_IA_INTERNAL_TOKEN"),
             ("vitrine-ai-pro-factory", "FACTORY_DB_ROOT_PASSWORD"): ("vitrine_factory_hml_db", "MARIADB_ROOT_PASSWORD"),
+            ("vitrine-ai-social-enterprise", "CENTRO_IA_INTERNAL_TOKEN"): ("vitrine_core_app_hml", "CENTRO_IA_INTERNAL_TOKEN"),
+            ("vitrine-marketing-agents-core-hml", "CENTRO_IA_INTERNAL_TOKEN"): ("vitrine_core_app_hml", "CENTRO_IA_INTERNAL_TOKEN"),
+            ("tvsumare-enterprise", "CENTRO_IA_INTERNAL_TOKEN"): ("vitrine_core_app_hml", "CENTRO_IA_INTERNAL_TOKEN"),
+            ("tvsumare-enterprise", "HEYGEN_API_KEY"): ("tvsumare_web", "HEYGEN_API_KEY"),
         }
         migration_source = migration_sources.get((project_id, normalized_key))
         if migration_source is None:
@@ -846,7 +862,7 @@ def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: s
             source_value = next((entry.split("=", 1)[1] for entry in source_env if entry.startswith(f"{source_key}=")), None)
         except (json.JSONDecodeError, IndexError):
             source_value = None
-        if source_value is None:
+        if source_value is None or not str(source_value).strip():
             return {"ok": False, "error": "runtime_migration_key_missing", "project_id": project_id, "key": normalized_key}
         value = source_value
     if "\n" in value or "\r" in value:
@@ -861,6 +877,11 @@ def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: s
     result = {"ok": True, "status": "configured", "project_id": project_id, "key": normalized_key, "backup": backup_name}
     _audit("project_runtime_secret_set", {"project_id": project_id, "key": normalized_key}, {"ok": True, "status": "configured"})
     return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: str = "") -> dict[str, Any]:
+    return _project_runtime_secret_set_impl(project_id, key, value, confirm)
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
