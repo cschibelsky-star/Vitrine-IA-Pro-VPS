@@ -29,6 +29,6 @@ def test_recovered_controlled_operations_layer():
     assert '("vitrine-ai-social-enterprise", "CENTRO_IA_INTERNAL_TOKEN")' in source
     assert '("vitrine-marketing-agents-core-hml", "CENTRO_IA_INTERNAL_TOKEN")' in source
     assert '("tvsumare-enterprise", "CENTRO_IA_INTERNAL_TOKEN")' in source
-    assert '("tvsumare-enterprise", "HEYGEN_API_KEY"): ("tvsumare_web", "HEYGEN_API_KEY")' in source
+    assert '("tvsumare-enterprise", "HEYGEN_API_KEY")' not in source
     assert 'source_value is None or not str(source_value).strip()' in source
     assert '__MIGRATE_EXISTING__' in source
