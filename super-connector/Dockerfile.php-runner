@@ -1,0 +1,29 @@
+FROM php:8.3-cli-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        unzip \
+        libicu-dev \
+        libzip-dev \
+        libsqlite3-dev \
+        libonig-dev \
+        libxml2-dev \
+        libcurl4-openssl-dev \
+    && docker-php-ext-install \
+        intl \
+        mbstring \
+        pdo \
+        pdo_sqlite \
+        zip \
+        dom \
+        xml \
+        xmlreader \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+
+WORKDIR /var/www/html
+
+ENV COMPOSER_ALLOW_SUPERUSER=1

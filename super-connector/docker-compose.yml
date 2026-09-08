@@ -1,0 +1,59 @@
+services:
+  php_runner:
+    build:
+      context: ..
+      dockerfile: super-connector/Dockerfile.php-runner
+    image: vitrine-super-php-runner:0.1
+    profiles: ["build-only"]
+
+  super_connector:
+    build:
+      context: ..
+      dockerfile: super-connector/Dockerfile
+    container_name: vitrine_super_connector_candidate
+    environment:
+      SUPER_REGISTRY_ROOT: /data/registry/projects
+      SUPER_LEGACY_V5_REGISTRY_ROOT: /legacy-v5-manifests
+      SUPER_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
+      SUPER_AUDIT_LOG: /var/log/vitrine-super-ops/audit.jsonl
+      SUPER_PHP_RUNNER_IMAGE: vitrine-super-php-runner:0.1
+    volumes:
+      - /srv/connectors/vitrine-super-ops/registry:/data/registry/projects:rw
+      - /srv/connectors/vitrine-vps-mcp/project-manifests:/legacy-v5-manifests:ro
+      - /srv/projects:/srv/projects:rw
+      - /srv/tvsumare:/srv/tvsumare:rw
+      - /var/log/vitrine-super-ops:/var/log/vitrine-super-ops:rw
+      - /root/.ssh:/root/.ssh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:8870:8000"
+    networks:
+      - vitrine_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),3); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+    restart: unless-stopped
+
+  super_emergency:
+    build:
+      context: ..
+      dockerfile: super-connector/Dockerfile.emergency
+    container_name: vitrine_super_emergency_executor
+    entrypoint: ["sh", "-c"]
+    command: ["trap : TERM INT; sleep infinity & wait"]
+    environment:
+      SUPER_CANDIDATE_CONTAINER: vitrine_super_connector_candidate
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  vitrine_net:
+    external: true
+    name: vitrine_net
