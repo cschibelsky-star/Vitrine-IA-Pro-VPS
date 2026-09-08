@@ -9,6 +9,25 @@ ROOT = Path(os.getenv("CONNECTOR_ROOT", "/srv/connectors/vitrine-vps-mcp")).reso
 SOURCE = Path(__file__).resolve().parent
 STAMP = datetime.now().strftime("%Y%m%d-%H%M%S")
 
+REQUIRED_IMAGE_MODULES = (
+    "tvsumare_operations.py",
+    "tvsumare_tools.py",
+    "hostgator_operations.py",
+    "hostgator_tools.py",
+    "connector_runtime.py",
+    "connector_observability.py",
+    "probe_streamable_http.py",
+    "project_manager_operations.py",
+    "project_manager_tools.py",
+    "project_file_operations.py",
+    "project_read_operations.py",
+    "project_shared_operations.py",
+    "project_explicit_operations.py",
+    "project_deployment_engine.py",
+    "container_diagnostics.py",
+    "container_diagnostics_tools.py",
+)
+
 
 def backup(path: Path) -> None:
     if path.exists():
@@ -66,6 +85,28 @@ def patch_dockerfile() -> None:
         )
         text = lines[0] + install + "\n" + "\n".join(lines[1:]) + ("\n" if text.endswith("\n") else "")
 
+    missing_runtime = [name for name in REQUIRED_IMAGE_MODULES if not (ROOT / name).is_file()]
+    if missing_runtime:
+        raise SystemExit("runtime_modules_missing:" + ",".join(missing_runtime))
+
+    copy_line = next(
+        (line for line in text.splitlines() if line.startswith("COPY ") and line.endswith(" ./")),
+        None,
+    )
+    if not copy_line:
+        raise SystemExit("dockerfile_copy_line_missing")
+
+    updated_line = copy_line
+    for name in REQUIRED_IMAGE_MODULES:
+        if name not in updated_line.split():
+            updated_line = updated_line[:-3] + f" {name} ./"
+    text = text.replace(copy_line, updated_line, 1)
+
+    final_tokens = set(updated_line.split())
+    missing_copy = [name for name in REQUIRED_IMAGE_MODULES if name not in final_tokens]
+    if missing_copy:
+        raise SystemExit("dockerfile_modules_missing:" + ",".join(missing_copy))
+
     dockerfile.write_text(text, encoding="utf-8")
 
 
@@ -112,10 +153,12 @@ def patch_main() -> None:
 def main() -> None:
     if not ROOT.is_dir():
         raise SystemExit(f"runtime_missing:{ROOT}")
-    patch_dockerfile()
     install_manifest_and_tools()
     patch_main()
+    patch_dockerfile()
     print("V4_OPERATIONAL_EXTENSIONS_INSTALLED=PASS")
+    print("V4_IMAGE_PACKAGING_VALIDATED=PASS")
+    print("V4_IMAGE_MODULE_COUNT=" + str(len(REQUIRED_IMAGE_MODULES)))
     print(f"BACKUP_STAMP={STAMP}")
 
 
