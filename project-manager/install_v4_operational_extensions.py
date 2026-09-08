@@ -57,33 +57,40 @@ def patch_dockerfile() -> None:
     backup(dockerfile)
     text = dockerfile.read_text(encoding="utf-8")
 
-    has_docker_cli = "docker.io" in text or "docker-ce-cli" in text
-    has_compose = "docker-compose" in text or "docker-compose-plugin" in text
-
-    if has_docker_cli and not has_compose:
-        marker = "apt-get install -y --no-install-recommends docker.io"
-        if marker in text:
-            text = text.replace(marker, marker + " docker-compose", 1)
-        else:
+    # Debian Trixie separates the Docker client into docker-cli. With
+    # --no-install-recommends, docker.io alone does not provide /usr/bin/docker.
+    if "docker-cli" not in text and "docker-ce-cli" not in text:
+        marker = "apt-get install -y --no-install-recommends "
+        install_line = next(
+            (line for line in text.splitlines() if marker in line),
+            None,
+        )
+        if install_line is None:
             lines = text.splitlines()
             if not lines or not lines[0].startswith("FROM "):
                 raise SystemExit("dockerfile_from_missing")
             install = (
                 "\nRUN apt-get update \\\n"
-                "    && apt-get install -y --no-install-recommends docker-compose \\\n"
+                "    && apt-get install -y --no-install-recommends docker.io docker-cli docker-compose \\\n"
                 "    && rm -rf /var/lib/apt/lists/*\n"
             )
             text = lines[0] + install + "\n" + "\n".join(lines[1:]) + ("\n" if text.endswith("\n") else "")
-    elif not has_docker_cli:
-        lines = text.splitlines()
-        if not lines or not lines[0].startswith("FROM "):
-            raise SystemExit("dockerfile_from_missing")
-        install = (
-            "\nRUN apt-get update \\\n"
-            "    && apt-get install -y --no-install-recommends docker.io docker-compose \\\n"
-            "    && rm -rf /var/lib/apt/lists/*\n"
-        )
-        text = lines[0] + install + "\n" + "\n".join(lines[1:]) + ("\n" if text.endswith("\n") else "")
+        else:
+            if "docker.io" in install_line:
+                updated_install_line = install_line.replace("docker.io", "docker.io docker-cli", 1)
+            else:
+                updated_install_line = install_line + " docker.io docker-cli docker-compose"
+            text = text.replace(install_line, updated_install_line, 1)
+
+    if "docker-compose" not in text and "docker-compose-plugin" not in text:
+        marker = "apt-get install -y --no-install-recommends "
+        install_line = next((line for line in text.splitlines() if marker in line), None)
+        if install_line is None:
+            raise SystemExit("dockerfile_install_line_missing")
+        text = text.replace(install_line, install_line + " docker-compose", 1)
+
+    if "docker-cli" not in text and "docker-ce-cli" not in text:
+        raise SystemExit("docker_cli_package_missing")
 
     missing_runtime = [name for name in REQUIRED_IMAGE_MODULES if not (ROOT / name).is_file()]
     if missing_runtime:
@@ -158,6 +165,7 @@ def main() -> None:
     patch_dockerfile()
     print("V4_OPERATIONAL_EXTENSIONS_INSTALLED=PASS")
     print("V4_IMAGE_PACKAGING_VALIDATED=PASS")
+    print("V4_DOCKER_CLI_PACKAGE_VALIDATED=PASS")
     print("V4_IMAGE_MODULE_COUNT=" + str(len(REQUIRED_IMAGE_MODULES)))
     print(f"BACKUP_STAMP={STAMP}")
 
