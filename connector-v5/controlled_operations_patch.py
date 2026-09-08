@@ -38,7 +38,7 @@ def apply(source: str) -> str:
 def project_runtime_secret_import_from_container(project_id: str, key: str, confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
-    return project_runtime_secret_set(project_id, key, "__MIGRATE_EXISTING__", confirm)
+    return _project_runtime_secret_set_impl(project_id, key, "__MIGRATE_EXISTING__", confirm)
 '''
     source = _replace_once(source, runtime_import_marker, runtime_import_block + "\n\n" + runtime_import_marker, "runtime_secret_import")
 
@@ -238,6 +238,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "up": {"vps_mcp_snapshot_candidate", "vitrine_backup"},
     },
     "v5-0-5-13-recovery-validation": {
+        "compose_files": {"docker-compose.v5-recovery-candidate.yml"},
+        "services": {"connector_v5_recovery_candidate"},
+        "run_once": set(),
+        "build": {"connector_v5_recovery_candidate"},
+        "up": {"connector_v5_recovery_candidate"},
+    },
+    "v5-global-inventory-validation": {
         "compose_files": {"docker-compose.v5-recovery-candidate.yml"},
         "services": {"connector_v5_recovery_candidate"},
         "run_once": set(),
