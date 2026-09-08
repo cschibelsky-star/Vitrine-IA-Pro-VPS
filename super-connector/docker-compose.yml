@@ -1,4 +1,11 @@
 services:
+  php_runner:
+    build:
+      context: ..
+      dockerfile: super-connector/Dockerfile.php-runner
+    image: vitrine-super-php-runner:0.1
+    profiles: ["build-only"]
+
   super_connector:
     build:
       context: ..
@@ -9,7 +16,7 @@ services:
       SUPER_LEGACY_V5_REGISTRY_ROOT: /legacy-v5-manifests
       SUPER_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
       SUPER_AUDIT_LOG: /var/log/vitrine-super-ops/audit.jsonl
-      SUPER_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
+      SUPER_PHP_RUNNER_IMAGE: vitrine-super-php-runner:0.1
     volumes:
       - /srv/connectors/vitrine-super-ops/registry:/data/registry/projects:rw
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/legacy-v5-manifests:ro
