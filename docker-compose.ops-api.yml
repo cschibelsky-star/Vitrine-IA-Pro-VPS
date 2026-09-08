@@ -23,6 +23,7 @@ services:
       - /srv/projects:/srv/projects:rw
       - /srv/tvsumare:/srv/tvsumare:rw
       - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
+      - /var/run/docker.sock:/var/run/docker.sock
     secrets:
       - hostgator_ops_key
     ports:
