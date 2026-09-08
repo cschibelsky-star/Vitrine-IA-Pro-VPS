@@ -25,4 +25,10 @@ def test_recovered_controlled_operations_layer():
     assert 'def project_manifest_docker_configure(' in source
     assert 'project_manifest_docker_configure' in source
     assert 'def project_runtime_secret_import_from_container(' in source
+    assert '_project_runtime_secret_set_impl(project_id, key, "__MIGRATE_EXISTING__", confirm)' in source
+    assert '("vitrine-ai-social-enterprise", "CENTRO_IA_INTERNAL_TOKEN")' in source
+    assert '("vitrine-marketing-agents-core-hml", "CENTRO_IA_INTERNAL_TOKEN")' in source
+    assert '("tvsumare-enterprise", "CENTRO_IA_INTERNAL_TOKEN")' in source
+    assert '("tvsumare-enterprise", "HEYGEN_API_KEY"): ("tvsumare_web", "HEYGEN_API_KEY")' in source
+    assert 'source_value is None or not str(source_value).strip()' in source
     assert '__MIGRATE_EXISTING__' in source
