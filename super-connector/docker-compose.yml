@@ -31,9 +31,12 @@ services:
     restart: unless-stopped
 
   super_emergency:
-    image: docker:27-cli
+    build:
+      context: ..
+      dockerfile: super-connector/Dockerfile.emergency
     container_name: vitrine_super_emergency_executor
-    command: ["sh", "-c", "trap : TERM INT; sleep infinity & wait"]
+    entrypoint: ["sh", "-c"]
+    command: ["trap : TERM INT; sleep infinity & wait"]
     environment:
       SUPER_CANDIDATE_CONTAINER: vitrine_super_connector_candidate
     volumes:
