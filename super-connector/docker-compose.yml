@@ -5,12 +5,13 @@ services:
       dockerfile: super-connector/Dockerfile
     container_name: vitrine_super_connector_candidate
     environment:
-      SUPER_REGISTRY_ROOT: /app/registry/projects
+      SUPER_REGISTRY_ROOT: /data/registry/projects
       SUPER_LEGACY_V5_REGISTRY_ROOT: /legacy-v5-manifests
       SUPER_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
       SUPER_AUDIT_LOG: /var/log/vitrine-super-ops/audit.jsonl
       SUPER_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
     volumes:
+      - /srv/connectors/vitrine-super-ops/registry:/data/registry/projects:rw
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/legacy-v5-manifests:ro
       - /srv/projects:/srv/projects:rw
       - /srv/tvsumare:/srv/tvsumare:rw
@@ -28,6 +29,19 @@ services:
       retries: 8
       start_period: 10s
     restart: unless-stopped
+
+  super_emergency:
+    image: docker:27-cli
+    container_name: vitrine_super_emergency_executor
+    command: ["sh", "-c", "trap : TERM INT; sleep infinity & wait"]
+    environment:
+      SUPER_CANDIDATE_CONTAINER: vitrine_super_connector_candidate
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   vitrine_net:
