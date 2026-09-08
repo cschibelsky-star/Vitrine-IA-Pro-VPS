@@ -28,10 +28,12 @@ def apply(source: str) -> str:
         source,
         '''    commands = {
         "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
+        "tests_laravel": "php artisan test --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
     }''',
         '''    commands = {
         "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
+        "tests_laravel": "php artisan test --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
         "marketing_gemini_live": "php vendor/bin/phpunit tests/Unit/Marketing/MarketingGeminiLiveHomologationTest.php --colors=never",
     }''',
@@ -49,12 +51,20 @@ def apply(source: str) -> str:
 
     source = _replace_once(
         source,
-        '''    if operation == "tests_marketing":
-        composer_lock = repository / "composer.lock"''',
-        '''    if operation in {"tests_marketing", "marketing_gemini_live"}:
+        '''    if operation in {"tests_marketing", "tests_laravel"}:
+        composer_lock = repository / "composer.lock"
+        if not composer_lock.is_file():
+            return {"ok": False, "error": "composer_lock_required", "operation": operation}
+        lock_hash = hashlib.sha256(composer_lock.read_bytes()).hexdigest()[:12]
+        if operation == "tests_marketing":''',
+        '''    if operation in {"tests_marketing", "tests_laravel", "marketing_gemini_live"}:
         if operation == "marketing_gemini_live" and project_id != "vitrine-marketing-agents-core-hml":
             return {"ok": False, "error": "marketing_live_validation_not_allowed_for_project", "project_id": project_id}
-        composer_lock = repository / "composer.lock"''',
+        composer_lock = repository / "composer.lock"
+        if not composer_lock.is_file():
+            return {"ok": False, "error": "composer_lock_required", "operation": operation}
+        lock_hash = hashlib.sha256(composer_lock.read_bytes()).hexdigest()[:12]
+        if operation in {"tests_marketing", "marketing_gemini_live"}:''',
         "dependency_scope",
     )
 
