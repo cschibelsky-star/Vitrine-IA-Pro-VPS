@@ -4,9 +4,9 @@ from typing import Any
 
 import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
-from foundation import capabilities, docker_ops, git_ops, policy, runtime_ops
+from foundation import capabilities, docker_ops, git_ops, laravel_ops, policy, runtime_ops
 
-main.VERSION = "0.2.2-gemini-probe"
+main.VERSION = "0.2.3-laravel-runner"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -90,6 +90,11 @@ def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: s
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def project_gemini_api_probe(project_id: str) -> dict[str, Any]:
     return runtime_ops.gemini_api_probe(project_id)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def laravel_test_v2(project_id: str) -> dict[str, Any]:
+    return laravel_ops.laravel_test_v2(project_id)
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
