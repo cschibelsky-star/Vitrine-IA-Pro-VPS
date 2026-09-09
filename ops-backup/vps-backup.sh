@@ -18,22 +18,45 @@ run_backup() {
 
   echo "[$(date -u +%FT%TZ)] backup_start archive=${archive}"
 
-  tar \
-    --warning=no-file-changed \
-    --ignore-failed-read \
-    -czf "$partial" \
-    -C "$SOURCE_ROOT" .
+  rm -f "$partial"
 
-  test -s "$partial"
+  if ! tar -czf "$partial" \
+    -C "$SOURCE_ROOT" \
+    --exclude='./proc' \
+    --exclude='./sys' \
+    --exclude='./dev' \
+    --exclude='./run' \
+    --exclude='./tmp' \
+    --exclude='./mnt' \
+    --exclude='./media' \
+    --exclude='./var/lib/docker' \
+    --exclude='./srv/backups/vps' \
+    .; then
+    rm -f "$partial"
+    echo "[$(date -u +%FT%TZ)] backup_failed stage=archive" >&2
+    return 1
+  fi
+
+  if [ ! -s "$partial" ]; then
+    rm -f "$partial"
+    echo "[$(date -u +%FT%TZ)] backup_failed stage=empty_archive" >&2
+    return 1
+  fi
+
   mv "$partial" "$archive"
-  sha256sum "$archive" > "$checksum"
+
+  if ! sha256sum "$archive" > "$checksum"; then
+    rm -f "$checksum"
+    echo "[$(date -u +%FT%TZ)] backup_failed stage=checksum" >&2
+    return 1
+  fi
 
   find "$BACKUP_ROOT" -maxdepth 1 -type f \
     \( -name 'vitrine-vps-*.tar.gz' -o -name 'vitrine-vps-*.tar.gz.sha256' -o -name 'vitrine-vps-*.partial' \) \
     -mtime "+${RETENTION_DAYS}" -delete
 
   size="$(wc -c < "$archive" | tr -d ' ')"
-  echo "[$(date -u +%FT%TZ)] backup_ok archive=${archive} bytes=${size}"
+  echo "[$(date -u +%FT%TZ)] backup_ok archive=${archive} bytes=${size} checksum=${checksum}"
 }
 
 if [ "${RUN_ONCE:-0}" = "1" ]; then
@@ -42,6 +65,8 @@ if [ "${RUN_ONCE:-0}" = "1" ]; then
 fi
 
 while true; do
-  run_backup || echo "[$(date -u +%FT%TZ)] backup_failed" >&2
+  if ! run_backup; then
+    echo "[$(date -u +%FT%TZ)] backup_cycle_failed" >&2
+  fi
   sleep "$INTERVAL_SECONDS"
 done
