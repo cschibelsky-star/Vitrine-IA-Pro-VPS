@@ -113,21 +113,21 @@ def docker_image_inspect(image: str) -> dict[str, Any]:
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def docker_container_inspect(container: str) -> dict[str, Any]:
-    result = docker_ops.docker_container_inspect(container)
+    result = docker_ops.container_inspect(container)
     main._audit("docker.container_inspect", {"container": container}, {"ok": result.get("ok")})
     return result
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def docker_container_health(container: str) -> dict[str, Any]:
-    result = docker_ops.docker_container_health(container)
+    result = docker_ops.container_health(container)
     main._audit("docker.container_health", {"container": container}, {"ok": result.get("ok")})
     return result
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def docker_container_logs(container: str, tail: int = 200) -> dict[str, Any]:
-    result = docker_ops.docker_container_logs(container, tail)
+    result = docker_ops.container_logs(container, tail)
     main._audit("docker.container_logs", {"container": container, "tail": tail}, {"ok": result.get("ok")})
     return result
 
