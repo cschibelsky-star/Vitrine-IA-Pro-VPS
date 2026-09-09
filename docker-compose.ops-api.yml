@@ -25,7 +25,7 @@ services:
       - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:18080->8080"
     networks:
       - vitrine_net
     healthcheck:
@@ -79,6 +79,21 @@ services:
         up -d --build ops_broker vps_mcp_connector;
         echo CONNECTOR_SELF_UPDATE_REBUILD_OK
     restart: "no"
+
+  vps_backup:
+    image: alpine:3.20
+    container_name: vitrine_vps_backup
+    command: ["/bin/sh", "/app/vps-backup.sh"]
+    environment:
+      BACKUP_ROOT: /backup
+      RETENTION_DAYS: "14"
+      INTERVAL_SECONDS: "86400"
+      SOURCE_ROOT: /source
+    volumes:
+      - /:/source:ro
+      - /srv/backups/vps:/backup:rw
+      - ./ops-backup/vps-backup.sh:/app/vps-backup.sh:ro
+    restart: unless-stopped
 
 secrets:
   hostgator_ops_key:
