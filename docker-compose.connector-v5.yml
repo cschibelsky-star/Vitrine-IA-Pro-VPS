@@ -26,6 +26,15 @@ services:
       - "127.0.0.1:8867:8000"
     networks:
       - vitrine_net
+      - traefik_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=n8n-traefik_app_network"
+      - "traefik.http.routers.mcp-v5.rule=Host(`mcp-v5.vitrineiapro.com.br`)"
+      - "traefik.http.routers.mcp-v5.entrypoints=websecure"
+      - "traefik.http.routers.mcp-v5.tls=true"
+      - "traefik.http.routers.mcp-v5.tls.certresolver=le"
+      - "traefik.http.services.mcp-v5.loadbalancer.server.port=8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),3); s.close()"]
       interval: 10s
@@ -38,3 +47,6 @@ networks:
   vitrine_net:
     external: true
     name: vitrine_net
+  traefik_net:
+    external: true
+    name: n8n-traefik_app_network
