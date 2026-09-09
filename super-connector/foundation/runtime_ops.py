@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +59,23 @@ def _parse_present_keys(path: Path) -> set[str]:
         except ValueError:
             continue
     return present
+
+
+def _read_secret(project: dict[str, Any], key: str) -> str:
+    path = _runtime_path(project)
+    if not path.is_file():
+        raise FileNotFoundError("runtime_env_missing")
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, value = stripped.split("=", 1)
+        if name.strip() == key:
+            secret = value.strip()
+            if not secret:
+                raise ValueError("runtime_secret_empty")
+            return secret
+    raise KeyError("runtime_secret_missing")
 
 
 def runtime_config_status(project_id: str) -> dict[str, Any]:
@@ -148,4 +167,46 @@ def runtime_secret_set(project_id: str, key: str, value: str, confirm: str = "")
             tmp.unlink(missing_ok=True)
     result = {"ok": True, "project_id": project_id, "key": safe_key, "stored": True, "env_file": str(project.get("runtime", {}).get("env_file", ".env.runtime"))}
     main._audit("runtime.secret_set", {"project_id": project_id, "key": safe_key}, {"ok": True, "stored": True})
+    return result
+
+
+def gemini_api_probe(project_id: str) -> dict[str, Any]:
+    project = main._load_project(project_id)
+    allowed = _safe_runtime_keys(list(project.get("runtime", {}).get("allowed_keys", []) or []))
+    if "GEMINI_API_KEY" not in allowed:
+        return {"ok": False, "error": "gemini_api_key_not_allowed"}
+    try:
+        secret = _read_secret(project, "GEMINI_API_KEY")
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        return {"ok": False, "error": str(exc)}
+    request = urllib.request.Request(
+        "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+        headers={"x-goog-api-key": secret, "Accept": "application/json", "User-Agent": "vitrine-super/0.2"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            status = int(response.status)
+            payload = json.loads(response.read(1000000).decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read(2000).decode("utf-8", errors="replace")
+        result = {"ok": False, "http_status": int(exc.code), "error": "gemini_http_error", "detail": body[:1000]}
+        main._audit("runtime.gemini_probe", {"project_id": project_id}, {"ok": False, "http_status": int(exc.code)})
+        return result
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        result = {"ok": False, "error": "gemini_probe_failed", "detail": type(exc).__name__}
+        main._audit("runtime.gemini_probe", {"project_id": project_id}, result)
+        return result
+    models = payload.get("models", []) if isinstance(payload, dict) else []
+    names = [str(item.get("name", "")) for item in models if isinstance(item, dict) and item.get("name")]
+    veo_models = [name for name in names if "veo" in name.lower()]
+    result = {
+        "ok": status == 200,
+        "http_status": status,
+        "authenticated": status == 200,
+        "model_count": len(names),
+        "veo_models": veo_models[:20],
+        "gemini_models_sample": [name for name in names if "gemini" in name.lower()][:20],
+    }
+    main._audit("runtime.gemini_probe", {"project_id": project_id}, {"ok": result["ok"], "http_status": status, "model_count": len(names), "veo_count": len(veo_models)})
     return result
