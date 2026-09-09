@@ -5,15 +5,28 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+import tarfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import psutil
 from fastmcp import FastMCP
 
-VERSION = "0.5.11-generic-laravel-test-runner"
+VERSION = "0.5.12-vps-filesystem-backup"
 MANIFEST_ROOT = Path(os.getenv("PROJECT_MANIFEST_ROOT", "/app/project-manifests")).resolve()
+VPS_BACKUP_ROOT = Path(os.getenv("VPS_BACKUP_ROOT", "/srv/vitrine/backups/vps")).resolve()
+VPS_BACKUP_RETENTION_DAYS = max(1, int(os.getenv("VPS_BACKUP_RETENTION_DAYS", "14")))
+VPS_BACKUP_SOURCES = (
+    Path("/srv/projects"),
+    Path("/srv/tvsumare"),
+    Path("/srv/connectors"),
+    Path("/opt/n8n-traefik"),
+    Path("/srv/vitrine/docker/nginx/conf.d"),
+    Path("/srv/vitrine/docker/nginx/html"),
+    Path("/srv/vitrine/ssl"),
+)
+VPS_BACKUP_EXCLUDE_NAMES = {".git", "vendor", "node_modules", "__pycache__", ".cache"}
 ALLOWED_WORKSPACE_ROOTS = tuple(Path(p).resolve() for p in os.getenv("PROJECT_WORKSPACE_ROOTS", "/srv/projects,/srv/tvsumare").split(",") if p.strip())
 AUDIT_LOG = Path(os.getenv("OPS_AUDIT_LOG", "/var/log/vitrine-ops-v5/audit.jsonl"))
 MAX_BYTES = int(os.getenv("PROJECT_MAX_READ_BYTES", "200000"))
@@ -964,6 +977,170 @@ def project_laravel_migrate_build1(project_id: str, confirm: str = "") -> dict[s
     }
     _audit("project_laravel_migrate_build1", {"project_id": project_id, "migration": migration}, {"ok": response["ok"], "status": response["status"], "exit_code": response["exit_code"]})
     return response
+
+
+def _vps_backup_filter(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
+    parts = Path(info.name).parts
+    if any(part in VPS_BACKUP_EXCLUDE_NAMES for part in parts):
+        return None
+    return info
+
+
+def _vps_filesystem_backup_impl(confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+
+    VPS_BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
+    os.chmod(VPS_BACKUP_ROOT, 0o700)
+    lock = VPS_BACKUP_ROOT / ".filesystem-backup.lock"
+    now = datetime.now(timezone.utc)
+    if lock.exists():
+        try:
+            age_seconds = now.timestamp() - lock.stat().st_mtime
+        except OSError:
+            age_seconds = 0
+        if age_seconds <= 21600:
+            return {"ok": False, "error": "backup_already_running", "lock": str(lock), "age_seconds": int(age_seconds)}
+        try:
+            lock.unlink()
+        except OSError:
+            return {"ok": False, "error": "stale_backup_lock_unremovable", "lock": str(lock)}
+
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(now.isoformat() + "\n")
+    except FileExistsError:
+        return {"ok": False, "error": "backup_already_running", "lock": str(lock)}
+
+    stamp = now.strftime("%Y%m%dT%H%M%SZ")
+    final = VPS_BACKUP_ROOT / f"vps-filesystem-{stamp}.tar.gz"
+    partial = VPS_BACKUP_ROOT / f".{final.name}.partial"
+    metadata = VPS_BACKUP_ROOT / f"vps-filesystem-{stamp}.json"
+    existing_sources = [source for source in VPS_BACKUP_SOURCES if source.exists()]
+    missing_sources = [str(source) for source in VPS_BACKUP_SOURCES if not source.exists()]
+    if not existing_sources:
+        try:
+            lock.unlink()
+        except OSError:
+            pass
+        return {"ok": False, "error": "no_backup_sources_available", "missing_sources": missing_sources}
+
+    try:
+        with tarfile.open(partial, mode="w:gz", compresslevel=6) as archive:
+            for source in existing_sources:
+                archive.add(source, arcname=str(source).lstrip("/"), recursive=True, filter=_vps_backup_filter)
+
+        size = partial.stat().st_size
+        if size < 1024:
+            raise ValueError("backup_archive_too_small")
+
+        member_count = 0
+        with tarfile.open(partial, mode="r:gz") as archive:
+            for member in archive:
+                if member.name.startswith("/") or ".." in Path(member.name).parts:
+                    raise ValueError("unsafe_archive_member")
+                member_count += 1
+        if member_count == 0:
+            raise ValueError("backup_archive_empty")
+
+        digest = hashlib.sha256()
+        with partial.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                digest.update(chunk)
+        sha256 = digest.hexdigest()
+        os.chmod(partial, 0o600)
+        os.replace(partial, final)
+
+        result = {
+            "ok": True,
+            "status": "created",
+            "backup_path": str(final),
+            "bytes": final.stat().st_size,
+            "sha256": sha256,
+            "member_count": member_count,
+            "sources": [str(source) for source in existing_sources],
+            "missing_sources": missing_sources,
+            "retention_days": VPS_BACKUP_RETENTION_DAYS,
+            "created_at": now.isoformat(),
+        }
+        tmp_metadata = metadata.with_suffix(".json.partial")
+        tmp_metadata.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.chmod(tmp_metadata, 0o600)
+        os.replace(tmp_metadata, metadata)
+
+        cutoff = now - timedelta(days=VPS_BACKUP_RETENTION_DAYS)
+        removed: list[str] = []
+        for candidate in VPS_BACKUP_ROOT.glob("vps-filesystem-*.tar.gz"):
+            if candidate == final:
+                continue
+            try:
+                modified = datetime.fromtimestamp(candidate.stat().st_mtime, timezone.utc)
+                if modified < cutoff:
+                    candidate.unlink()
+                    sidecar = candidate.with_suffix("").with_suffix(".json")
+                    if sidecar.exists():
+                        sidecar.unlink()
+                    removed.append(candidate.name)
+            except OSError:
+                continue
+        result["retention_removed"] = removed
+        _audit("vps_filesystem_backup", {"sources": result["sources"], "retention_days": VPS_BACKUP_RETENTION_DAYS}, {"ok": True, "backup_path": str(final), "bytes": result["bytes"], "sha256": sha256, "member_count": member_count, "retention_removed": removed})
+        return result
+    except (OSError, tarfile.TarError, ValueError) as exc:
+        for candidate in (partial, metadata.with_suffix(".json.partial")):
+            try:
+                if candidate.exists():
+                    candidate.unlink()
+            except OSError:
+                pass
+        result = {"ok": False, "error": "vps_filesystem_backup_failed", "detail": f"{type(exc).__name__}:{exc}"}
+        _audit("vps_filesystem_backup", {"sources": [str(source) for source in existing_sources]}, result)
+        return result
+    finally:
+        try:
+            if lock.exists():
+                lock.unlink()
+        except OSError:
+            pass
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def vps_filesystem_backup(confirm: str = "") -> dict[str, Any]:
+    return _vps_filesystem_backup_impl(confirm=confirm)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def vps_backup_status() -> dict[str, Any]:
+    backups: list[dict[str, Any]] = []
+    if VPS_BACKUP_ROOT.is_dir():
+        for candidate in sorted(VPS_BACKUP_ROOT.glob("vps-filesystem-*.tar.gz"), key=lambda p: p.stat().st_mtime, reverse=True)[:20]:
+            item: dict[str, Any] = {
+                "path": str(candidate),
+                "bytes": candidate.stat().st_size,
+                "modified_at": datetime.fromtimestamp(candidate.stat().st_mtime, timezone.utc).isoformat(),
+            }
+            sidecar = candidate.with_suffix("").with_suffix(".json")
+            if sidecar.is_file():
+                try:
+                    saved = json.loads(sidecar.read_text(encoding="utf-8"))
+                    item["sha256"] = saved.get("sha256")
+                    item["member_count"] = saved.get("member_count")
+                    item["sources"] = saved.get("sources", [])
+                except (OSError, json.JSONDecodeError):
+                    item["metadata_valid"] = False
+            backups.append(item)
+    return {
+        "ok": True,
+        "enabled": True,
+        "backup_root": str(VPS_BACKUP_ROOT),
+        "retention_days": VPS_BACKUP_RETENTION_DAYS,
+        "configured_sources": [str(source) for source in VPS_BACKUP_SOURCES],
+        "available_sources": [str(source) for source in VPS_BACKUP_SOURCES if source.exists()],
+        "missing_sources": [str(source) for source in VPS_BACKUP_SOURCES if not source.exists()],
+        "lock_present": (VPS_BACKUP_ROOT / ".filesystem-backup.lock").exists(),
+        "backups": backups,
+    }
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
