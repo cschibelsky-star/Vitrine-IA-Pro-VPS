@@ -4,9 +4,9 @@ from typing import Any
 
 import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
-from foundation import capabilities, docker_ops, git_ops, laravel_ops, policy, recovery_ops, runtime_ops
+from foundation import capabilities, docker_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.0-recovery-routing"
+main.VERSION = "0.3.1-video-producer-runner"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -95,6 +95,16 @@ def project_gemini_api_probe(project_id: str) -> dict[str, Any]:
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def laravel_test_v2(project_id: str) -> dict[str, Any]:
     return laravel_ops.laravel_test_v2(project_id)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_video_producer_validate(project_id: str) -> dict[str, Any]:
+    return php_ops.video_producer_validate(project_id)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_video_producer_generate(project_id: str, request_id: str, title: str, prompt: str, aspect_ratio: str = "9:16", duration: int = 8, resolution: str = "720p", confirm: str = "") -> dict[str, Any]:
+    return php_ops.video_producer_generate(project_id, request_id, title, prompt, aspect_ratio, duration, resolution, confirm)
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
