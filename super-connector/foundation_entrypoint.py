@@ -4,9 +4,9 @@ from typing import Any
 
 import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
-from foundation import capabilities, docker_ops, git_ops, laravel_ops, policy, runtime_ops
+from foundation import capabilities, docker_ops, git_ops, laravel_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.2.3-laravel-runner"
+main.VERSION = "0.3.0-recovery-routing"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -129,6 +129,41 @@ def docker_container_health(container: str) -> dict[str, Any]:
 def docker_container_logs(container: str, tail: int = 200) -> dict[str, Any]:
     result = docker_ops.container_logs(container, tail)
     main._audit("docker.container_logs", {"container": container, "tail": tail}, {"ok": result.get("ok")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def connector_endpoint_check(hostname: str, path: str = "/mcp") -> dict[str, Any]:
+    result = recovery_ops.connector_endpoint_check(hostname, path)
+    main._audit("recovery.connector_endpoint_check", {"hostname": hostname, "path": path}, {"ok": result.get("ok"), "status_code": result.get("status_code")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def proxy_route_inspect(hostname: str) -> dict[str, Any]:
+    result = recovery_ops.proxy_route_inspect(hostname)
+    main._audit("recovery.proxy_route_inspect", {"hostname": hostname}, {"ok": result.get("ok"), "match_count": result.get("match_count")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def mcp_publication_check(hostname: str, container: str = "") -> dict[str, Any]:
+    result = recovery_ops.mcp_publication_check(hostname, container)
+    main._audit("recovery.mcp_publication_check", {"hostname": hostname, "container": container}, {"ok": result.get("ok")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def hml_route_inspect(route_id: str) -> dict[str, Any]:
+    result = recovery_ops.hml_route_inspect(route_id)
+    main._audit("routing.hml_route_inspect", {"route_id": route_id}, {"ok": result.get("ok")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def hml_route_activate(route_id: str, confirm: str = "") -> dict[str, Any]:
+    result = recovery_ops.hml_route_activate(route_id, confirm)
+    main._audit("routing.hml_route_activate", {"route_id": route_id}, {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
     return result
 
 
