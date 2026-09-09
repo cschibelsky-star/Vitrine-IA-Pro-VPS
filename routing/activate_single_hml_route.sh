@@ -52,68 +52,86 @@ PY
 }
 
 readarray -t fields < <(python3 - "$route_json" <<'PY'
-import json, sys
+import json, re, sys
 r=json.loads(sys.argv[1])
-for k in ('hostname','upstream','network','cert_resolver','entrypoint'):
-    print(str(r[k]))
+hostname=str(r['hostname'])
+upstream=str(r['upstream'])
+network=str(r['network'])
+resolver=str(r['cert_resolver'])
+entrypoint=str(r['entrypoint'])
+if not hostname.endswith('.vitrineiapro.com.br'):
+    raise SystemExit(20)
+m=re.fullmatch(r'http://([A-Za-z0-9_.-]+):([0-9]{1,5})', upstream)
+if not m:
+    raise SystemExit(21)
+port=int(m.group(2))
+if port < 1 or port > 65535:
+    raise SystemExit(22)
+for value in (hostname, m.group(1), network, resolver, entrypoint, str(port)):
+    print(value)
 PY
-)
+) || {
+  rc=$?
+  echo "ERROR route_field_validation_failed rc=$rc" >&2
+  exit "$rc"
+}
+
 hostname="${fields[0]}"
-upstream="${fields[1]}"
+target_container="${fields[1]}"
 network="${fields[2]}"
 resolver="${fields[3]}"
 entrypoint="${fields[4]}"
+target_port="${fields[5]}"
+upstream="http://${target_container}:${target_port}"
 
-if [[ "$hostname" != *.vitrineiapro.com.br ]]; then
-  echo "ERROR hostname_not_allowed" >&2
-  exit 20
-fi
-if [[ "$upstream" != http://tvsumare_web:80 ]]; then
-  echo "ERROR upstream_not_allowed" >&2
-  exit 21
-fi
 if [ "$network" != "vitrine_net" ]; then
   echo "ERROR network_not_allowed" >&2
-  exit 22
+  exit 23
 fi
 if [ "$entrypoint" != "websecure" ]; then
   echo "ERROR entrypoint_not_allowed" >&2
-  exit 23
+  exit 24
 fi
 
 if ! docker inspect traefik >/dev/null 2>&1; then
   echo "ERROR traefik_container_unavailable" >&2
   exit 30
 fi
-if ! docker inspect tvsumare_web >/dev/null 2>&1; then
-  echo "ERROR tvsumare_container_unavailable" >&2
+if ! docker inspect "$target_container" >/dev/null 2>&1; then
+  echo "ERROR target_container_unavailable container=$target_container" >&2
   exit 31
 fi
 
-if ! docker inspect tvsumare_web --format '{{json .NetworkSettings.Networks}}' | grep -q '"vitrine_net"'; then
-  echo "ERROR tvsumare_not_on_vitrine_net" >&2
+running="$(docker inspect "$target_container" --format '{{.State.Running}}')"
+if [ "$running" != "true" ]; then
+  echo "ERROR target_container_not_running container=$target_container" >&2
   exit 32
 fi
 
-# Prefer the Docker provider: connect Traefik directly to the already-running
-# tvsumare_web container by applying labels to a tiny route-carrier container.
-# This avoids rewriting the application container and keeps the route isolated.
+if ! docker inspect "$target_container" --format '{{json .NetworkSettings.Networks}}' | grep -q '"vitrine_net"'; then
+  echo "ERROR target_not_on_vitrine_net container=$target_container" >&2
+  exit 33
+fi
+
+# Traefik must share the application network in order to resolve the explicit
+# Docker service URL used below. Fail closed instead of modifying Traefik.
+if ! docker inspect traefik --format '{{json .NetworkSettings.Networks}}' | grep -q '"vitrine_net"'; then
+  echo "ERROR traefik_not_on_vitrine_net" >&2
+  exit 34
+fi
+
 carrier="vitrine_route_${route_id}"
 image="alpine:3.20"
 
-# Do not replace an unrelated container with the same name.
 if docker inspect "$carrier" >/dev/null 2>&1; then
   current_route="$(docker inspect "$carrier" --format '{{index .Config.Labels "vitrine.route.id"}}' 2>/dev/null || true)"
   if [ "$current_route" != "$route_id" ]; then
     echo "ERROR route_carrier_name_collision" >&2
-    exit 33
+    exit 35
   fi
   docker rm -f "$carrier" >/dev/null
 fi
 
-# Traefik resolves the service URL through the shared Docker network. The
-# carrier itself is inert; labels declare a router whose service points to the
-# TV Sumare container through a file-less load balancer URL.
 docker run -d \
   --name "$carrier" \
   --restart unless-stopped \
@@ -122,7 +140,10 @@ docker run -d \
   --cap-drop ALL \
   --security-opt no-new-privileges:true \
   --label "vitrine.route.id=$route_id" \
+  --label "vitrine.route.hostname=$hostname" \
+  --label "vitrine.route.upstream=$upstream" \
   --label "traefik.enable=true" \
+  --label "traefik.docker.network=$network" \
   --label "traefik.http.routers.${route_id}.rule=Host(\`${hostname}\`)" \
   --label "traefik.http.routers.${route_id}.entrypoints=${entrypoint}" \
   --label "traefik.http.routers.${route_id}.tls=true" \
