@@ -4,9 +4,9 @@ from typing import Any
 
 import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
-from foundation import capabilities, docker_ops, git_ops, policy
+from foundation import capabilities, docker_ops, git_ops, policy, runtime_ops
 
-main.VERSION = "0.2.0-foundation"
+main.VERSION = "0.2.1-runtime-secrets"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -70,6 +70,21 @@ def git_diff(project_id: str, ref: str = "HEAD") -> dict[str, Any]:
 @main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def git_reconcile(project_id: str, branch: str = "", confirm: str = "") -> dict[str, Any]:
     return git_ops.reconcile(project_id, branch, confirm)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_runtime_config_status(project_id: str) -> dict[str, Any]:
+    return runtime_ops.runtime_config_status(project_id)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_manifest_runtime_configure(project_id: str, runtime_allowed_keys: list[str], runtime_env_file: str = ".env.runtime", confirm: str = "") -> dict[str, Any]:
+    return runtime_ops.manifest_runtime_configure(project_id, runtime_allowed_keys, runtime_env_file, confirm)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: str = "") -> dict[str, Any]:
+    return runtime_ops.runtime_secret_set(project_id, key, value, confirm)
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
