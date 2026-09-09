@@ -25,7 +25,7 @@ services:
       - /var/log/vitrine-ops:/var/log/vitrine-ops:rw
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "127.0.0.1:18080->8080"
+      - "127.0.0.1:18080:8080"
     networks:
       - vitrine_net
     healthcheck:
