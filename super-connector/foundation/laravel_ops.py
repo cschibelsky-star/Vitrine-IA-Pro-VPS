@@ -47,15 +47,18 @@ def laravel_test_v2(project_id: str) -> dict[str, Any]:
 
     bootstrap = (
         "set -eu; "
+        "umask 000; "
         "mkdir -p /work/project; "
         "cp -R /var/www/html/. /work/project/; "
         "find /source -mindepth 1 -maxdepth 1 ! -name .git -exec cp -R {} /work/project/ \\;; "
         "cd /work/project; "
-        "mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache; "
-        "chmod -R u+rwX storage/framework bootstrap/cache; "
+        "mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views bootstrap/cache; "
+        "chmod -R a+rwX storage bootstrap/cache; "
         "test -w storage/framework/cache; "
+        "test -w storage/framework/cache/data; "
         "test -w storage/framework/views; "
         "test -w bootstrap/cache; "
+        "test -w /tmp; "
         "php artisan test --colors=never"
     )
 
@@ -69,8 +72,8 @@ def laravel_test_v2(project_id: str) -> dict[str, Any]:
             "--pids-limit", "128",
             "--memory", "768m",
             "--cpus", "1",
-            "--tmpfs", "/tmp:rw,nosuid,nodev,size=32m",
-            "--tmpfs", "/work:rw,nosuid,nodev,size=768m",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,mode=1777,size=64m",
+            "--tmpfs", "/work:rw,nosuid,nodev,mode=1777,size=768m",
             "--env", "TMPDIR=/tmp",
             "--env", "APP_ENV=testing",
             "--env", "APP_DEBUG=false",
@@ -81,6 +84,11 @@ def laravel_test_v2(project_id: str) -> dict[str, Any]:
             "--env", "SESSION_DRIVER=array",
             "--env", "QUEUE_CONNECTION=sync",
             "--env", "VIEW_COMPILED_PATH=/work/project/storage/framework/views",
+            "--env", "APP_SERVICES_CACHE=/tmp/services.php",
+            "--env", "APP_PACKAGES_CACHE=/tmp/packages.php",
+            "--env", "APP_CONFIG_CACHE=/tmp/config.php",
+            "--env", "APP_ROUTES_CACHE=/tmp/routes.php",
+            "--env", "APP_EVENTS_CACHE=/tmp/events.php",
             "--entrypoint", "sh",
             "--mount", f"type=bind,src={repository},dst=/source,readonly",
             dependency_image,
