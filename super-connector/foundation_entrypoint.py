@@ -6,7 +6,7 @@ import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
 from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.2-files-php"
+main.VERSION = "0.3.3-selfsafe-publication"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
