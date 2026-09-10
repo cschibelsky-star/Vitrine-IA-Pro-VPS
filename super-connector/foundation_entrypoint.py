@@ -4,9 +4,9 @@ from typing import Any
 
 import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
-from foundation import capabilities, docker_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
+from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.1-video-producer-runner"
+main.VERSION = "0.3.2-files-php"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -44,6 +44,21 @@ def capability_gap_report(project_id: str) -> dict[str, Any]:
         result = {"ok": False, "error": str(exc), "project_id": project_id}
     main._audit("capability.gap_report", {"project_id": project_id}, {"ok": result.get("ok")})
     return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_file_read_safe(project_id: str, path: str, max_bytes: int = 100000) -> dict[str, Any]:
+    return files_ops.read_safe(project_id, path, max_bytes)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_read_file(project_id: str, path: str, start_line: int = 1, end_line: int = 400) -> dict[str, Any]:
+    return files_ops.read_lines(project_id, path, start_line, end_line)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_php_lint(project_id: str, path: str) -> dict[str, Any]:
+    return php_ops.php_lint(project_id, path)
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
