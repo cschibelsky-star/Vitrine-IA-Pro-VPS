@@ -6,6 +6,10 @@ from typing import Any
 import main
 
 
+SELF_PROJECT_IDS = {"vitrine-super-centro-operacional-candidate", "vitrine-super-centro-operacional-candidate-https"}
+SELF_SERVICE = "super_connector"
+
+
 def _workspace(project: dict[str, Any]) -> Path:
     workspace = Path(project["workspace"]["root"]).resolve()
     if not any(workspace == root or root in workspace.parents for root in main.WORKSPACE_ROOTS):
@@ -69,12 +73,7 @@ def project_materialize(project_id: str, confirm: str = "") -> dict[str, Any]:
         return result
 
     if repository.exists():
-        result = {
-            "ok": False,
-            "error": "repository_target_already_exists",
-            "project_id": project_id,
-            "repository": str(repository),
-        }
+        result = {"ok": False, "error": "repository_target_already_exists", "project_id": project_id, "repository": str(repository)}
         main._audit("project.materialize", {"project_id": project_id}, result)
         return result
 
@@ -86,13 +85,7 @@ def project_materialize(project_id: str, confirm: str = "") -> dict[str, Any]:
             main._audit("project.materialize", {"project_id": project_id}, result)
             return result
         if existing:
-            result = {
-                "ok": False,
-                "error": "workspace_not_empty",
-                "project_id": project_id,
-                "workspace": str(workspace),
-                "entries": existing[:50],
-            }
+            result = {"ok": False, "error": "workspace_not_empty", "project_id": project_id, "workspace": str(workspace), "entries": existing[:50]}
             main._audit("project.materialize", {"project_id": project_id}, result)
             return result
     else:
@@ -103,59 +96,21 @@ def project_materialize(project_id: str, confirm: str = "") -> dict[str, Any]:
             main._audit("project.materialize", {"project_id": project_id}, result)
             return result
 
-    result = main._run(
-        [
-            "git",
-            "clone",
-            "--branch",
-            branch,
-            "--single-branch",
-            "--",
-            repository_url,
-            str(repository),
-        ],
-        workspace,
-        timeout=900,
-    )
-
+    result = main._run(["git", "clone", "--branch", branch, "--single-branch", "--", repository_url, str(repository)], workspace, timeout=900)
     materialized = bool(result.get("ok") and (repository / ".git").is_dir())
-    response = {
-        "ok": materialized,
-        "project_id": project_id,
-        "workspace": str(workspace),
-        "repository": str(repository),
-        "branch": branch,
-        "repository_url": repository_url,
-        "exit_code": result.get("exit_code"),
-        "stdout": result.get("stdout", ""),
-        "stderr": result.get("stderr", ""),
-    }
+    response = {"ok": materialized, "project_id": project_id, "workspace": str(workspace), "repository": str(repository), "branch": branch, "repository_url": repository_url, "exit_code": result.get("exit_code"), "stdout": result.get("stdout", ""), "stderr": result.get("stderr", "")}
     if not materialized and result.get("ok"):
         response["error"] = "clone_completed_but_git_directory_missing"
-
-    main._audit(
-        "project.materialize",
-        {"project_id": project_id, "branch": branch, "repository": str(repository)},
-        {"ok": response["ok"], "exit_code": response.get("exit_code")},
-    )
+    main._audit("project.materialize", {"project_id": project_id, "branch": branch, "repository": str(repository)}, {"ok": response["ok"], "exit_code": response.get("exit_code")})
     return response
 
 
 @main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
-def project_compose_service_execute(
-    project_id: str,
-    service: str,
-    operation: str,
-    confirm: str = "",
-) -> dict[str, Any]:
+def project_compose_service_execute(project_id: str, service: str, operation: str, confirm: str = "") -> dict[str, Any]:
     op = str(operation or "").strip().lower()
     allowed_operations = {"build", "up", "status", "logs"}
     if op not in allowed_operations:
-        return {
-            "ok": False,
-            "error": "compose_operation_not_allowed",
-            "allowed_operations": sorted(allowed_operations),
-        }
+        return {"ok": False, "error": "compose_operation_not_allowed", "allowed_operations": sorted(allowed_operations)}
     if op in {"build", "up"} and confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
 
@@ -164,26 +119,29 @@ def project_compose_service_execute(
         repository = main._repository(project)
         compose_file = _compose_file(project, repository)
         service_name = _safe_compose_service(service)
-        project_name = _safe_compose_project_name(
-            str(project.get("docker", {}).get("project_name", project_id) or project_id)
-        )
+        project_name = _safe_compose_project_name(str(project.get("docker", {}).get("project_name", project_id) or project_id))
     except (FileNotFoundError, ValueError, PermissionError, KeyError) as exc:
         result = {"ok": False, "error": str(exc), "project_id": project_id}
-        main._audit(
-            "project.compose_service_execute",
-            {"project_id": project_id, "service": service, "operation": op},
-            result,
-        )
+        main._audit("project.compose_service_execute", {"project_id": project_id, "service": service, "operation": op}, result)
         return result
 
-    base = [
-        "docker",
-        "compose",
-        "-p",
-        project_name,
-        "-f",
-        str(compose_file),
-    ]
+    # Never let the Super MCP replace the container that is currently executing
+    # the request. A self-build is safe; a self-up/recreate must be performed by
+    # the independent emergency/break-glass executor and validated afterwards.
+    if op == "up" and project_id in SELF_PROJECT_IDS and service_name == SELF_SERVICE:
+        response = {
+            "ok": False,
+            "error": "self_recreate_blocked",
+            "project_id": project_id,
+            "service": service_name,
+            "operation": op,
+            "required_executor": "independent_break_glass",
+            "reason": "the active Super connector cannot safely replace itself",
+        }
+        main._audit("project.compose_service_execute", {"project_id": project_id, "service": service_name, "operation": op}, response)
+        return response
+
+    base = ["docker", "compose", "-p", project_name, "-f", str(compose_file)]
     if op == "build":
         command = [*base, "build", service_name]
         timeout = 1800
@@ -198,19 +156,8 @@ def project_compose_service_execute(
         timeout = 60
 
     result = main._run(command, repository, timeout=timeout)
-    response = {
-        **result,
-        "project_id": project_id,
-        "service": service_name,
-        "operation": op,
-        "compose_file": str(compose_file),
-        "docker_project": project_name,
-    }
-    main._audit(
-        "project.compose_service_execute",
-        {"project_id": project_id, "service": service_name, "operation": op},
-        {"ok": response.get("ok"), "exit_code": response.get("exit_code")},
-    )
+    response = {**result, "project_id": project_id, "service": service_name, "operation": op, "compose_file": str(compose_file), "docker_project": project_name}
+    main._audit("project.compose_service_execute", {"project_id": project_id, "service": service_name, "operation": op}, {"ok": response.get("ok"), "exit_code": response.get("exit_code")})
     return response
 
 
