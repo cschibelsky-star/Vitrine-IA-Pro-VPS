@@ -46,6 +46,7 @@ services:
       - >-
         set -eu;
         apk add --no-cache python3;
+        rm -rf /tmp/source;
         git clone --depth 1 --branch feature/v4-hostgator-remote-ops https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS.git /tmp/source;
         CONNECTOR_ROOT=/runtime python3 /tmp/source/connector-v2/install_connector_v2.py;
         CONNECTOR_ROOT=/runtime python3 /tmp/source/connector-v2/install_hostgator_remote_ops.py;
