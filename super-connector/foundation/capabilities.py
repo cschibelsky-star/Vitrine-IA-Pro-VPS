@@ -21,16 +21,18 @@ CAPABILITY_REQUIREMENTS = {
     "docker": {"docker", "logs"},
 }
 
-# Only capabilities actually exposed by the Super v0.2 foundation should be
-# advertised here. Missing capabilities are intentional: the gap report must
-# be truthful and drive the next implementation wave.
+# Advertise only capabilities backed by tools registered in the active
+# foundation entrypoint. files is backed by safe repository-confined reads;
+# php is backed by the isolated PHP lint runner.
 AVAILABLE_CAPABILITIES = {
     "health",
     "projects",
     "discovery",
     "git",
+    "files",
     "docker",
     "logs",
+    "php",
     "laravel",
 }
 
