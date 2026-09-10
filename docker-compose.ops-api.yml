@@ -72,10 +72,12 @@ services:
         docker compose -p vitrine-vps-mcp
         -f /runtime/docker-compose.mcp.yml
         -f /runtime/docker-compose.connector-v2.override.yml
+        -f /runtime/docker-compose.main.override.yml
         config >/tmp/connector-compose.yml;
         docker compose -p vitrine-vps-mcp
         -f /runtime/docker-compose.mcp.yml
         -f /runtime/docker-compose.connector-v2.override.yml
+        -f /runtime/docker-compose.main.override.yml
         up -d --build ops_broker vps_mcp_connector;
         echo CONNECTOR_SELF_UPDATE_REBUILD_OK
     restart: "no"
