@@ -39,8 +39,15 @@ def _audit(action: str, payload: dict[str, Any], result: dict[str, Any]) -> None
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def _run(command: list[str], cwd: Path, timeout: int = 300, input_text: str | None = None) -> dict[str, Any]:
+def _run(
+    command: list[str],
+    cwd: Path,
+    timeout: int = 300,
+    input_text: str | None = None,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     try:
+        child_env = {**os.environ, **(env or {}), "LC_ALL": "C.UTF-8"}
         proc = subprocess.run(
             command,
             cwd=str(cwd),
@@ -49,7 +56,7 @@ def _run(command: list[str], cwd: Path, timeout: int = 300, input_text: str | No
             capture_output=True,
             timeout=timeout,
             check=False,
-            env={**os.environ, "LC_ALL": "C.UTF-8"},
+            env=child_env,
         )
         return {
             "ok": proc.returncode == 0,
@@ -310,39 +317,34 @@ def git_preserve(project_id: str, include_untracked_paths: list[str] | None = No
     try:
         stage_tracked = _run(["git", "add", "-u"], repository, timeout=60)
         if not stage_tracked.get("ok"):
-            failure = {"ok": False, "error": "preservation_stage_tracked_failed", "branch": preservation, "detail": stage_tracked}
-            return failure
-        if explicit_untracked:
+            failure = {"ok": False, "error": "preservation_stage_tracked_failed", "detail": stage_tracked}
+        if failure is None and explicit_untracked:
             stage_untracked = _run(["git", "add", "--", *explicit_untracked], repository, timeout=60)
             if not stage_untracked.get("ok"):
-                failure = {"ok": False, "error": "preservation_stage_untracked_failed", "branch": preservation, "detail": stage_untracked}
-                return failure
+                failure = {"ok": False, "error": "preservation_stage_untracked_failed", "detail": stage_untracked}
         staged = _run(["git", "diff", "--cached", "--quiet"], repository, timeout=30)
-        if staged.get("exit_code") == 0:
-            return {"ok": True, "status": "nothing_staged", "branch": preservation, "original_branch": original_branch}
-        commit = _run(["git", "commit", "-m", f"preserve: {project_id} {stamp}"], repository, timeout=120)
-        if not commit.get("ok"):
-            failure = {"ok": False, "error": "preservation_commit_failed", "branch": preservation, "detail": commit}
-            return failure
-        head = _run(["git", "rev-parse", "HEAD"], repository, timeout=30)
-        head_sha = str(head.get("stdout", "")).strip()
-        if push:
-            pushed = _run(["git", "push", "-u", "origin", preservation], repository, timeout=300)
-            if not pushed.get("ok"):
-                failure = {"ok": False, "error": "preservation_push_failed", "branch": preservation, "head": head_sha, "detail": pushed}
-                return failure
+        has_staged = staged.get("exit_code") == 1
+        if failure is None and has_staged:
+            commit = _run(["git", "commit", "-m", f"chore: preserve local state {stamp}"], repository, timeout=120)
+            if not commit.get("ok"):
+                failure = {"ok": False, "error": "preservation_commit_failed", "detail": commit}
+        if failure is None:
+            head = _run(["git", "rev-parse", "HEAD"], repository, timeout=30)
+            head_sha = str(head.get("stdout", "")).strip()
+            if push:
+                pushed = _run(["git", "push", "-u", "origin", preservation], repository, timeout=300)
+                if not pushed.get("ok"):
+                    failure = {"ok": False, "error": "preservation_push_failed", "detail": pushed}
     finally:
         restore = _run(["git", "checkout", original_branch], repository, timeout=60)
         if not restore.get("ok") and failure is None:
-            failure = {"ok": False, "error": "original_branch_restore_failed", "branch": preservation, "original_branch": original_branch, "detail": restore}
+            failure = {"ok": False, "error": "preservation_restore_failed", "detail": restore}
 
     if failure is not None:
-        _audit("git.preserve", {"project_id": project_id, "push": push}, failure)
+        _audit("git.preserve", {"project_id": project_id, "preservation_branch": preservation}, {"ok": False, "error": failure.get("error")})
         return failure
-    branch_now = _run(["git", "branch", "--show-current"], repository, timeout=30)
-    restored_branch = str(branch_now.get("stdout", "")).strip()
-    result = {"ok": restored_branch == original_branch, "status": "preserved", "branch": preservation, "head": head_sha, "original_branch": original_branch, "restored_branch": restored_branch, "pushed": push}
-    _audit("git.preserve", {"project_id": project_id, "include_untracked_paths": explicit_untracked, "push": push}, result)
+    result = {"ok": True, "preservation_branch": preservation, "head": head_sha, "pushed": bool(push)}
+    _audit("git.preserve", {"project_id": project_id}, result)
     return result
 
 
@@ -352,76 +354,18 @@ def git_push(project_id: str, branch: str = "", confirm: str = "") -> dict[str, 
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
     project = _load_project(project_id)
     repository = _repository(project)
-    if branch:
-        target = _safe_branch(branch)
-    else:
-        current = _run(["git", "branch", "--show-current"], repository, timeout=30)
-        target = _safe_branch(str(current.get("stdout", "")).strip())
+    target = _safe_branch(branch or str(project.get("repository", {}).get("branch", "main")))
+    status = _run(["git", "status", "--porcelain=v1"], repository, timeout=30)
+    if not status.get("ok"):
+        return {"ok": False, "error": "git_status_failed", "detail": status}
+    if str(status.get("stdout", "")).strip():
+        return {"ok": False, "error": "dirty_tree_push_blocked"}
+    current = _run(["git", "branch", "--show-current"], repository, timeout=30)
+    current_branch = str(current.get("stdout", "")).strip()
+    if current_branch != target:
+        return {"ok": False, "error": "branch_mismatch", "current": current_branch, "requested": target}
     result = _run(["git", "push", "-u", "origin", target], repository, timeout=300)
     _audit("git.push", {"project_id": project_id, "branch": target}, {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
-    return result
-
-
-@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
-def laravel_test(project_id: str) -> dict[str, Any]:
-    project = _load_project(project_id)
-    repository = _repository(project)
-    if not (repository / "artisan").is_file() or not (repository / "composer.lock").is_file():
-        return {"ok": False, "error": "laravel_project_required"}
-    if not PHP_RUNNER_IMAGE or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/@-" for ch in PHP_RUNNER_IMAGE):
-        return {"ok": False, "error": "php_runner_image_invalid"}
-    image_check = _run(["docker", "image", "inspect", PHP_RUNNER_IMAGE], repository, timeout=30)
-    if not image_check.get("ok"):
-        return {"ok": False, "error": "php_runner_image_unavailable", "runtime_image": PHP_RUNNER_IMAGE}
-
-    lock_hash = hashlib.sha256((repository / "composer.lock").read_bytes()).hexdigest()[:12]
-    project_tag = hashlib.sha256(project_id.encode("utf-8")).hexdigest()[:8]
-    dependency_image = f"vitrine-super-laravel-test:{project_tag}-{lock_hash}"
-    dependency_check = _run(["docker", "image", "inspect", dependency_image], repository, timeout=30)
-    if not dependency_check.get("ok"):
-        dockerfile = (
-            f"FROM {PHP_RUNNER_IMAGE}\n"
-            "USER root\n"
-            "WORKDIR /var/www/html\n"
-            "COPY composer.json composer.lock ./\n"
-            "RUN composer install --no-interaction --prefer-dist --no-progress --no-scripts --no-plugins\n"
-        )
-        built = _run(["docker", "build", "-t", dependency_image, "-f", "-", str(repository)], repository, timeout=1200, input_text=dockerfile)
-        if not built.get("ok"):
-            return {"ok": False, "error": "laravel_test_dependency_build_failed", "detail": built}
-
-    bootstrap = (
-        "set -eu; mkdir -p /work/project; "
-        "cp -R /var/www/html/. /work/project/; "
-        "find /source -mindepth 1 -maxdepth 1 ! -name .git -exec cp -R {} /work/project/ \\;; "
-        "cd /work/project; php artisan test --colors=never"
-    )
-    result = _run([
-        "docker", "run", "--rm",
-        "--network", "none",
-        "--read-only",
-        "--cap-drop", "ALL",
-        "--security-opt", "no-new-privileges",
-        "--pids-limit", "128",
-        "--memory", "768m",
-        "--cpus", "1",
-        "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=32m",
-        "--tmpfs", "/work:rw,nosuid,nodev,size=768m",
-        "--env", "APP_ENV=testing",
-        "--env", "APP_DEBUG=false",
-        "--env", "APP_KEY=base64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
-        "--env", "DB_CONNECTION=sqlite",
-        "--env", "DB_DATABASE=:memory:",
-        "--env", "CACHE_STORE=array",
-        "--env", "SESSION_DRIVER=array",
-        "--env", "QUEUE_CONNECTION=sync",
-        "--entrypoint", "sh",
-        "--mount", f"type=bind,src={repository},dst=/source,readonly",
-        dependency_image,
-        "-lc", bootstrap,
-    ], repository, timeout=900)
-    result.update({"project_id": project_id, "runtime": "ephemeral_container", "runtime_image": dependency_image})
-    _audit("laravel.test", {"project_id": project_id}, {"ok": result.get("ok"), "exit_code": result.get("exit_code"), "runtime_image": dependency_image})
     return result
 
 
