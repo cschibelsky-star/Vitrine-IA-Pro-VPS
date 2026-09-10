@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from pathlib import Path
 from typing import Any
 
 import main
@@ -11,6 +12,57 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,120}$")
 _ALLOWED_ASPECTS = {"9:16", "16:9"}
 _ALLOWED_DURATIONS = {4, 6, 8}
 _ALLOWED_RESOLUTIONS = {"720p", "1080p", "4k"}
+
+
+def _safe_project_file(project_id: str, path: str) -> tuple[Path, Path]:
+    project = main._load_project(project_id)
+    repository = main._repository(project).resolve()
+    relative = Path(str(path or "").strip())
+    if not str(relative) or relative.is_absolute():
+        raise ValueError("invalid_relative_path")
+    target = (repository / relative).resolve()
+    try:
+        target.relative_to(repository)
+    except ValueError as exc:
+        raise PermissionError("path_outside_repository") from exc
+    if not target.is_file():
+        raise FileNotFoundError("file_not_found")
+    return repository, target
+
+
+def php_lint(project_id: str, path: str) -> dict[str, Any]:
+    try:
+        repository, target = _safe_project_file(project_id, path)
+    except (FileNotFoundError, ValueError, PermissionError, KeyError) as exc:
+        return {"ok": False, "error": str(exc), "project_id": project_id, "path": path}
+    if target.suffix.lower() != ".php":
+        return {"ok": False, "error": "php_file_required", "project_id": project_id, "path": path}
+    if not main.PHP_RUNNER_IMAGE:
+        return {"ok": False, "error": "php_runner_image_unavailable", "project_id": project_id, "path": path}
+
+    relative = target.relative_to(repository)
+    result = main._run(
+        [
+            "docker", "run", "--rm", "--network", "none", "--read-only",
+            "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            "--mount", f"type=bind,src={repository},dst=/source,readonly",
+            "--entrypoint", "php", main.PHP_RUNNER_IMAGE, "-l", f"/source/{relative.as_posix()}",
+        ],
+        repository,
+        timeout=60,
+    )
+    safe = {
+        "ok": bool(result.get("ok")),
+        "project_id": project_id,
+        "path": relative.as_posix(),
+        "exit_code": result.get("exit_code"),
+        "stdout": result.get("stdout", "")[-4000:],
+        "stderr": result.get("stderr", "")[-2000:],
+        "network": "none",
+        "read_only": True,
+    }
+    main._audit("php.lint", {"project_id": project_id, "path": relative.as_posix()}, {"ok": safe["ok"], "exit_code": safe["exit_code"]})
+    return safe
 
 
 def _dependency_image(project_id: str, repository) -> tuple[str, dict[str, Any] | None]:
