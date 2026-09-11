@@ -206,10 +206,11 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
         temporary.unlink(missing_ok=True)
         return {"ok": False, "error": "downloaded_file_is_not_mp4"}
 
-    image, error = _dependency_image(project_id, repository)
-    if error:
+    image = "vitrine-marketing-agents-core-hml-app:latest"
+    image_check = main._run(["docker", "image", "inspect", image], repository, timeout=30)
+    if not image_check.get("ok"):
         temporary.unlink(missing_ok=True)
-        return error
+        return {"ok": False, "error": "video_probe_image_unavailable", "runtime_image": image}
     probe = main._run(
         [
             "docker", "run", "--rm", "--network", "none", "--read-only",
