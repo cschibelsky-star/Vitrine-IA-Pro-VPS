@@ -105,6 +105,120 @@ def video_producer_validate(project_id: str) -> dict[str, Any]:
 
 
 
+def marketing_preview_sign(
+    project_id: str,
+    version_id: str = "SESSION-REEL-01-VITRINE-SOCIAL-MIDIA-20260911-V1",
+    ttl_minutes: int = 60,
+    confirm: str = "",
+) -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    if project_id != "vitrine-marketing-agents-core-hml":
+        return {"ok": False, "error": "project_not_allowed"}
+
+    allowed_version = "SESSION-REEL-01-VITRINE-SOCIAL-MIDIA-20260911-V1"
+    if version_id != allowed_version:
+        return {"ok": False, "error": "preview_version_not_allowed"}
+    try:
+        ttl = int(ttl_minutes)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "invalid_ttl"}
+    if ttl < 5 or ttl > 120:
+        return {"ok": False, "error": "ttl_out_of_range", "min": 5, "max": 120}
+
+    project = main._load_project(project_id)
+    repository = main._repository(project)
+    container = "vitrine_marketing_app_hml"
+    inspect = main._run(
+        ["docker", "inspect", "-f", "{{.State.Running}}", container],
+        repository,
+        timeout=30,
+    )
+    if not inspect.get("ok") or str(inspect.get("stdout", "")).strip().lower() != "true":
+        return {"ok": False, "error": "marketing_app_container_not_running"}
+
+    php_code = (
+        "require '/var/www/html/vendor/autoload.php';"
+        "$app=require '/var/www/html/bootstrap/app.php';"
+        "$kernel=$app->make(Illuminate\\Contracts\\Console\\Kernel::class);"
+        "$kernel->bootstrap();"
+        "$version=getenv('PREVIEW_VERSION');"
+        "$ttl=(int)getenv('PREVIEW_TTL');"
+        "$expires=Illuminate\\Support\\Carbon::now()->addMinutes($ttl);"
+        "$url=Illuminate\\Support\\Facades\\URL::temporarySignedRoute('marketing.video-preview',$expires,['version'=>$version]);"
+        "echo json_encode(['version_id'=>$version,'expires_at'=>$expires->toIso8601String(),'signed_url'=>$url],JSON_UNESCAPED_SLASHES);"
+    )
+    signed = main._run(
+        [
+            "docker", "exec",
+            "-e", f"PREVIEW_VERSION={version_id}",
+            "-e", f"PREVIEW_TTL={ttl}",
+            container,
+            "php", "-r", php_code,
+        ],
+        repository,
+        timeout=60,
+    )
+    if not signed.get("ok"):
+        result = {"ok": False, "error": "signed_url_generation_failed", "exit_code": signed.get("exit_code"), "stderr": signed.get("stderr", "")[-1200:]}
+        main._audit("php.marketing_preview_sign", {"project_id": project_id, "version_id": version_id, "ttl_minutes": ttl}, result)
+        return result
+
+    try:
+        payload = json.loads(str(signed.get("stdout", "")).strip())
+        signed_url = str(payload.get("signed_url", "")).strip()
+        parsed = urllib.parse.urlparse(signed_url)
+    except (json.JSONDecodeError, AttributeError, TypeError, ValueError):
+        return {"ok": False, "error": "invalid_signed_url_payload"}
+
+    expected_path = f"/marketing/video-preview/{version_id}"
+    if parsed.scheme != "https" or parsed.hostname != "marketing.hml.vitrineiapro.com.br" or parsed.path != expected_path:
+        return {"ok": False, "error": "signed_url_scope_invalid"}
+    query = urllib.parse.parse_qs(parsed.query)
+    if "expires" not in query or "signature" not in query:
+        return {"ok": False, "error": "signed_url_parameters_missing"}
+
+    request = urllib.request.Request(
+        signed_url,
+        headers={"Accept": "video/mp4", "User-Agent": "Vitrine-Super-Preview-Validator/1.0"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            status_code = int(getattr(response, "status", 0) or 0)
+            content_type = str(response.headers.get("Content-Type", "")).lower()
+            header = response.read(32)
+    except urllib.error.HTTPError as exc:
+        status_code = int(exc.code)
+        content_type = str(exc.headers.get("Content-Type", "")).lower() if exc.headers else ""
+        header = b""
+    except urllib.error.URLError as exc:
+        result = {"ok": False, "error": "preview_validation_request_failed", "detail": type(exc).__name__}
+        main._audit("php.marketing_preview_sign", {"project_id": project_id, "version_id": version_id, "ttl_minutes": ttl}, result)
+        return result
+
+    validation_ok = status_code == 200 and "video/mp4" in content_type and b"ftyp" in header
+    result = {
+        "ok": validation_ok,
+        "project_id": project_id,
+        "version_id": version_id,
+        "expires_at": payload.get("expires_at"),
+        "signed_url": signed_url,
+        "preview_http_status": status_code,
+        "content_type": content_type,
+        "mp4_header_ok": b"ftyp" in header,
+        "app_key_exposed": False,
+        "regeneration_executed": False,
+    }
+    main._audit(
+        "php.marketing_preview_sign",
+        {"project_id": project_id, "version_id": version_id, "ttl_minutes": ttl},
+        {"ok": validation_ok, "preview_http_status": status_code, "content_type": content_type, "app_key_exposed": False},
+    )
+    return result
+
+
+
 def video_producer_download(project_id: str, request_id: str, version_id: str, video_url: str, confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
