@@ -144,7 +144,7 @@ def video_producer_generate(project_id: str, request_id: str, title: str, prompt
         "docker", "run", "--rm", "--network", "bridge", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128", "--memory", "768m", "--cpus", "1",
         "--tmpfs", "/tmp:rw,nosuid,nodev,mode=1777,size=64m", "--tmpfs", "/work:rw,nosuid,nodev,mode=1777,size=1024m", "--env", "GEMINI_API_KEY",
         "--mount", f"type=bind,src={repository},dst=/source,readonly", "--entrypoint", "sh", image, "-lc", bootstrap, "sh",
-        "--request-id", request_id, "--title", title, "--prompt", prompt, "--aspect-ratio", aspect_ratio, "--duration", str(int(duration)), "--resolution", resolution, "--provider", "gemini_veo",
+        "--request-id", request_id, "--title", title, "--prompt", prompt, "--aspect-ratio", aspect_ratio, "--duration", str(int(duration)), "--resolution", resolution, "--provider=gemini_veo",
     ]
     result = main._run(command, repository, timeout=900, env={"GEMINI_API_KEY": secret})
     safe = {"ok": result.get("ok", False), "exit_code": result.get("exit_code"), "stdout": result.get("stdout", "")[-12000:], "stderr": result.get("stderr", "")[-4000:], "project_id": project_id, "request_id": request_id, "provider": "gemini_veo", "auto_regenerate": False, "auto_publish": False}
