@@ -6,7 +6,7 @@ import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
 from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.3-selfsafe-publication"
+main.VERSION = "0.3.4-video-preservation"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -115,6 +115,11 @@ def laravel_test_v2(project_id: str) -> dict[str, Any]:
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def project_video_producer_validate(project_id: str) -> dict[str, Any]:
     return php_ops.video_producer_validate(project_id)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_video_producer_download(project_id: str, request_id: str, version_id: str, video_url: str, confirm: str = "") -> dict[str, Any]:
+    return php_ops.video_producer_download(project_id, request_id, version_id, video_url, confirm)
 
 
 @main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
