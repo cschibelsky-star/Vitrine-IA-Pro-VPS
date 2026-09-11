@@ -4,7 +4,6 @@
   "policy": "no-tool-removal-without-explicit-authorization",
   "required_tools": [
     "capability_gap_report",
-    "capability_regression_report",
     "connector_endpoint_check",
     "docker_container_health",
     "docker_container_inspect",
