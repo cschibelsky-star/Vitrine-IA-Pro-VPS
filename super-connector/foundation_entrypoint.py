@@ -6,13 +6,57 @@ import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
 from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.4-video-preservation"
+main.VERSION = "0.3.5-existing-readonly-workspace"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def policy_catalog() -> dict[str, Any]:
     result = {"ok": True, "policies": policy.catalog()}
     main._audit("policy.catalog", {}, {"ok": True, "count": len(result["policies"])})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_register_existing_readonly(project_id: str, workspace_root: str, name: str = "", confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    try:
+        safe_id = main._safe_project_id(project_id)
+        workspace = main.Path(str(workspace_root or "").strip()).resolve()
+        if not any(workspace == root or root in workspace.parents for root in main.WORKSPACE_ROOTS):
+            raise PermissionError("workspace_root_blocked")
+        if not workspace.is_dir():
+            result = {"ok": False, "error": "workspace_not_found", "workspace_root": str(workspace)}
+            main._audit("project.register_existing_readonly", {"project_id": project_id, "workspace_root": workspace_root}, result)
+            return result
+        target = main._registry_path(safe_id)
+        if target.exists():
+            result = {"ok": False, "error": "project_already_registered", "project_id": safe_id}
+            main._audit("project.register_existing_readonly", {"project_id": project_id, "workspace_root": workspace_root}, result)
+            return result
+        project = {
+            "id": safe_id,
+            "name": str(name or safe_id),
+            "repository": {"url": "", "branch": "", "directory": "."},
+            "workspace": {"root": str(workspace)},
+            "docker": {"compose_file": "", "project_name": safe_id},
+            "runtime": {"env_file": ".env.runtime", "allowed_keys": []},
+            "policies": {
+                "dirty_tree": "preserve",
+                "allow_reset": False,
+                "allow_clean": False,
+                "backup_before_mutation": False,
+                "read_only_workspace": True,
+            },
+        }
+        main.REGISTRY_ROOT.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".json.tmp")
+        tmp.write_text(main.json.dumps(project, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        main.os.replace(tmp, target)
+        result = {"ok": True, "status": "registered_readonly", "project_id": safe_id, "workspace_root": str(workspace)}
+    except (ValueError, PermissionError, OSError) as exc:
+        result = {"ok": False, "error": str(exc), "project_id": project_id}
+    main._audit("project.register_existing_readonly", {"project_id": project_id, "workspace_root": workspace_root}, result)
     return result
 
 
