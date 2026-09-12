@@ -51,6 +51,7 @@ services:
         cp /tmp/source/docker-compose.main.override.yml /runtime/docker-compose.main.override.yml;
         CONNECTOR_ROOT=/runtime python3 /tmp/source/connector-v2/install_connector_v2.py;
         CONNECTOR_ROOT=/runtime python3 /tmp/source/connector-v2/install_hostgator_remote_ops.py;
+        grep -q 'openssh-client' /runtime/Dockerfile || sed -i 's/docker-compose git procps coreutils/docker-compose git openssh-client procps coreutils/' /runtime/Dockerfile;
         CONNECTOR_ROOT=/runtime python3 /tmp/source/project-manager/install_project_manager.py;
         CONNECTOR_ROOT=/runtime python3 /tmp/source/project-manager/recover_mcp_main.py;
         CONNECTOR_ROOT=/runtime python3 /tmp/source/project-manager/install_v4_operational_extensions.py;
@@ -65,18 +66,19 @@ services:
     working_dir: /runtime
     volumes:
       - /srv/connectors/vitrine-vps-mcp:/runtime:rw
+      - /srv/projects/vitrine-vps-mcp/.env.runtime:/config/.env.runtime:ro
       - /var/run/docker.sock:/var/run/docker.sock
     command:
       - sh
       - -c
       - >-
         set -eu;
-        docker compose -p vitrine-vps-mcp
+        docker compose --env-file /config/.env.runtime -p vitrine-vps-mcp
         -f /runtime/docker-compose.mcp.yml
         -f /runtime/docker-compose.connector-v2.override.yml
         -f /runtime/docker-compose.main.override.yml
         config >/tmp/connector-compose.yml;
-        docker compose -p vitrine-vps-mcp
+        docker compose --env-file /config/.env.runtime -p vitrine-vps-mcp
         -f /runtime/docker-compose.mcp.yml
         -f /runtime/docker-compose.connector-v2.override.yml
         -f /runtime/docker-compose.main.override.yml
