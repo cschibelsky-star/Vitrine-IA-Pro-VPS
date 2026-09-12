@@ -33,6 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$REPO_DIR"
           cd "$REPO_DIR"
 
           if [ -n "$(git status --porcelain)" ]; then
