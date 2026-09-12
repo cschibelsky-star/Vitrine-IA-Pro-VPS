@@ -1,0 +1,151 @@
+name: Deploy Super HML
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Optional exact SHA expected on feature/super-centro-operacional-v0.1"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: super-hml-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Controlled Super deploy
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+    env:
+      REPO_DIR: /srv/projects/vitrine-super-centro-operacional-candidate/repository
+      DEPLOY_BRANCH: feature/super-centro-operacional-v0.1
+      COMPOSE_FILE: super-connector/docker-compose.yml
+      DOCKER_PROJECT: vitrine-super-centro-operacional-candidate
+      SERVICE: super_connector
+      CONTAINER: vitrine_super_connector_candidate
+      IMAGE_TAG: vitrine-super-centro-operacional-candidate-super_connector:latest
+    steps:
+      - name: Preflight and fast-forward source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$REPO_DIR"
+
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "ERROR: worktree is dirty; refusing deploy without preservation."
+            git status --short
+            exit 10
+          fi
+
+          git fetch origin "$DEPLOY_BRANCH"
+
+          CURRENT_BRANCH="$(git branch --show-current)"
+          if [ "$CURRENT_BRANCH" != "$DEPLOY_BRANCH" ]; then
+            echo "ERROR: expected branch $DEPLOY_BRANCH, found $CURRENT_BRANCH."
+            exit 11
+          fi
+
+          LOCAL_SHA="$(git rev-parse HEAD)"
+          REMOTE_SHA="$(git rev-parse "origin/$DEPLOY_BRANCH")"
+          echo "Local SHA:  $LOCAL_SHA"
+          echo "Remote SHA: $REMOTE_SHA"
+
+          if ! git merge-base --is-ancestor "$LOCAL_SHA" "$REMOTE_SHA"; then
+            echo "ERROR: local history is not an ancestor of origin; refusing non-fast-forward reconciliation."
+            exit 12
+          fi
+
+          git merge --ff-only "origin/$DEPLOY_BRANCH"
+          NEW_SHA="$(git rev-parse HEAD)"
+
+          EXPECTED="${{ inputs.expected_sha }}"
+          if [ -n "$EXPECTED" ] && [ "$NEW_SHA" != "$EXPECTED" ]; then
+            echo "ERROR: deployed source SHA $NEW_SHA does not match expected SHA $EXPECTED."
+            exit 13
+          fi
+
+          echo "DEPLOY_SHA=$NEW_SHA" >> "$GITHUB_ENV"
+
+      - name: Capture known-good image
+        shell: bash
+        run: |
+          set -euo pipefail
+          OLD_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$CONTAINER")"
+          test -n "$OLD_IMAGE_ID"
+          KNOWN_GOOD_TAG="vitrine-super-centro-operacional-candidate-super_connector:known-good-${GITHUB_RUN_ID}"
+          docker image tag "$OLD_IMAGE_ID" "$KNOWN_GOOD_TAG"
+          echo "OLD_IMAGE_ID=$OLD_IMAGE_ID" >> "$GITHUB_ENV"
+          echo "KNOWN_GOOD_TAG=$KNOWN_GOOD_TAG" >> "$GITHUB_ENV"
+          echo "Known-good image: $OLD_IMAGE_ID -> $KNOWN_GOOD_TAG"
+
+      - name: Build Super image
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$REPO_DIR"
+          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" build "$SERVICE"
+
+      - name: Recreate only Super connector
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$REPO_DIR"
+          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
+
+      - name: Wait for healthy
+        id: health
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            STATE="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER" 2>/dev/null || true)"
+            echo "health[$i]=$STATE"
+            if [ "$STATE" = "healthy" ]; then
+              NEW_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$CONTAINER")"
+              echo "NEW_IMAGE_ID=$NEW_IMAGE_ID" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            if [ "$STATE" = "unhealthy" ] || [ "$STATE" = "exited" ] || [ "$STATE" = "dead" ]; then
+              break
+            fi
+            sleep 5
+          done
+          echo "ERROR: Super did not become healthy."
+          docker logs --tail 100 "$CONTAINER" || true
+          exit 20
+
+      - name: Roll back automatically on failure
+        if: failure() && env.KNOWN_GOOD_TAG != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Rolling back to $OLD_IMAGE_ID"
+          docker image tag "$KNOWN_GOOD_TAG" "$IMAGE_TAG"
+          cd "$REPO_DIR"
+          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
+
+          for i in $(seq 1 24); do
+            STATE="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER" 2>/dev/null || true)"
+            echo "rollback-health[$i]=$STATE"
+            if [ "$STATE" = "healthy" ]; then
+              echo "Rollback healthy."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "CRITICAL: rollback did not become healthy."
+          exit 30
+
+      - name: Deployment summary
+        if: always()
+        shell: bash
+        run: |
+          echo "Deploy SHA: ${DEPLOY_SHA:-not-reached}"
+          echo "Old image: ${OLD_IMAGE_ID:-not-captured}"
+          echo "New image: ${NEW_IMAGE_ID:-not-healthy}"
+          echo "Container state: $(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER" 2>/dev/null || echo unavailable)"
+          echo "V5 was not targeted by this workflow."
