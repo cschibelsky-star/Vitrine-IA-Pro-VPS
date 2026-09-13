@@ -21,6 +21,7 @@ services:
       - /srv/connectors/vitrine-super-ops/registry:/data/registry/projects:rw
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/legacy-v5-manifests:ro
       - /srv/projects:/srv/projects:rw
+      - "/srv/Backup zip:/backup-archives:ro"
       - /srv/tvsumare:/srv/tvsumare:rw
       - /var/log/vitrine-super-ops:/var/log/vitrine-super-ops:rw
       - /root/.ssh:/root/.ssh:ro
@@ -50,14 +51,14 @@ services:
     build:
       context: ..
       dockerfile: super-connector/Dockerfile.emergency
-    container_name: vitrine_super_emergency_executor
-    entrypoint: ["sh", "-c"]
-    command: ["trap : TERM INT; sleep infinity & wait"]
+    container_name: vitrine_super_emergency_executor_backup
+    command: ["replace-super", "EXECUTAR"]
     environment:
       SUPER_CANDIDATE_CONTAINER: vitrine_super_connector_candidate
+      SUPER_CANDIDATE_IMAGE: vitrine-super-centro-operacional-candidate-super_connector:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
+    restart: "no"
     network_mode: none
     security_opt:
       - no-new-privileges:true

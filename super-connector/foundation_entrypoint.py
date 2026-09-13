@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import shutil
+import zipfile
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import main
@@ -57,6 +61,74 @@ def project_register_existing_readonly(project_id: str, workspace_root: str, nam
     except (ValueError, PermissionError, OSError) as exc:
         result = {"ok": False, "error": str(exc), "project_id": project_id}
     main._audit("project.register_existing_readonly", {"project_id": project_id, "workspace_root": workspace_root}, result)
+    return result
+
+
+_BACKUP_ARCHIVE_ROOT = Path("/backup-archives")
+_BACKUP_AUDIT_ROOT = Path("/srv/projects/conheca-sumare-recovery-4x-audit")
+_BACKUP_ARCHIVE_MAP = {
+    "Guia-Digital-da-Cidade-Visite-Sumare-4.1-TESTE.zip": "4.1-teste",
+    "Guia-Digital-da-Cidade-Visite-Sumare-4.1-RC1-Atualizada.zip": "4.1-rc1",
+    "Guia-Digital-da-Cidade-Visite-Sumare-4.3-FONTES-OFICIAIS.zip": "4.3-fontes-oficiais",
+    "reuniao_ia_pwa_mobile_build_1_0.zip": "ia-pwa-mobile",
+}
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def backup_archive_materialize(archive_name: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    archive_name = str(archive_name or "").strip()
+    destination_name = _BACKUP_ARCHIVE_MAP.get(archive_name)
+    if not destination_name:
+        return {"ok": False, "error": "archive_not_allowed", "archive_name": archive_name}
+    source = (_BACKUP_ARCHIVE_ROOT / archive_name).resolve()
+    root = _BACKUP_ARCHIVE_ROOT.resolve()
+    try:
+        source.relative_to(root)
+    except ValueError:
+        return {"ok": False, "error": "archive_path_blocked", "archive_name": archive_name}
+    if not source.is_file() or source.is_symlink():
+        return {"ok": False, "error": "archive_not_found", "archive_name": archive_name}
+    package_root = (_BACKUP_AUDIT_ROOT / destination_name).resolve()
+    if package_root.exists() and any(package_root.iterdir()):
+        return {"ok": False, "error": "destination_not_empty", "destination": str(package_root)}
+    package_root.mkdir(parents=True, exist_ok=True)
+    copied_archive = package_root / "source.zip"
+    extracted_root = package_root / "extracted"
+    source_sha256 = _sha256_file(source)
+    shutil.copy2(source, copied_archive)
+    if _sha256_file(copied_archive) != source_sha256:
+        return {"ok": False, "error": "archive_hash_mismatch", "archive_name": archive_name}
+    try:
+        with zipfile.ZipFile(copied_archive, "r") as archive:
+            members = archive.infolist()
+            if len(members) > 10000:
+                raise ValueError("archive_entry_limit_exceeded")
+            if sum(max(0, int(member.file_size)) for member in members) > 2 * 1024 * 1024 * 1024:
+                raise ValueError("archive_uncompressed_size_limit_exceeded")
+            for member in members:
+                member_path = PurePosixPath(member.filename.replace("\\", "/"))
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    raise ValueError("zip_slip_blocked")
+                if ((member.external_attr >> 16) & 0o170000) == 0o120000:
+                    raise ValueError("zip_symlink_blocked")
+            extracted_root.mkdir(parents=True, exist_ok=True)
+            archive.extractall(extracted_root)
+    except (zipfile.BadZipFile, OSError, ValueError) as exc:
+        result = {"ok": False, "error": str(exc), "archive_name": archive_name, "destination": str(package_root)}
+        main._audit("backup.archive_materialize", {"archive_name": archive_name}, result)
+        return result
+    result = {"ok": True, "status": "materialized", "archive_name": archive_name, "destination": str(package_root), "extracted_root": str(extracted_root), "sha256": source_sha256, "source_preserved": True}
+    main._audit("backup.archive_materialize", {"archive_name": archive_name}, result)
     return result
 
 
