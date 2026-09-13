@@ -36,6 +36,34 @@ AVAILABLE_CAPABILITIES = {
     "laravel",
 }
 
+CONNECTOR_ROUTING_POLICY: dict[str, dict[str, Any]] = {
+    "super": {
+        "role": "orchestrator",
+        "preferred_for": {"policy", "discovery", "capability_routing", "safe_files", "advanced_ops"},
+        "fallback_priority": 10,
+        "preserve_capabilities": True,
+    },
+    "vps_operations": {
+        "role": "infrastructure_specialist",
+        "preferred_for": {"vps", "github", "hostgator", "infrastructure", "docker", "network", "tls", "backup"},
+        "fallback_priority": 20,
+        "preserve_capabilities": True,
+    },
+    "v5": {
+        "role": "project_runtime_specialist",
+        "preferred_for": {"projects", "runtime", "compose", "git", "laravel", "secrets"},
+        "fallback_priority": 30,
+        "preserve_capabilities": True,
+    },
+    "v4": {
+        "role": "break_glass_recovery",
+        "preferred_for": {"recovery", "restore", "emergency", "diagnostic"},
+        "fallback_priority": 90,
+        "preserve_capabilities": True,
+        "normal_route": False,
+    },
+}
+
 _CONNECTOR_ROOT = Path(__file__).resolve().parents[1]
 _CAPABILITY_MANIFEST = _CONNECTOR_ROOT / "capability-manifest.json"
 _TOOL_SOURCE_FILES = (
@@ -102,6 +130,54 @@ def capability_regression_report() -> dict[str, Any]:
         "duplicate_manifest_entries": duplicate_manifest_entries,
         "deployment_blocked": not ok,
         "recommendation": "catalog_matches_manifest" if ok else "block_deploy_until_catalog_regression_is_resolved",
+    }
+
+
+def recommend_connector(capability: str, available_connectors: list[str] | None = None, recovery_mode: bool = False) -> dict[str, Any]:
+    requested = str(capability or "").strip().lower().replace("-", "_").replace(" ", "_")
+    available = set(available_connectors or CONNECTOR_ROUTING_POLICY.keys())
+    candidates: list[dict[str, Any]] = []
+    for connector, config in CONNECTOR_ROUTING_POLICY.items():
+        if connector not in available:
+            continue
+        preferred = set(config.get("preferred_for", set()))
+        is_v4 = connector == "v4"
+        if is_v4 and not recovery_mode and requested not in {"recovery", "restore", "emergency", "diagnostic"}:
+            continue
+        specialty_match = requested in preferred
+        score = 100 if specialty_match else 10
+        score -= int(config.get("fallback_priority", 50))
+        if connector == "super" and requested in {"policy", "discovery", "capability_routing", "safe_files", "advanced_ops"}:
+            score += 40
+        if connector == "vps_operations" and requested in {"vps", "github", "hostgator", "infrastructure", "docker", "network", "tls", "backup"}:
+            score += 40
+        if connector == "v5" and requested in {"projects", "runtime", "compose", "git", "laravel", "secrets"}:
+            score += 40
+        if is_v4 and recovery_mode:
+            score += 60
+        candidates.append({
+            "connector": connector,
+            "role": config.get("role"),
+            "specialty_match": specialty_match,
+            "score": score,
+            "fallback_priority": config.get("fallback_priority"),
+            "preserve_capabilities": bool(config.get("preserve_capabilities", True)),
+        })
+    candidates.sort(key=lambda item: (-int(item["score"]), int(item["fallback_priority"])))
+    selected = candidates[0]["connector"] if candidates else None
+    return {
+        "ok": bool(selected),
+        "capability": requested,
+        "selected_connector": selected,
+        "candidates": candidates,
+        "policy": {
+            "keep_useful_capabilities": True,
+            "remove_only_true_duplicates": True,
+            "github_source_of_truth": True,
+            "preserve_before_reconcile": True,
+            "v4_break_glass_only": True,
+            "route_by_capability_health_security": True,
+        },
     }
 
 

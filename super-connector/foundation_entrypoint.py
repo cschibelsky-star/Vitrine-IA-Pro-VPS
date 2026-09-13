@@ -10,7 +10,7 @@ import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
 from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.6-alternate-runtime-manifests"
+main.VERSION = "0.3.7-capability-router"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -159,6 +159,13 @@ def capability_gap_report(project_id: str) -> dict[str, Any]:
     except (FileNotFoundError, ValueError, PermissionError, KeyError) as exc:
         result = {"ok": False, "error": str(exc), "project_id": project_id}
     main._audit("capability.gap_report", {"project_id": project_id}, {"ok": result.get("ok")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def connector_route_recommendation(capability: str, recovery_mode: bool = False) -> dict[str, Any]:
+    result = capabilities.recommend_connector(capability, None, recovery_mode)
+    main._audit("connector.route_recommendation", {"capability": capability, "recovery_mode": recovery_mode}, {"ok": result.get("ok")})
     return result
 
 
