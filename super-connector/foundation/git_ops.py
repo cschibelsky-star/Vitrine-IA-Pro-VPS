@@ -93,6 +93,9 @@ def reconcile(project_id: str, branch: str = "", confirm: str = "") -> dict[str,
         }
     if behind == 0:
         return {"ok": True, "status": "already_up_to_date", "comparison": comparison}
+    project = main._load_project(project_id)
+    repository = main._repository(project)
+    target = main._safe_branch(branch or str(project.get("repository", {}).get("branch", "main")))
     result = main._run(["git", "merge", "--ff-only", f"origin/{target}"], repository, timeout=300)
     response = {**result, "project_id": project_id, "branch": target, "strategy": "fast_forward_only"}
     main._audit(
