@@ -173,6 +173,69 @@ def project_read_file(project_id: str, path: str, start_line: int = 1, end_line:
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_list_files(project_id: str, path: str = ".", max_depth: int = 2, max_entries: int = 1000) -> dict[str, Any]:
+    max_depth = max(0, min(int(max_depth), 8))
+    max_entries = max(1, min(int(max_entries), 5000))
+    try:
+        project = main._load_project(project_id)
+        repository = main._repository(project).resolve()
+        relative = Path(str(path or ".").strip())
+        if relative.is_absolute() or ".." in relative.parts:
+            raise PermissionError("path_outside_repository")
+        root = (repository / relative).resolve()
+        root.relative_to(repository)
+        if not root.is_dir():
+            return {"ok": False, "error": "directory_not_found", "project_id": project_id, "path": path}
+        entries: list[dict[str, Any]] = []
+        base_depth = len(root.parts)
+        stack = [root]
+        while stack and len(entries) < max_entries:
+            current = stack.pop()
+            try:
+                children = sorted(current.iterdir(), key=lambda item: item.name.lower())
+            except OSError:
+                continue
+            directories: list[Path] = []
+            for item in children:
+                if len(entries) >= max_entries:
+                    break
+                try:
+                    rel = item.relative_to(repository)
+                    is_symlink = item.is_symlink()
+                    if is_symlink:
+                        item_type = "symlink"
+                        size = None
+                    elif item.is_dir():
+                        item_type = "directory"
+                        size = None
+                        if len(item.parts) - base_depth < max_depth:
+                            directories.append(item)
+                    elif item.is_file():
+                        item_type = "file"
+                        size = item.stat().st_size
+                    else:
+                        item_type = "other"
+                        size = None
+                    entries.append({"path": rel.as_posix(), "type": item_type, "size": size})
+                except OSError:
+                    continue
+            stack.extend(reversed(directories))
+        result = {
+            "ok": True,
+            "project_id": project_id,
+            "repository": str(repository),
+            "path": root.relative_to(repository).as_posix() if root != repository else ".",
+            "max_depth": max_depth,
+            "entries": entries,
+            "truncated": len(entries) >= max_entries,
+        }
+    except (FileNotFoundError, ValueError, PermissionError, KeyError) as exc:
+        result = {"ok": False, "error": str(exc), "project_id": project_id, "path": path}
+    main._audit("files.list", {"project_id": project_id, "path": path, "max_depth": max_depth, "max_entries": max_entries}, {"ok": result.get("ok"), "count": len(result.get("entries", []))})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def project_php_lint(project_id: str, path: str) -> dict[str, Any]:
     return php_ops.php_lint(project_id, path)
 
