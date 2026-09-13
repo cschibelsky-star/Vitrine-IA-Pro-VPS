@@ -17,6 +17,10 @@ services:
       SUPER_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
       SUPER_AUDIT_LOG: /var/log/vitrine-super-ops/audit.jsonl
       SUPER_PHP_RUNNER_IMAGE: vitrine-super-php-runner:0.1
+      GIT_AUTHOR_NAME: cschibelsky-star
+      GIT_AUTHOR_EMAIL: cschibelsky@gmail.com
+      GIT_COMMITTER_NAME: cschibelsky-star
+      GIT_COMMITTER_EMAIL: cschibelsky@gmail.com
     volumes:
       - /srv/connectors/vitrine-super-ops/registry:/data/registry/projects:rw
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/legacy-v5-manifests:ro
