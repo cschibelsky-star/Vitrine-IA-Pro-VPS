@@ -26,6 +26,51 @@ def _safe_repository_url(value: str) -> str:
     raise ValueError("repository_url_not_allowed")
 
 
+def _github_ssh_url(repository_url: str) -> str | None:
+    prefix = "https://github.com/"
+    if not repository_url.startswith(prefix):
+        return None
+    repo_path = repository_url[len(prefix):].strip("/")
+    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-/"
+    if not repo_path or "/" not in repo_path or any(ch not in allowed for ch in repo_path):
+        return None
+    return f"git@github.com:{repo_path}"
+
+
+def _clone(repository_url: str, branch: str, repository: Path, workspace: Path) -> tuple[dict[str, Any], str]:
+    result = main._run(
+        ["git", "clone", "--branch", branch, "--single-branch", "--", repository_url, str(repository)],
+        workspace,
+        timeout=900,
+    )
+    if result.get("ok"):
+        return result, "configured"
+
+    stderr = str(result.get("stderr", "") or "")
+    auth_failed = "could not read Username for 'https://github.com'" in stderr or "Authentication failed" in stderr
+    ssh_url = _github_ssh_url(repository_url)
+    if not auth_failed or not ssh_url or repository.exists():
+        return result, "configured"
+
+    ssh_result = main._run(
+        [
+            "git",
+            "-c",
+            "core.sshCommand=ssh -o BatchMode=yes -o StrictHostKeyChecking=yes",
+            "clone",
+            "--branch",
+            branch,
+            "--single-branch",
+            "--",
+            ssh_url,
+            str(repository),
+        ],
+        workspace,
+        timeout=900,
+    )
+    return ssh_result, "ssh-fallback"
+
+
 def _safe_compose_service(value: str) -> str:
     service = str(value or "").strip()
     allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
@@ -96,12 +141,27 @@ def project_materialize(project_id: str, confirm: str = "") -> dict[str, Any]:
             main._audit("project.materialize", {"project_id": project_id}, result)
             return result
 
-    result = main._run(["git", "clone", "--branch", branch, "--single-branch", "--", repository_url, str(repository)], workspace, timeout=900)
+    result, clone_transport = _clone(repository_url, branch, repository, workspace)
     materialized = bool(result.get("ok") and (repository / ".git").is_dir())
-    response = {"ok": materialized, "project_id": project_id, "workspace": str(workspace), "repository": str(repository), "branch": branch, "repository_url": repository_url, "exit_code": result.get("exit_code"), "stdout": result.get("stdout", ""), "stderr": result.get("stderr", "")}
+    response = {
+        "ok": materialized,
+        "project_id": project_id,
+        "workspace": str(workspace),
+        "repository": str(repository),
+        "branch": branch,
+        "repository_url": repository_url,
+        "clone_transport": clone_transport,
+        "exit_code": result.get("exit_code"),
+        "stdout": result.get("stdout", ""),
+        "stderr": result.get("stderr", ""),
+    }
     if not materialized and result.get("ok"):
         response["error"] = "clone_completed_but_git_directory_missing"
-    main._audit("project.materialize", {"project_id": project_id, "branch": branch, "repository": str(repository)}, {"ok": response["ok"], "exit_code": response.get("exit_code")})
+    main._audit(
+        "project.materialize",
+        {"project_id": project_id, "branch": branch, "repository": str(repository)},
+        {"ok": response["ok"], "exit_code": response.get("exit_code"), "clone_transport": clone_transport},
+    )
     return response
 
 
@@ -125,9 +185,6 @@ def project_compose_service_execute(project_id: str, service: str, operation: st
         main._audit("project.compose_service_execute", {"project_id": project_id, "service": service, "operation": op}, result)
         return result
 
-    # Never let the Super MCP replace the container that is currently executing
-    # the request. A self-build is safe; a self-up/recreate must be performed by
-    # the independent emergency/break-glass executor and validated afterwards.
     if op == "up" and project_id in SELF_PROJECT_IDS and service_name == SELF_SERVICE:
         response = {
             "ok": False,
