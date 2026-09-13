@@ -189,8 +189,47 @@ def _video_producer_download_with_branding(
     return _brand_preserved_video(project_id, result)
 
 
+def _video_producer_brand(
+    project_id: str,
+    request_id: str,
+    version_id: str,
+    confirm: str = "",
+) -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    if project_id != _MARKETING_PROJECT_ID:
+        return {"ok": False, "error": "branding_project_not_allowed", "project_id": project_id}
+
+    project = main._load_project(project_id)
+    repository = main._repository(project).resolve()
+    workspace = repository.parent.resolve()
+    output_dir = (workspace / "storage" / "app" / "marketing" / "video-producer" / request_id.lower()).resolve()
+    raw_path = (output_dir / f"{version_id}.mp4").resolve()
+    try:
+        raw_path.relative_to(output_dir)
+    except ValueError:
+        return {"ok": False, "error": "branding_source_path_not_allowed"}
+    if not raw_path.is_file():
+        return {"ok": False, "error": "preserved_video_missing_for_branding", "path": str(raw_path)}
+
+    raw_sha256 = hashlib.sha256(raw_path.read_bytes()).hexdigest()
+    result = {
+        "ok": True,
+        "status": "preserved",
+        "project_id": project_id,
+        "request_id": request_id,
+        "version_id": version_id,
+        "path": str(raw_path),
+        "bytes": raw_path.stat().st_size,
+        "sha256": raw_sha256,
+        "auto_publish": False,
+    }
+    return _brand_preserved_video(project_id, result)
+
+
 php_ops.video_producer_download = _video_producer_download_with_branding
-main.VERSION = "0.3.7-video-branding"
+main.mcp.tool()(_video_producer_brand)
+main.VERSION = "0.3.8-video-brand-tool"
 
 
 if __name__ == "__main__":
