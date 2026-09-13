@@ -46,7 +46,24 @@ def reconcile(project_id: str, branch: str = "", confirm: str = "") -> dict[str,
     auth = authorize("git_reconcile", confirm=confirm)
     if not auth.get("ok"):
         return auth
-    comparison = main.git_compare(project_id, branch)
+    project = main._load_project(project_id)
+    repository = main._repository(project)
+    target = main._safe_branch(branch or str(project.get("repository", {}).get("branch", "main")))
+    current_result = main._run(["git", "branch", "--show-current"], repository, timeout=30)
+    if not current_result.get("ok"):
+        return {"ok": False, "error": "current_branch_check_failed", "detail": current_result}
+    current = str(current_result.get("stdout", "")).strip()
+    if current != target:
+        response = {
+            "ok": False,
+            "error": "target_branch_not_checked_out",
+            "project_id": project_id,
+            "current_branch": current or "detached",
+            "target_branch": target,
+        }
+        main._audit("git.reconcile", {"project_id": project_id, "branch": target}, response)
+        return response
+    comparison = main.git_compare(project_id, target)
     if not comparison.get("ok"):
         return comparison
     if comparison.get("dirty"):
@@ -76,9 +93,6 @@ def reconcile(project_id: str, branch: str = "", confirm: str = "") -> dict[str,
         }
     if behind == 0:
         return {"ok": True, "status": "already_up_to_date", "comparison": comparison}
-    project = main._load_project(project_id)
-    repository = main._repository(project)
-    target = main._safe_branch(branch or str(project.get("repository", {}).get("branch", "main")))
     result = main._run(["git", "merge", "--ff-only", f"origin/{target}"], repository, timeout=300)
     response = {**result, "project_id": project_id, "branch": target, "strategy": "fast_forward_only"}
     main._audit(
