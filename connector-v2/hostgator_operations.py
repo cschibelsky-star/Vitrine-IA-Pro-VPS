@@ -33,6 +33,13 @@ class ReadFileRequest(BaseModel):
     path: str = Field(min_length=1, max_length=400)
     max_bytes: int = Field(default=100000, ge=1, le=500000)
 
+class ListFilesRequest(BaseModel):
+    root: str = Field(min_length=1, max_length=120)
+    path: str = Field(default=".", min_length=1, max_length=400)
+    max_depth: int = Field(default=2, ge=0, le=8)
+    max_entries: int = Field(default=1000, ge=1, le=5000)
+    include_hidden: bool = False
+
 def auth(authorization: str | None = Header(default=None)) -> None:
     if not BROKER_TOKEN or authorization != f"Bearer {BROKER_TOKEN}":
         raise HTTPException(status_code=401, detail="unauthorized")
@@ -73,15 +80,29 @@ def normalize_root(root: str) -> str:
 def remote_root(root: str) -> str:
     return f"{HOME_ROOT}/{normalize_root(root)}"
 
-def validate_relative_path(path: str) -> str:
-    pure = PurePosixPath(path.strip())
+def _validate_relative(path: str, allow_dot: bool = False) -> str:
+    raw = path.strip()
+    if allow_dot and raw in {"", "."}:
+        return "."
+    pure = PurePosixPath(raw)
     if pure.is_absolute() or not pure.parts or ".." in pure.parts:
         raise HTTPException(status_code=422, detail="invalid_relative_path")
     if any(part in BLOCKED_NAMES or part.startswith(".env") for part in pure.parts):
         raise HTTPException(status_code=403, detail="sensitive_path_blocked")
-    if PurePosixPath(pure.name).suffix.lower() not in ALLOWED_TEXT_SUFFIXES:
-        raise HTTPException(status_code=403, detail="file_type_not_allowed")
     return pure.as_posix()
+
+def validate_relative_path(path: str) -> str:
+    relative = _validate_relative(path)
+    if PurePosixPath(relative).suffix.lower() not in ALLOWED_TEXT_SUFFIXES:
+        raise HTTPException(status_code=403, detail="file_type_not_allowed")
+    return relative
+
+def validate_relative_directory(path: str) -> str:
+    return _validate_relative(path, allow_dot=True)
+
+def is_sensitive_relative(path: str) -> bool:
+    pure = PurePosixPath(path)
+    return any(part in BLOCKED_NAMES or part.startswith(".env") for part in pure.parts)
 
 @router.get("/health", dependencies=[Depends(auth)])
 def hostgator_health() -> dict[str, Any]:
@@ -106,6 +127,44 @@ def hostgator_git_compare(req: RootRequest) -> dict[str, Any]:
     result = run_remote(command)
     response = {"ok": result["ok"], "root": req.root, "remote": result}
     audit("git_compare", req.model_dump(), response)
+    return response
+
+@router.post("/list-files", dependencies=[Depends(auth)])
+def hostgator_list_files(req: ListFilesRequest) -> dict[str, Any]:
+    relative = validate_relative_directory(req.path)
+    target = remote_root(req.root) if relative == "." else f"{remote_root(req.root)}/{relative}"
+    qtarget = shlex.quote(target)
+    command = (
+        f"test -d {qtarget} && find {qtarget} -mindepth 1 -maxdepth {int(req.max_depth) + 1} "
+        f"-printf '%P\\t%y\\t%s\\n' | head -n {int(req.max_entries) + 1}"
+    )
+    result = run_remote(command)
+    entries: list[dict[str, Any]] = []
+    raw_lines = result.get("stdout", "").splitlines() if result["ok"] else []
+    for line in raw_lines:
+        parts = line.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        entry_path, kind, raw_size = parts
+        if not entry_path or is_sensitive_relative(entry_path):
+            continue
+        if not req.include_hidden and any(part.startswith(".") for part in PurePosixPath(entry_path).parts):
+            continue
+        entry_type = {"d": "directory", "f": "file", "l": "symlink"}.get(kind, "other")
+        size = int(raw_size) if entry_type == "file" and raw_size.isdigit() else None
+        entries.append({"path": entry_path, "type": entry_type, "size": size})
+        if len(entries) >= req.max_entries:
+            break
+    response = {
+        "ok": result["ok"],
+        "root": req.root,
+        "path": relative,
+        "max_depth": req.max_depth,
+        "entries": entries,
+        "truncated": result["ok"] and len(raw_lines) > req.max_entries,
+        "stderr": result.get("stderr", "") if not result["ok"] else "",
+    }
+    audit("list_files", req.model_dump(), response)
     return response
 
 @router.post("/read-file", dependencies=[Depends(auth)])

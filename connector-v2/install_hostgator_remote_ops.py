@@ -91,7 +91,7 @@ def main() -> None:
 
     backup(main_py)
     main_text = main_py.read_text(encoding="utf-8")
-    tools_import = '''\nfrom hostgator_tools import (\n    hostgator_health as _hostgator_health,\n    hostgator_git_status as _hostgator_git_status,\n    hostgator_git_compare as _hostgator_git_compare,\n    hostgator_read_file as _hostgator_read_file,\n)\n'''
+    tools_import = '''\nfrom hostgator_tools import (\n    hostgator_health as _hostgator_health,\n    hostgator_git_status as _hostgator_git_status,\n    hostgator_git_compare as _hostgator_git_compare,\n    hostgator_list_files as _hostgator_list_files,\n    hostgator_read_file as _hostgator_read_file,\n)\n'''
     if "from hostgator_tools import (" not in main_text:
         main_text = ensure_after(
             main_text,
@@ -100,7 +100,7 @@ def main() -> None:
             "from hostgator_tools import (",
         )
 
-    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_health() -> dict[str, Any]:\n    return _hostgator_health()\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_git_status(root: str) -> dict[str, Any]:\n    return _hostgator_git_status(root)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_git_compare(root: str) -> dict[str, Any]:\n    return _hostgator_git_compare(root)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_read_file(root: str, path: str, max_bytes: int = 100000) -> dict[str, Any]:\n    return _hostgator_read_file(root, path, max_bytes)\n'''
+    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_health() -> dict[str, Any]:\n    return _hostgator_health()\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_git_status(root: str) -> dict[str, Any]:\n    return _hostgator_git_status(root)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_git_compare(root: str) -> dict[str, Any]:\n    return _hostgator_git_compare(root)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_list_files(root: str, path: str = ".", max_depth: int = 2, max_entries: int = 1000, include_hidden: bool = False) -> dict[str, Any]:\n    return _hostgator_list_files(root, path, max_depth, max_entries, include_hidden)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_read_file(root: str, path: str, max_bytes: int = 100000) -> dict[str, Any]:\n    return _hostgator_read_file(root, path, max_bytes)\n'''
     if "def hostgator_health()" not in main_text:
         main_text = ensure_before(
             main_text,
