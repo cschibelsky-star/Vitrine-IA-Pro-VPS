@@ -218,6 +218,16 @@ def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: s
     return runtime_ops.runtime_secret_set(project_id, key, value, confirm)
 
 
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_runtime_secret_copy(source_project_id: str, target_project_id: str, key: str, confirm: str = "") -> dict[str, Any]:
+    return runtime_ops.runtime_secret_copy(
+        source_project_id,
+        target_project_id,
+        key,
+        confirm,
+    )
+
+
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def project_gemini_api_probe(project_id: str) -> dict[str, Any]:
     return runtime_ops.gemini_api_probe(project_id)

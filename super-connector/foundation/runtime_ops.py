@@ -170,6 +170,77 @@ def runtime_secret_set(project_id: str, key: str, value: str, confirm: str = "")
     return result
 
 
+
+def runtime_secret_copy(source_project_id: str, target_project_id: str, key: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+
+    try:
+        safe_key = _safe_runtime_key(key)
+        source_project = main._load_project(source_project_id)
+        target_project = main._load_project(target_project_id)
+
+        source_allowed = _safe_runtime_keys(
+            list(source_project.get("runtime", {}).get("allowed_keys", []) or [])
+        )
+        target_allowed = _safe_runtime_keys(
+            list(target_project.get("runtime", {}).get("allowed_keys", []) or [])
+        )
+    except (ValueError, FileNotFoundError, KeyError, PermissionError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+    if safe_key not in source_allowed:
+        return {
+            "ok": False,
+            "error": "source_runtime_key_not_allowed",
+            "key": safe_key,
+        }
+
+    if safe_key not in target_allowed:
+        return {
+            "ok": False,
+            "error": "target_runtime_key_not_allowed",
+            "key": safe_key,
+        }
+
+    try:
+        secret = _read_secret(source_project, safe_key)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "source_project_id": source_project_id,
+            "key": safe_key,
+        }
+
+    result = runtime_secret_set(
+        target_project_id,
+        safe_key,
+        secret,
+        confirm="EXECUTAR",
+    )
+
+    audit_result = {
+        "ok": bool(result.get("ok")),
+        "source_project_id": source_project_id,
+        "target_project_id": target_project_id,
+        "key": safe_key,
+        "stored": bool(result.get("stored")),
+    }
+
+    main._audit(
+        "runtime.secret_copy",
+        {
+            "source_project_id": source_project_id,
+            "target_project_id": target_project_id,
+            "key": safe_key,
+        },
+        audit_result,
+    )
+
+    return audit_result
+
+
 def gemini_api_probe(project_id: str) -> dict[str, Any]:
     project = main._load_project(project_id)
     allowed = _safe_runtime_keys(list(project.get("runtime", {}).get("allowed_keys", []) or []))
