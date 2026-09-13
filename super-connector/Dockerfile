@@ -6,8 +6,9 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY super-connector/main_v2.py /app/main.py
 COPY super-connector/materialize_entrypoint.py /app/materialize_entrypoint.py
 COPY super-connector/foundation_entrypoint.py /app/foundation_entrypoint.py
+COPY super-connector/branding_entrypoint.py /app/branding_entrypoint.py
 COPY super-connector/foundation /app/foundation
 COPY super-connector/registry /app/registry-schema
 COPY super-connector/capability-manifest.json /app/capability-manifest.json
 EXPOSE 8000
-CMD ["python", "/app/foundation_entrypoint.py"]
+CMD ["python", "/app/branding_entrypoint.py"]
