@@ -39,6 +39,7 @@ def _candidate_run(image: str) -> list[str]:
         "-v", "/srv/connectors/vitrine-vps-mcp/project-manifests:/legacy-v5-manifests:ro",
         "-v", "/srv/projects:/srv/projects:rw",
         "-v", "/srv/Backup zip:/backup-archives:ro",
+        "-v", "/srv/vitrine/backups/vps:/vps-backups:ro",
         "-v", "/srv/tvsumare:/srv/tvsumare:rw",
         "-v", "/var/log/vitrine-super-ops:/var/log/vitrine-super-ops:rw",
         "-v", "/root/.ssh:/root/.ssh:ro",
