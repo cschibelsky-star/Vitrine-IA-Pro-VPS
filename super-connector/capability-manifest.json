@@ -3,6 +3,10 @@
   "connector": "vitrine-super-centro-operacional",
   "policy": "no-tool-removal-without-explicit-authorization",
   "required_tools": [
+    "backup_recovery_find",
+    "backup_recovery_list",
+    "backup_recovery_preview",
+    "backup_recovery_restore_file",
     "capability_gap_report",
     "connector_endpoint_check",
     "docker_container_health",

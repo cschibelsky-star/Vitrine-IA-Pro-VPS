@@ -10,7 +10,7 @@ import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
 from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.6-alternate-runtime-manifests"
+main.VERSION = "0.3.7-backup-recovery"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -451,6 +451,34 @@ def docker_container_health(container: str) -> dict[str, Any]:
 def docker_container_logs(container: str, tail: int = 200) -> dict[str, Any]:
     result = docker_ops.container_logs(container, tail)
     main._audit("docker.container_logs", {"container": container, "tail": tail}, {"ok": result.get("ok")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def backup_recovery_list(limit: int = 20) -> dict[str, Any]:
+    result = recovery_ops.backup_recovery_list(limit)
+    main._audit("backup.recovery_list", {"limit": limit}, {"ok": result.get("ok"), "count": result.get("count")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def backup_recovery_find(archive_name: str, query: str, max_results: int = 100) -> dict[str, Any]:
+    result = recovery_ops.backup_recovery_find(archive_name, query, max_results)
+    main._audit("backup.recovery_find", {"archive_name": archive_name, "query": query, "max_results": max_results}, {"ok": result.get("ok"), "count": result.get("count")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def backup_recovery_preview(archive_name: str, member_path: str, destination: str = "") -> dict[str, Any]:
+    result = recovery_ops.backup_recovery_preview(archive_name, member_path, destination)
+    main._audit("backup.recovery_preview", {"archive_name": archive_name, "member_path": member_path, "destination": destination}, {"ok": result.get("ok"), "would_overwrite": result.get("would_overwrite")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def backup_recovery_restore_file(archive_name: str, member_path: str, destination: str = "", confirm: str = "") -> dict[str, Any]:
+    result = recovery_ops.backup_recovery_restore_file(archive_name, member_path, destination, confirm)
+    main._audit("backup.recovery_restore_file", {"archive_name": archive_name, "member_path": member_path, "destination": destination}, {"ok": result.get("ok"), "status": result.get("status"), "operation_id": result.get("operation_id")})
     return result
 
 

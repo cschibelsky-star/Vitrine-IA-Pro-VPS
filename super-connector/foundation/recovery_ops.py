@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import shutil
 import ssl
+import tarfile
+import time
 import urllib.error
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import main
@@ -135,6 +140,211 @@ def mcp_publication_check(hostname: str, container: str = "") -> dict[str, Any]:
     if runtime is not None:
         ok = ok and bool(runtime.get("running"))
     return {"ok": ok, "endpoint": endpoint, "proxy": proxy, "runtime": runtime}
+
+
+BACKUP_RECOVERY_ROOT = Path("/vps-backups")
+BACKUP_RECOVERY_STAGING_ROOT = Path("/srv/projects/.super-recovery")
+BACKUP_RECOVERY_ALLOWED_DESTINATIONS = (
+    Path("/srv/projects"),
+    Path("/srv/tvsumare"),
+)
+BACKUP_RECOVERY_MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024
+
+
+def _sha256_stream(handle: Any) -> str:
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha256_path(path: Path) -> str:
+    with path.open("rb") as handle:
+        return _sha256_stream(handle)
+
+
+def _safe_backup_archive(archive_name: str) -> Path:
+    name = str(archive_name or "").strip()
+    if not name or Path(name).name != name or not name.endswith(".tar.gz"):
+        raise ValueError("invalid_archive_name")
+    root = BACKUP_RECOVERY_ROOT.resolve()
+    archive = (root / name).resolve()
+    archive.relative_to(root)
+    if not archive.is_file() or archive.is_symlink():
+        raise FileNotFoundError("backup_archive_not_found")
+    return archive
+
+
+def _safe_member_name(member_path: str) -> str:
+    raw = str(member_path or "").strip().replace("\\", "/")
+    pure = PurePosixPath(raw)
+    if not raw or pure.is_absolute() or ".." in pure.parts:
+        raise ValueError("invalid_member_path")
+    normalized = pure.as_posix().lstrip("./")
+    if not normalized:
+        raise ValueError("invalid_member_path")
+    return normalized
+
+
+def _destination_for_member(member_name: str, destination: str = "") -> Path:
+    if destination:
+        target = Path(str(destination).strip()).resolve()
+    else:
+        target = Path("/" + member_name.lstrip("/")).resolve()
+    allowed = False
+    for root in BACKUP_RECOVERY_ALLOWED_DESTINATIONS:
+        resolved_root = root.resolve()
+        if target == resolved_root or resolved_root in target.parents:
+            allowed = True
+            break
+    if not allowed:
+        raise PermissionError("restore_destination_not_allowed")
+    return target
+
+
+def backup_recovery_list(limit: int = 20) -> dict[str, Any]:
+    limit = max(1, min(int(limit), 100))
+    root = BACKUP_RECOVERY_ROOT
+    if not root.is_dir():
+        return {"ok": False, "error": "backup_root_unavailable", "root": str(root)}
+    archives: list[dict[str, Any]] = []
+    for path in sorted(root.glob("*.tar.gz"), key=lambda item: item.stat().st_mtime, reverse=True)[:limit]:
+        if path.is_symlink() or not path.is_file():
+            continue
+        stat = path.stat()
+        archives.append({
+            "archive_name": path.name,
+            "bytes": stat.st_size,
+            "modified_at_epoch": int(stat.st_mtime),
+        })
+    return {"ok": True, "root": str(root), "archives": archives, "count": len(archives)}
+
+
+def backup_recovery_find(archive_name: str, query: str, max_results: int = 100) -> dict[str, Any]:
+    try:
+        archive_path = _safe_backup_archive(archive_name)
+        needle = str(query or "").strip().lower()
+        if not needle or len(needle) > 300:
+            raise ValueError("invalid_search_query")
+        max_results = max(1, min(int(max_results), 500))
+        matches: list[dict[str, Any]] = []
+        with tarfile.open(archive_path, "r:gz") as archive:
+            for member in archive:
+                name = _safe_member_name(member.name)
+                if needle not in name.lower():
+                    continue
+                matches.append({
+                    "member_path": name,
+                    "bytes": int(member.size or 0),
+                    "type": "file" if member.isfile() else "directory" if member.isdir() else "other",
+                    "mtime": int(member.mtime or 0),
+                })
+                if len(matches) >= max_results:
+                    break
+        return {"ok": True, "archive_name": archive_path.name, "query": needle, "matches": matches, "count": len(matches), "truncated": len(matches) >= max_results}
+    except (ValueError, FileNotFoundError, PermissionError, tarfile.TarError, OSError) as exc:
+        return {"ok": False, "error": str(exc), "archive_name": archive_name, "query": query}
+
+
+def backup_recovery_preview(archive_name: str, member_path: str, destination: str = "") -> dict[str, Any]:
+    try:
+        archive_path = _safe_backup_archive(archive_name)
+        member_name = _safe_member_name(member_path)
+        target = _destination_for_member(member_name, destination)
+        with tarfile.open(archive_path, "r:gz") as archive:
+            member = archive.getmember(member_name)
+            if not member.isfile() or member.issym() or member.islnk():
+                raise ValueError("backup_member_not_regular_file")
+            if member.size < 0 or member.size > BACKUP_RECOVERY_MAX_FILE_BYTES:
+                raise ValueError("backup_member_size_not_allowed")
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                raise ValueError("backup_member_unreadable")
+            archive_sha256 = _sha256_stream(extracted)
+        current: dict[str, Any] = {"exists": target.exists(), "path": str(target)}
+        if target.exists():
+            if not target.is_file() or target.is_symlink():
+                current["restorable"] = False
+                current["reason"] = "destination_not_regular_file"
+            else:
+                current["restorable"] = True
+                current["bytes"] = target.stat().st_size
+                current["sha256"] = _sha256_path(target)
+        else:
+            current["restorable"] = True
+        return {
+            "ok": True,
+            "archive_name": archive_path.name,
+            "member_path": member_name,
+            "member_bytes": int(member.size),
+            "member_sha256": archive_sha256,
+            "destination": str(target),
+            "current": current,
+            "would_overwrite": bool(target.exists()),
+        }
+    except (KeyError, ValueError, FileNotFoundError, PermissionError, tarfile.TarError, OSError) as exc:
+        return {"ok": False, "error": str(exc), "archive_name": archive_name, "member_path": member_path, "destination": destination}
+
+
+def backup_recovery_restore_file(archive_name: str, member_path: str, destination: str = "", confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    preview = backup_recovery_preview(archive_name, member_path, destination)
+    if not preview.get("ok"):
+        return preview
+    if not preview.get("current", {}).get("restorable", False):
+        return {**preview, "ok": False, "error": "destination_not_restorable"}
+    archive_path = _safe_backup_archive(archive_name)
+    member_name = _safe_member_name(member_path)
+    target = Path(str(preview["destination"])).resolve()
+    operation_id = f"{int(time.time())}-{os.getpid()}"
+    staging = (BACKUP_RECOVERY_STAGING_ROOT / operation_id).resolve()
+    staging.mkdir(parents=True, exist_ok=False)
+    recovered_tmp = staging / "recovered.tmp"
+    preserved_current = staging / "previous.bin"
+    try:
+        if target.exists():
+            shutil.copy2(target, preserved_current)
+        with tarfile.open(archive_path, "r:gz") as archive:
+            member = archive.getmember(member_name)
+            source = archive.extractfile(member)
+            if source is None:
+                raise ValueError("backup_member_unreadable")
+            with recovered_tmp.open("wb") as output:
+                shutil.copyfileobj(source, output, length=1024 * 1024)
+                output.flush()
+                os.fsync(output.fileno())
+        recovered_sha256 = _sha256_path(recovered_tmp)
+        if recovered_sha256 != preview["member_sha256"]:
+            raise ValueError("recovered_hash_mismatch")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(recovered_tmp, target)
+        final_sha256 = _sha256_path(target)
+        if final_sha256 != preview["member_sha256"]:
+            raise ValueError("destination_hash_mismatch")
+        result = {
+            "ok": True,
+            "status": "restored",
+            "archive_name": archive_path.name,
+            "member_path": member_name,
+            "destination": str(target),
+            "bytes": target.stat().st_size,
+            "sha256": final_sha256,
+            "previous_preserved": preserved_current.is_file(),
+            "preservation_path": str(preserved_current) if preserved_current.is_file() else None,
+            "operation_id": operation_id,
+        }
+        return result
+    except (KeyError, ValueError, FileNotFoundError, PermissionError, tarfile.TarError, OSError) as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "archive_name": archive_name,
+            "member_path": member_path,
+            "destination": str(target),
+            "operation_id": operation_id,
+            "staging": str(staging),
+        }
 
 
 def hml_route_inspect(route_id: str) -> dict[str, Any]:

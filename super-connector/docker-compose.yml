@@ -26,6 +26,7 @@ services:
       - /srv/connectors/vitrine-vps-mcp/project-manifests:/legacy-v5-manifests:ro
       - /srv/projects:/srv/projects:rw
       - "/srv/Backup zip:/backup-archives:ro"
+      - /srv/vitrine/backups/vps:/vps-backups:ro
       - /srv/tvsumare:/srv/tvsumare:rw
       - /var/log/vitrine-super-ops:/var/log/vitrine-super-ops:rw
       - /root/.ssh:/root/.ssh:ro
