@@ -64,6 +64,109 @@ def project_register_existing_readonly(project_id: str, workspace_root: str, nam
     return result
 
 
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_bootstrap_from_git(
+    project_id: str,
+    name: str,
+    workspace_root: str,
+    repository_url: str,
+    branch: str = "main",
+    repository_directory: str = "repository",
+    runtime_env_file: str = ".env.runtime",
+    runtime_allowed_keys: list[str] | None = None,
+    confirm: str = "",
+) -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+
+    try:
+        safe_id = main._safe_project_id(project_id)
+        safe_branch = main._safe_branch(branch)
+        safe_url = materialize_entrypoint._safe_repository_url(repository_url)
+        workspace = Path(str(workspace_root or "").strip()).resolve()
+        if not any(workspace == root or root in workspace.parents for root in main.WORKSPACE_ROOTS):
+            raise PermissionError("workspace_root_blocked")
+
+        repo_dir = str(repository_directory or "repository").strip().replace("\\", "/")
+        if not repo_dir or repo_dir.startswith("/") or ".." in repo_dir.split("/"):
+            raise ValueError("invalid_repository_directory")
+
+        runtime_file = str(runtime_env_file or ".env.runtime").strip().replace("\\", "/")
+        if not runtime_file or runtime_file.startswith("/") or ".." in runtime_file.split("/"):
+            raise ValueError("invalid_runtime_env_file")
+
+        allowed_keys: list[str] = []
+        for raw in runtime_allowed_keys or []:
+            key = str(raw or "").strip()
+            if not key or any(ch not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" for ch in key):
+                raise ValueError(f"invalid_runtime_key:{key}")
+            if key not in allowed_keys:
+                allowed_keys.append(key)
+
+        target = main._registry_path(safe_id)
+        requested = {
+            "id": safe_id,
+            "name": str(name or safe_id),
+            "repository": {"url": safe_url, "branch": safe_branch, "directory": repo_dir},
+            "workspace": {"root": str(workspace)},
+            "docker": {"compose_file": "", "project_name": safe_id},
+            "runtime": {"env_file": runtime_file, "allowed_keys": allowed_keys},
+            "policies": {
+                "dirty_tree": "preserve",
+                "allow_reset": False,
+                "allow_clean": False,
+                "backup_before_mutation": False,
+            },
+        }
+
+        if target.exists():
+            existing = main.json.loads(target.read_text(encoding="utf-8"))
+            identity = (
+                existing.get("id") == requested["id"]
+                and existing.get("repository", {}).get("url") == safe_url
+                and existing.get("repository", {}).get("branch") == safe_branch
+                and existing.get("repository", {}).get("directory") == repo_dir
+                and existing.get("workspace", {}).get("root") == str(workspace)
+            )
+            if not identity:
+                result = {"ok": False, "error": "project_already_registered_with_different_identity", "project_id": safe_id}
+                main._audit("project.bootstrap_from_git", {"project_id": safe_id}, result)
+                return result
+        else:
+            main.REGISTRY_ROOT.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_suffix(".json.tmp")
+            tmp.write_text(main.json.dumps(requested, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            main.os.replace(tmp, target)
+
+        repository = (workspace / repo_dir).resolve()
+        if workspace != repository and workspace not in repository.parents:
+            raise PermissionError("repository_outside_workspace")
+
+        if (repository / ".git").is_dir():
+            head_branch = main._run(["git", "branch", "--show-current"], repository, timeout=30)
+            current_branch = str(head_branch.get("stdout", "")).strip() if head_branch.get("ok") else ""
+            if current_branch and current_branch != safe_branch:
+                result = {"ok": False, "error": "repository_branch_mismatch", "project_id": safe_id, "expected_branch": safe_branch, "current_branch": current_branch}
+                main._audit("project.bootstrap_from_git", {"project_id": safe_id}, result)
+                return result
+            result = {"ok": True, "status": "already_materialized", "project_id": safe_id, "workspace": str(workspace), "repository": str(repository), "branch": safe_branch}
+            main._audit("project.bootstrap_from_git", {"project_id": safe_id}, result)
+            return result
+
+        materialized = materialize_entrypoint.project_materialize(safe_id, confirm="EXECUTAR")
+        result = {
+            **materialized,
+            "status": "bootstrapped" if materialized.get("ok") else "registered_materialize_failed",
+            "registry_created": True,
+        }
+        main._audit("project.bootstrap_from_git", {"project_id": safe_id, "branch": safe_branch, "workspace": str(workspace)}, {"ok": result.get("ok"), "status": result.get("status")})
+        return result
+    except (ValueError, PermissionError, OSError, main.json.JSONDecodeError) as exc:
+        result = {"ok": False, "error": str(exc), "project_id": project_id}
+        main._audit("project.bootstrap_from_git", {"project_id": project_id}, result)
+        return result
+
+
 _BACKUP_ARCHIVE_ROOT = Path("/backup-archives")
 _BACKUP_AUDIT_ROOT = Path("/srv/projects/conheca-sumare-recovery-4x-audit")
 _BACKUP_ARCHIVE_MAP = {
