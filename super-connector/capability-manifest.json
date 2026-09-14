@@ -34,6 +34,7 @@
     "project_inspect",
     "project_manifest_runtime_configure",
     "project_materialize",
+    "project_bootstrap_from_git",
     "project_php_lint",
     "project_read_file",
     "project_runtime_config_status",
