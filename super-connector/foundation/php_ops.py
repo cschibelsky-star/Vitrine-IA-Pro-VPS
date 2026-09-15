@@ -18,6 +18,7 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,120}$")
 _ALLOWED_ASPECTS = {"9:16", "16:9"}
 _ALLOWED_DURATIONS = {4, 6, 8}
 _ALLOWED_RESOLUTIONS = {"720p", "1080p", "4k"}
+_HEYGEN_VIDEO_HOSTS = {"files2.heygen.ai", "resource2.heygen.ai", "resource.heygen.ai", "video.heygen.com"}
 
 
 def _safe_project_file(project_id: str, path: str) -> tuple[Path, Path]:
@@ -104,7 +105,6 @@ def video_producer_validate(project_id: str) -> dict[str, Any]:
     return result
 
 
-
 def video_producer_download(project_id: str, request_id: str, version_id: str, video_url: str, confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
@@ -114,12 +114,26 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
         return {"ok": False, "error": "invalid_video_identifier"}
 
     parsed = urllib.parse.urlparse(str(video_url or "").strip())
-    if parsed.scheme != "https" or parsed.hostname != "generativelanguage.googleapis.com":
+    host = (parsed.hostname or "").lower()
+    provider = ""
+    if parsed.scheme != "https":
         return {"ok": False, "error": "video_url_not_allowed"}
-    if not re.fullmatch(r"/v1beta/files/[A-Za-z0-9._:-]+:download", parsed.path):
-        return {"ok": False, "error": "video_url_path_not_allowed"}
-    if parsed.query != "alt=media":
-        return {"ok": False, "error": "video_url_query_not_allowed"}
+    if host == "generativelanguage.googleapis.com":
+        if not re.fullmatch(r"/v1beta/files/[A-Za-z0-9._:-]+:download", parsed.path):
+            return {"ok": False, "error": "video_url_path_not_allowed"}
+        if parsed.query != "alt=media":
+            return {"ok": False, "error": "video_url_query_not_allowed"}
+        provider = "gemini_veo"
+    elif host in _HEYGEN_VIDEO_HOSTS:
+        if not parsed.path.lower().endswith(".mp4"):
+            return {"ok": False, "error": "video_url_path_not_allowed"}
+        if host == "files2.heygen.ai":
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=False)
+            if not {"Expires", "Signature", "Key-Pair-Id"}.issubset(query.keys()):
+                return {"ok": False, "error": "video_url_query_not_allowed"}
+        provider = "heygen"
+    else:
+        return {"ok": False, "error": "video_url_not_allowed"}
 
     project = main._load_project(project_id)
     repository = main._repository(project).resolve()
@@ -149,31 +163,31 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
             "path": str(target),
             "bytes": target.stat().st_size,
             "sha256": digest,
+            "provider": provider,
             "auto_publish": False,
             "regeneration_executed": False,
         }
 
-    try:
-        secret = runtime_ops._read_secret(project, "GEMINI_API_KEY")
-    except (FileNotFoundError, ValueError, KeyError) as exc:
-        return {"ok": False, "error": str(exc)}
+    secret = ""
+    headers = {
+        "Accept": "video/mp4,application/octet-stream",
+        "User-Agent": "Vitrine-Super-Video-Preserver/1.1",
+    }
+    if provider == "gemini_veo":
+        try:
+            secret = runtime_ops._read_secret(project, "GEMINI_API_KEY")
+        except (FileNotFoundError, ValueError, KeyError) as exc:
+            return {"ok": False, "error": str(exc)}
+        headers["x-goog-api-key"] = secret
 
     temporary = output_dir / f".{version_id}.mp4.part"
-    maximum_bytes = 100 * 1024 * 1024
+    maximum_bytes = 250 * 1024 * 1024
     size = 0
     digest = hashlib.sha256()
-    request = urllib.request.Request(
-        video_url,
-        headers={
-            "x-goog-api-key": secret,
-            "Accept": "video/mp4,application/octet-stream",
-            "User-Agent": "Vitrine-Super-Video-Preserver/1.0",
-        },
-        method="GET",
-    )
+    request = urllib.request.Request(video_url, headers=headers, method="GET")
 
     try:
-        with urllib.request.urlopen(request, timeout=90) as response, temporary.open("wb") as handle:
+        with urllib.request.urlopen(request, timeout=180) as response, temporary.open("wb") as handle:
             content_type = str(response.headers.get("Content-Type", "")).lower()
             if "video" not in content_type and "octet-stream" not in content_type:
                 raise ValueError("unexpected_content_type")
@@ -183,7 +197,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
                     break
                 size += len(chunk)
                 if size > maximum_bytes:
-                    raise ValueError("video_exceeds_100mb_limit")
+                    raise ValueError("video_exceeds_250mb_limit")
                 digest.update(chunk)
                 handle.write(chunk)
             handle.flush()
@@ -191,8 +205,8 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
     except (OSError, ValueError, urllib.error.URLError, urllib.error.HTTPError) as exc:
         temporary.unlink(missing_ok=True)
         safe_error = exc.code if isinstance(exc, urllib.error.HTTPError) else type(exc).__name__
-        result = {"ok": False, "error": "video_download_failed", "detail": str(safe_error)}
-        main._audit("php.video_producer_download", {"project_id": project_id, "request_id": request_id, "version_id": version_id}, result)
+        result = {"ok": False, "error": "video_download_failed", "detail": str(safe_error), "provider": provider}
+        main._audit("php.video_producer_download", {"project_id": project_id, "request_id": request_id, "version_id": version_id, "provider": provider}, result)
         return result
     finally:
         secret = ""
@@ -235,7 +249,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
     record = {
         "request_id": request_id,
         "version_id": version_id,
-        "provider": "gemini_veo",
+        "provider": provider,
         "preserved_at": datetime.now(timezone.utc).isoformat(),
         "path": str(target),
         "bytes": size,
@@ -250,11 +264,10 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
     result = {"ok": True, "status": "preserved", "project_id": project_id, **record}
     main._audit(
         "php.video_producer_download",
-        {"project_id": project_id, "request_id": request_id, "version_id": version_id},
+        {"project_id": project_id, "request_id": request_id, "version_id": version_id, "provider": provider},
         {"ok": True, "path": str(target), "bytes": size, "sha256": sha256},
     )
     return result
-
 
 
 def video_producer_generate(project_id: str, request_id: str, title: str, prompt: str, aspect_ratio: str = "9:16", duration: int = 8, resolution: str = "720p", confirm: str = "") -> dict[str, Any]:
