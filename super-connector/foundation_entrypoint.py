@@ -424,6 +424,11 @@ def project_admin_access_reset(project_id: str, email: str, new_password: str, s
     return laravel_ops.admin_access_reset(project_id, email, new_password, service, confirm)
 
 
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_laravel_migrate_paths(project_id: str, service: str, paths: list[str], confirm: str = "") -> dict[str, Any]:
+    return laravel_ops.migrate_paths(project_id, service, paths, confirm)
+
+
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def project_video_producer_validate(project_id: str) -> dict[str, Any]:
     return php_ops.video_producer_validate(project_id)

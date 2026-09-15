@@ -244,3 +244,34 @@ echo json_encode(["ok"=>true,"status"=>"reset","email"=>$u->email,"role"=>$u->ro
     payload.update({"project_id": project_id, "service": service})
     main._audit("laravel.admin_access_reset", {"project_id": project_id, "email": email, "service": service}, {"ok": payload.get("ok"), "status": payload.get("status")})
     return payload
+
+
+def migrate_paths(project_id: str, service: str, paths: list[str], confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    resolved, repository, container = _resolve_laravel_container(project_id, service)
+    if not resolved.get("ok"):
+        return resolved
+    safe_paths: list[str] = []
+    for raw in paths or []:
+        path = str(raw or "").strip().replace("\\", "/")
+        if not path.startswith("database/migrations/") or ".." in path.split("/") or not path.endswith(".php"):
+            return {"ok": False, "error": "migration_path_invalid", "path": path}
+        target = (repository / path).resolve()
+        try:
+            target.relative_to(repository.resolve())
+        except ValueError:
+            return {"ok": False, "error": "migration_path_outside_repository", "path": path}
+        if not target.is_file():
+            return {"ok": False, "error": "migration_path_not_found", "path": path}
+        safe_paths.append(path)
+    if not safe_paths:
+        return {"ok": False, "error": "migration_paths_required"}
+
+    args = ["docker", "exec", str(container), "php", "artisan", "migrate", "--force", "--no-ansi"]
+    for path in safe_paths:
+        args.append(f"--path={path}")
+    result = main._run(args, repository, timeout=300)
+    result.update({"project_id": project_id, "service": service, "paths": safe_paths})
+    main._audit("laravel.migrate_paths", {"project_id": project_id, "service": service, "paths": safe_paths}, {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
+    return result
