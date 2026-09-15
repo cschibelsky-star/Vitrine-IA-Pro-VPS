@@ -170,6 +170,61 @@ def runtime_secret_set(project_id: str, key: str, value: str, confirm: str = "")
     return result
 
 
+def runtime_secret_import_from_file(project_id: str, source_path: str, key: str, delete_source: bool = True, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+
+    try:
+        project = main._load_project(project_id)
+        safe_key = _safe_runtime_key(key)
+        allowed = _safe_runtime_keys(list(project.get("runtime", {}).get("allowed_keys", []) or []))
+        if safe_key not in allowed:
+            return {"ok": False, "error": "runtime_key_not_allowed", "key": safe_key}
+
+        workspace = _workspace(project)
+        raw = str(source_path or "").strip().replace("\\", "/")
+        if not raw or raw.startswith("/") or ".." in raw.split("/"):
+            return {"ok": False, "error": "invalid_source_path"}
+        source = (workspace / raw).resolve()
+        if workspace != source and workspace not in source.parents:
+            return {"ok": False, "error": "source_outside_workspace"}
+        if not source.is_file() or source.is_symlink():
+            return {"ok": False, "error": "source_file_missing"}
+        if source.stat().st_size <= 0 or source.stat().st_size > 16384:
+            return {"ok": False, "error": "invalid_source_size"}
+
+        secret = source.read_text(encoding="utf-8", errors="strict").strip()
+        if not secret or len(secret) > 16384 or any(ch in secret for ch in "\r\n\x00"):
+            return {"ok": False, "error": "invalid_secret_value"}
+
+        result = runtime_secret_set(project_id, safe_key, secret, confirm="EXECUTAR")
+        if not result.get("ok"):
+            return result
+
+        deleted = False
+        if delete_source:
+            source.unlink(missing_ok=True)
+            deleted = not source.exists()
+
+        output = {
+            "ok": True,
+            "project_id": project_id,
+            "key": safe_key,
+            "stored": True,
+            "source_deleted": deleted,
+            "env_file": str(project.get("runtime", {}).get("env_file", ".env.runtime")),
+        }
+        main._audit(
+            "runtime.secret_import_from_file",
+            {"project_id": project_id, "source_path": raw, "key": safe_key, "delete_source": bool(delete_source)},
+            output,
+        )
+        return output
+    except (UnicodeDecodeError, OSError, ValueError, FileNotFoundError, KeyError, PermissionError) as exc:
+        result = {"ok": False, "error": str(exc), "project_id": project_id, "key": str(key or "")}
+        main._audit("runtime.secret_import_from_file", {"project_id": project_id, "source_path": str(source_path or ""), "key": str(key or "")}, {"ok": False, "error": str(exc)})
+        return result
+
 
 def runtime_secret_copy(source_project_id: str, target_project_id: str, key: str, confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":

@@ -385,6 +385,11 @@ def project_runtime_secret_set(project_id: str, key: str, value: str, confirm: s
 
 
 @main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_runtime_secret_import_from_file(project_id: str, source_path: str, key: str, delete_source: bool = True, confirm: str = "") -> dict[str, Any]:
+    return runtime_ops.runtime_secret_import_from_file(project_id, source_path, key, delete_source, confirm)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def project_runtime_secret_copy(source_project_id: str, target_project_id: str, key: str, confirm: str = "") -> dict[str, Any]:
     return runtime_ops.runtime_secret_copy(
         source_project_id,
