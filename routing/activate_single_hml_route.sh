@@ -51,48 +51,75 @@ PY
   exit "$rc"
 }
 
-readarray -t fields < <(python3 - "$route_json" <<'PY'
-import json, sys
+field_line="$(python3 - "$route_json" <<'PY'
+import json, re, sys
 r=json.loads(sys.argv[1])
-for k in ('hostname','upstream','network','cert_resolver','entrypoint'):
-    print(str(r[k]))
+hostname=str(r['hostname'])
+upstream=str(r['upstream'])
+network=str(r['network'])
+resolver=str(r['cert_resolver'])
+entrypoint=str(r['entrypoint'])
+if not hostname.endswith('.vitrineaipro.com.br'):
+    raise SystemExit(20)
+m=re.fullmatch(r'http://([A-Za-z0-9_.-]+):([0-9]{1,5})', upstream)
+if not m:
+    raise SystemExit(21)
+port=int(m.group(2))
+if port < 1 or port > 65535:
+    raise SystemExit(22)
+print('\t'.join((hostname, m.group(1), network, resolver, entrypoint, str(port))))
 PY
-)
-hostname="${fields[0]}"
-upstream="${fields[1]}"
-network="${fields[2]}"
-resolver="${fields[3]}"
-entrypoint="${fields[4]}"
+)" || {
+  rc=$?
+  echo "ERROR route_field_validation_failed rc=$rc" >&2
+  exit "$rc"
+}
+IFS=$'\t' read -r hostname target_container network resolver entrypoint target_port <<< "$field_line"
+if [ -z "${hostname:-}" ] || [ -z "${target_container:-}" ] || [ -z "${target_port:-}" ]; then
+  echo "ERROR route_field_parse_empty" >&2
+  exit 25
+fi
+upstream="http://${target_container}:${target_port}"
 
-if [[ "$hostname" != *.vitrineiapro.com.br ]]; then
-  echo "ERROR hostname_not_allowed" >&2
-  exit 20
-fi
-if [[ "$upstream" != http://tvsumare_web:80 ]]; then
-  echo "ERROR upstream_not_allowed" >&2
-  exit 21
-fi
-if [ "$network" != "vitrine_net" ]; then
+if [ "$network" != "vitrine_net" ] && [ "$network" != "n8n-traefik_app_network" ]; then
   echo "ERROR network_not_allowed" >&2
-  exit 22
+  exit 23
 fi
 if [ "$entrypoint" != "websecure" ]; then
   echo "ERROR entrypoint_not_allowed" >&2
-  exit 23
+  exit 24
 fi
 
 if ! docker inspect traefik >/dev/null 2>&1; then
   echo "ERROR traefik_container_unavailable" >&2
   exit 30
 fi
-if ! docker inspect tvsumare_web >/dev/null 2>&1; then
-  echo "ERROR tvsumare_container_unavailable" >&2
+if ! docker inspect "$target_container" >/dev/null 2>&1; then
+  echo "ERROR target_container_unavailable container=$target_container" >&2
   exit 31
 fi
 
-if ! docker inspect tvsumare_web --format '{{json .NetworkSettings.Networks}}' | grep -q '"vitrine_net"'; then
-  echo "ERROR tvsumare_not_on_vitrine_net" >&2
+running="$(docker inspect "$target_container" --format '{{.State.Running}}')"
+if [ "$running" != "true" ]; then
+  echo "ERROR target_container_not_running container=$target_container" >&2
   exit 32
+fi
+
+if ! docker inspect "$target_container" --format '{{json .NetworkSettings.Networks}}' | grep -q "\"$network\""; then
+  if ! docker network connect "$network" "$target_container" >/dev/null 2>&1; then
+    echo "ERROR target_network_connect_failed container=$target_container network=$network" >&2
+    exit 33
+  fi
+fi
+
+if ! docker inspect "$target_container" --format '{{json .NetworkSettings.Networks}}' | grep -q "\"$network\""; then
+  echo "ERROR target_not_on_network_after_connect container=$target_container network=$network" >&2
+  exit 35
+fi
+
+if ! docker inspect traefik --format '{{json .NetworkSettings.Networks}}' | grep -q "\"$network\""; then
+  echo "ERROR traefik_not_on_network network=$network" >&2
+  exit 34
 fi
 
 # Prefer the Docker provider: connect Traefik directly to the already-running
