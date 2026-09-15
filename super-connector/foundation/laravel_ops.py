@@ -111,3 +111,136 @@ def laravel_test_v2(project_id: str) -> dict[str, Any]:
         {"ok": result.get("ok"), "exit_code": result.get("exit_code"), "runtime_image": dependency_image},
     )
     return result
+
+
+def _resolve_laravel_container(project_id: str, service: str) -> tuple[dict[str, Any], Any, Any] | tuple[dict[str, Any], None, None]:
+    project = main._load_project(project_id)
+    repository = main._repository(project)
+    docker = project.get("docker", {})
+    compose_file = str(docker.get("compose_file") or docker.get("compose") or "").strip()
+    docker_project = str(docker.get("project_name") or docker.get("project") or project_id).strip()
+    service = str(service or "").strip()
+    if not compose_file:
+        return {"ok": False, "error": "compose_file_not_configured", "project_id": project_id}, None, None
+    if not service or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for ch in service):
+        return {"ok": False, "error": "service_required_or_invalid", "project_id": project_id}, None, None
+    compose_path = (repository / compose_file).resolve()
+    try:
+        compose_path.relative_to(repository.resolve())
+    except ValueError:
+        return {"ok": False, "error": "compose_file_outside_repository", "project_id": project_id}, None, None
+    if not compose_path.is_file():
+        return {"ok": False, "error": "compose_file_not_found", "project_id": project_id, "compose_file": compose_file}, None, None
+    lookup = main._run(
+        ["docker", "compose", "-p", docker_project, "-f", str(compose_path), "ps", "-q", service],
+        repository,
+        timeout=30,
+    )
+    container = str(lookup.get("stdout", "")).strip()
+    if not lookup.get("ok") or not container:
+        return {"ok": False, "error": "service_container_not_running", "project_id": project_id, "service": service}, None, None
+    return {"ok": True, "container": container, "service": service}, repository, container
+
+
+def admin_access_status(project_id: str, email: str, service: str) -> dict[str, Any]:
+    email = str(email or "").strip().lower()
+    resolved, repository, container = _resolve_laravel_container(project_id, service)
+    if not resolved.get("ok"):
+        return resolved
+    if not email or "@" not in email or len(email) > 254:
+        return {"ok": False, "error": "invalid_email", "project_id": project_id}
+    code = r'''
+require "/var/www/html/vendor/autoload.php";
+$app = require "/var/www/html/bootstrap/app.php";
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$u = App\Models\User::where("email", getenv("VITRINE_ADMIN_EMAIL"))->first();
+if (!$u) { echo json_encode(["ok"=>false,"error"=>"user_not_found"]); exit(2); }
+echo json_encode(["ok"=>true,"email"=>$u->email,"role"=>$u->role,"is_active"=>(bool)$u->is_active]);
+'''
+    result = main._run(
+        ["docker", "exec", "-e", f"VITRINE_ADMIN_EMAIL={email}", str(container), "php", "-r", code],
+        repository,
+        timeout=30,
+    )
+    try:
+        payload = main.json.loads(str(result.get("stdout", "")).strip() or "{}")
+    except main.json.JSONDecodeError:
+        payload = {"ok": False, "error": "invalid_runtime_response"}
+    payload.update({"project_id": project_id, "service": service})
+    main._audit("laravel.admin_access_status", {"project_id": project_id, "email": email, "service": service}, {"ok": payload.get("ok"), "role": payload.get("role"), "is_active": payload.get("is_active")})
+    return payload
+
+
+def admin_access_repair(project_id: str, email: str, service: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    email = str(email or "").strip().lower()
+    resolved, repository, container = _resolve_laravel_container(project_id, service)
+    if not resolved.get("ok"):
+        return resolved
+    if not email or "@" not in email or len(email) > 254:
+        return {"ok": False, "error": "invalid_email", "project_id": project_id}
+    code = r'''
+require "/var/www/html/vendor/autoload.php";
+$app = require "/var/www/html/bootstrap/app.php";
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$u = App\Models\User::where("email", getenv("VITRINE_ADMIN_EMAIL"))->first();
+if (!$u) { echo json_encode(["ok"=>false,"error"=>"user_not_found"]); exit(2); }
+$u->role = "admin";
+$u->is_active = true;
+$u->save();
+echo json_encode(["ok"=>true,"status"=>"repaired","email"=>$u->email,"role"=>$u->role,"is_active"=>(bool)$u->is_active]);
+'''
+    result = main._run(
+        ["docker", "exec", "-e", f"VITRINE_ADMIN_EMAIL={email}", str(container), "php", "-r", code],
+        repository,
+        timeout=30,
+    )
+    try:
+        payload = main.json.loads(str(result.get("stdout", "")).strip() or "{}")
+    except main.json.JSONDecodeError:
+        payload = {"ok": False, "error": "invalid_runtime_response"}
+    payload.update({"project_id": project_id, "service": service})
+    main._audit("laravel.admin_access_repair", {"project_id": project_id, "email": email, "service": service}, {"ok": payload.get("ok"), "status": payload.get("status")})
+    return payload
+
+
+def admin_access_reset(project_id: str, email: str, new_password: str, service: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    email = str(email or "").strip().lower()
+    password = str(new_password or "")
+    if not email or "@" not in email or len(email) > 254:
+        return {"ok": False, "error": "invalid_email", "project_id": project_id}
+    if len(password) < 12 or len(password) > 200:
+        return {"ok": False, "error": "password_policy_failed", "minimum_length": 12, "maximum_length": 200}
+    resolved, repository, container = _resolve_laravel_container(project_id, service)
+    if not resolved.get("ok"):
+        return resolved
+    code = r'''
+require "/var/www/html/vendor/autoload.php";
+$app = require "/var/www/html/bootstrap/app.php";
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$u = App\Models\User::where("email", getenv("VITRINE_ADMIN_EMAIL"))->first();
+if (!$u) { echo json_encode(["ok"=>false,"error"=>"user_not_found"]); exit(2); }
+$password = stream_get_contents(STDIN);
+if (strlen($password) < 12) { echo json_encode(["ok"=>false,"error"=>"password_policy_failed"]); exit(3); }
+$u->role = "admin";
+$u->is_active = true;
+$u->password = Illuminate\Support\Facades\Hash::make($password);
+$u->save();
+echo json_encode(["ok"=>true,"status"=>"reset","email"=>$u->email,"role"=>$u->role,"is_active"=>(bool)$u->is_active]);
+'''
+    result = main._run(
+        ["docker", "exec", "-i", "-e", f"VITRINE_ADMIN_EMAIL={email}", str(container), "php", "-r", code],
+        repository,
+        timeout=30,
+        input_text=password,
+    )
+    try:
+        payload = main.json.loads(str(result.get("stdout", "")).strip() or "{}")
+    except main.json.JSONDecodeError:
+        payload = {"ok": False, "error": "invalid_runtime_response"}
+    payload.update({"project_id": project_id, "service": service})
+    main._audit("laravel.admin_access_reset", {"project_id": project_id, "email": email, "service": service}, {"ok": payload.get("ok"), "status": payload.get("status")})
+    return payload

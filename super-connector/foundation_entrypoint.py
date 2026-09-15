@@ -10,7 +10,7 @@ import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
 from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.7-backup-recovery"
+main.VERSION = "0.3.8-admin-access"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -402,6 +402,21 @@ def project_gemini_api_probe(project_id: str) -> dict[str, Any]:
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def laravel_test_v2(project_id: str) -> dict[str, Any]:
     return laravel_ops.laravel_test_v2(project_id)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_admin_access_status(project_id: str, email: str, service: str) -> dict[str, Any]:
+    return laravel_ops.admin_access_status(project_id, email, service)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_admin_access_repair(project_id: str, email: str, service: str, confirm: str = "") -> dict[str, Any]:
+    return laravel_ops.admin_access_repair(project_id, email, service, confirm)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_admin_access_reset(project_id: str, email: str, new_password: str, service: str, confirm: str = "") -> dict[str, Any]:
+    return laravel_ops.admin_access_reset(project_id, email, new_password, service, confirm)
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
