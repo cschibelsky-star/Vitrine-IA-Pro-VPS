@@ -44,11 +44,16 @@ def _brand_preserved_video(project_id: str, result: dict[str, Any]) -> dict[str,
     if not logo_path.is_file():
         return {**result, "ok": False, "error": "branding_logo_missing", "logo": str(_LOGO_PATH)}
 
+    output_dir = raw_path.parent.resolve()
+    os.chmod(output_dir, 0o755)
+    os.chmod(raw_path, 0o644)
+
     branded_path = raw_path.with_name(f"{raw_path.stem}-branded.mp4")
     branded_manifest = branded_path.with_suffix(".json")
     branded_checksum = branded_path.with_suffix(".sha256")
 
     if branded_path.is_file() and branded_path.stat().st_size > 1024:
+        os.chmod(branded_path, 0o644)
         branded_sha256 = hashlib.sha256(branded_path.read_bytes()).hexdigest()
         return {
             **result,
@@ -68,7 +73,6 @@ def _brand_preserved_video(project_id: str, result: dict[str, Any]) -> dict[str,
     if not image_check.get("ok"):
         return {**result, "ok": False, "error": "branding_runtime_image_unavailable", "runtime_image": _MARKETING_IMAGE}
 
-    output_dir = raw_path.parent.resolve()
     probe = main._run(
         [
             "docker", "run", "--rm", "--network", "none", "--read-only",
@@ -132,7 +136,7 @@ def _brand_preserved_video(project_id: str, result: dict[str, Any]) -> dict[str,
         return {**result, "ok": False, "error": "branded_video_invalid"}
 
     os.replace(temporary, branded_path)
-    os.chmod(branded_path, 0o640)
+    os.chmod(branded_path, 0o644)
     branded_sha256 = hashlib.sha256(branded_path.read_bytes()).hexdigest()
     branded_checksum.write_text(f"{branded_sha256}  {branded_path.name}\n", encoding="utf-8")
     os.chmod(branded_checksum, 0o640)
@@ -203,7 +207,8 @@ def _video_producer_brand(
     project = main._load_project(project_id)
     repository = main._repository(project).resolve()
     workspace = repository.parent.resolve()
-    output_dir = (workspace / "storage" / "app" / "marketing" / "video-producer" / request_id.lower()).resolve()
+    folder_name = "reel-01-vitrine-social-midia" if request_id == "REEL-01-VITRINE-SOCIAL-MIDIA-20260911" else request_id.lower()
+    output_dir = (workspace / "storage" / "app" / "marketing" / "video-producer" / folder_name).resolve()
     raw_path = (output_dir / f"{version_id}.mp4").resolve()
     try:
         raw_path.relative_to(output_dir)
@@ -229,7 +234,7 @@ def _video_producer_brand(
 
 php_ops.video_producer_download = _video_producer_download_with_branding
 main.mcp.tool()(_video_producer_brand)
-main.VERSION = "0.3.8-video-brand-tool"
+main.VERSION = "0.3.12-video-media-readable"
 
 
 if __name__ == "__main__":

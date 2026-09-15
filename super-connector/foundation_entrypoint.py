@@ -414,6 +414,11 @@ def project_video_producer_download(project_id: str, request_id: str, version_id
     return php_ops.video_producer_download(project_id, request_id, version_id, video_url, confirm)
 
 
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_video_media_permissions_fix(project_id: str, request_id: str, confirm: str = "") -> dict[str, Any]:
+    return php_ops.video_media_permissions_fix(project_id, request_id, confirm)
+
+
 @main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
 def project_video_producer_generate(project_id: str, request_id: str, title: str, prompt: str, aspect_ratio: str = "9:16", duration: int = 8, resolution: str = "720p", confirm: str = "") -> dict[str, Any]:
     return php_ops.video_producer_generate(project_id, request_id, title, prompt, aspect_ratio, duration, resolution, confirm)
@@ -486,6 +491,13 @@ def backup_recovery_restore_file(archive_name: str, member_path: str, destinatio
 def connector_endpoint_check(hostname: str, path: str = "/mcp") -> dict[str, Any]:
     result = recovery_ops.connector_endpoint_check(hostname, path)
     main._audit("recovery.connector_endpoint_check", {"hostname": hostname, "path": path}, {"ok": result.get("ok"), "status_code": result.get("status_code")})
+    return result
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def http_asset_probe(hostname: str, path: str, max_bytes: int = 25 * 1024 * 1024) -> dict[str, Any]:
+    result = recovery_ops.http_asset_probe(hostname, path, max_bytes)
+    main._audit("recovery.http_asset_probe", {"hostname": hostname, "path": path, "max_bytes": max_bytes}, {"ok": result.get("ok"), "status_code": result.get("status_code"), "bytes": result.get("bytes"), "sha256": result.get("sha256")})
     return result
 
 

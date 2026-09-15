@@ -147,7 +147,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
         return {"ok": False, "error": "output_path_not_allowed"}
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(output_dir, 0o750)
+    os.chmod(output_dir, 0o755)
     target = output_dir / f"{version_id}.mp4"
     manifest = output_dir / f"{version_id}.json"
     checksum_file = output_dir / f"{version_id}.sha256"
@@ -242,7 +242,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
         return {"ok": False, "error": "ffprobe_validation_failed", "stderr": probe.get("stderr", "")[-1000:]}
 
     os.replace(temporary, target)
-    os.chmod(target, 0o640)
+    os.chmod(target, 0o644)
     sha256 = digest.hexdigest()
     checksum_file.write_text(f"{sha256}  {target.name}\n", encoding="utf-8")
     os.chmod(checksum_file, 0o640)
@@ -266,6 +266,54 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
         "php.video_producer_download",
         {"project_id": project_id, "request_id": request_id, "version_id": version_id, "provider": provider},
         {"ok": True, "path": str(target), "bytes": size, "sha256": sha256},
+    )
+    return result
+
+
+def video_media_permissions_fix(project_id: str, request_id: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    if project_id != "vitrine-marketing-agents-core-hml":
+        return {"ok": False, "error": "project_not_allowed"}
+    if not _SAFE_ID.fullmatch(str(request_id or "")):
+        return {"ok": False, "error": "invalid_request_id"}
+
+    project = main._load_project(project_id)
+    repository = main._repository(project).resolve()
+    workspace = repository.parent
+    folder_name = "reel-01-vitrine-social-midia" if request_id == "REEL-01-VITRINE-SOCIAL-MIDIA-20260911" else request_id.lower()
+    allowed_root = (workspace / "storage" / "app" / "marketing" / "video-producer").resolve()
+    output_dir = (allowed_root / folder_name).resolve()
+    try:
+        output_dir.relative_to(allowed_root)
+    except ValueError:
+        return {"ok": False, "error": "output_path_not_allowed"}
+    if not output_dir.is_dir() or output_dir.is_symlink():
+        return {"ok": False, "error": "video_output_directory_not_found", "path": str(output_dir)}
+
+    os.chmod(output_dir, 0o755)
+    changed: list[dict[str, Any]] = []
+    for path in sorted(output_dir.glob("*.mp4")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        os.chmod(path, 0o644)
+        changed.append({"path": str(path), "bytes": path.stat().st_size})
+
+    result = {
+        "ok": True,
+        "status": "permissions_normalized",
+        "project_id": project_id,
+        "request_id": request_id,
+        "directory": str(output_dir),
+        "directory_mode": "0755",
+        "file_mode": "0644",
+        "files": changed,
+        "count": len(changed),
+    }
+    main._audit(
+        "php.video_media_permissions_fix",
+        {"project_id": project_id, "request_id": request_id},
+        {"ok": True, "directory": str(output_dir), "count": len(changed)},
     )
     return result
 

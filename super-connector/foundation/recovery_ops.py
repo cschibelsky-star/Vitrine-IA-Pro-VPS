@@ -8,6 +8,7 @@ import ssl
 import tarfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -78,6 +79,103 @@ def connector_endpoint_check(hostname: str, path: str = "/mcp") -> dict[str, Any
         return {"ok": False, "reachable": False, "hostname": host, "path": route_path, "error": "endpoint_unreachable", "detail": type(exc.reason).__name__}
     except (TimeoutError, OSError) as exc:
         return {"ok": False, "reachable": False, "hostname": host, "path": route_path, "error": "endpoint_probe_failed", "detail": type(exc).__name__}
+
+
+class _AllowedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlparse(newurl)
+        if parsed.scheme != "https":
+            raise urllib.error.HTTPError(newurl, code, "redirect_scheme_not_allowed", headers, fp)
+        _safe_hostname(parsed.hostname or "")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def http_asset_probe(hostname: str, path: str, max_bytes: int = 25 * 1024 * 1024) -> dict[str, Any]:
+    try:
+        host = _safe_hostname(hostname)
+    except (ValueError, PermissionError) as exc:
+        return {"ok": False, "error": str(exc)}
+    route_path = str(path or "").strip()
+    if not route_path.startswith("/") or ".." in route_path.split("/") or len(route_path) > 500:
+        return {"ok": False, "error": "invalid_asset_path"}
+    if "?" in route_path or "#" in route_path:
+        return {"ok": False, "error": "query_or_fragment_not_allowed"}
+    try:
+        max_bytes = max(1, min(int(max_bytes), 100 * 1024 * 1024))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "invalid_max_bytes"}
+
+    url = f"https://{host}{route_path}"
+    request = urllib.request.Request(
+        url,
+        method="GET",
+        headers={"Accept": "*/*", "User-Agent": "vitrine-super-http-probe/0.3"},
+    )
+    opener = urllib.request.build_opener(_AllowedRedirectHandler())
+    digest = hashlib.sha256()
+    total = 0
+    try:
+        with opener.open(request, timeout=20) as response:
+            status = int(response.status)
+            content_type = str(response.headers.get("content-type", ""))
+            content_length_raw = str(response.headers.get("content-length", "")).strip()
+            content_length = int(content_length_raw) if content_length_raw.isdigit() else None
+            if content_length is not None and content_length > max_bytes:
+                return {
+                    "ok": False,
+                    "reachable": True,
+                    "hostname": host,
+                    "path": route_path,
+                    "status_code": status,
+                    "content_type": content_type,
+                    "content_length": content_length,
+                    "error": "asset_exceeds_probe_limit",
+                    "max_bytes": max_bytes,
+                }
+            while True:
+                chunk = response.read(min(1024 * 1024, max_bytes - total + 1))
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    return {
+                        "ok": False,
+                        "reachable": True,
+                        "hostname": host,
+                        "path": route_path,
+                        "status_code": status,
+                        "content_type": content_type,
+                        "error": "asset_exceeds_probe_limit",
+                        "bytes_read": total,
+                        "max_bytes": max_bytes,
+                    }
+                digest.update(chunk)
+            return {
+                "ok": 200 <= status < 300,
+                "reachable": True,
+                "hostname": host,
+                "path": route_path,
+                "status_code": status,
+                "content_type": content_type,
+                "content_length": content_length,
+                "bytes": total,
+                "sha256": digest.hexdigest(),
+                "final_url": response.geturl(),
+            }
+    except urllib.error.HTTPError as exc:
+        return {
+            "ok": False,
+            "reachable": True,
+            "hostname": host,
+            "path": route_path,
+            "status_code": int(exc.code),
+            "content_type": str(exc.headers.get("content-type", "")) if exc.headers else "",
+            "error": str(exc.reason or "http_error"),
+        }
+    except urllib.error.URLError as exc:
+        return {"ok": False, "reachable": False, "hostname": host, "path": route_path, "error": "asset_unreachable", "detail": type(exc.reason).__name__}
+    except (TimeoutError, OSError, ValueError, PermissionError) as exc:
+        return {"ok": False, "reachable": False, "hostname": host, "path": route_path, "error": "asset_probe_failed", "detail": type(exc).__name__}
 
 
 def _inspect_one(container_id: str) -> dict[str, Any] | None:
