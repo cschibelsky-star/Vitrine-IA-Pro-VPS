@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tarfile
@@ -29,6 +31,10 @@ VPS_BACKUP_SOURCES = (
 VPS_BACKUP_EXCLUDE_NAMES = {".git", "vendor", "node_modules", "__pycache__", ".cache"}
 ALLOWED_WORKSPACE_ROOTS = tuple(Path(p).resolve() for p in os.getenv("PROJECT_WORKSPACE_ROOTS", "/srv/projects,/srv/tvsumare").split(",") if p.strip())
 AUDIT_LOG = Path(os.getenv("OPS_AUDIT_LOG", "/var/log/vitrine-ops-v5/audit.jsonl"))
+DNS_ALLOWED_ZONE = os.getenv("DNS_ALLOWED_ZONE", "vitrineaipro.com.br").strip().lower().rstrip(".")
+HOSTGATOR_SSH_HOST = os.getenv("HOSTGATOR_SSH_HOST", "50.6.138.104").strip()
+HOSTGATOR_SSH_USER = os.getenv("HOSTGATOR_SSH_USER", "cris1649").strip()
+HOSTGATOR_SSH_PORT = int(os.getenv("HOSTGATOR_SSH_PORT", "2222"))
 MAX_BYTES = int(os.getenv("PROJECT_MAX_READ_BYTES", "200000"))
 TEXT_SUFFIXES = {".php", ".json", ".md", ".txt", ".yml", ".yaml", ".xml", ".js", ".ts", ".css", ".scss", ".vue", ".sql", ".sh", ".py"}
 BLOCKED_NAMES = {".env", "auth.json", "credentials.json", "oauth.json", "id_rsa", "id_ed25519"}
@@ -1330,6 +1336,137 @@ def activate_hml_route(route_id: str, confirm: str = "") -> dict[str, Any]:
         {"route_id": normalized, "hostname": route.get("hostname")},
         {"ok": result.get("ok", False), "exit_code": result.get("exit_code")},
     )
+    return result
+
+
+def _validate_dns_hostname(hostname: str) -> str:
+    value = str(hostname or "").strip().lower().rstrip(".")
+    allowed = "abcdefghijklmnopqrstuvwxyz0123456789.-"
+    if not value or any(ch not in allowed for ch in value):
+        raise ValueError("invalid_hostname")
+    if value == DNS_ALLOWED_ZONE or not value.endswith("." + DNS_ALLOWED_ZONE):
+        raise PermissionError("hostname_not_allowed")
+    return value
+
+
+def _hostgator_uapi(module: str, function: str, params: dict[str, str]) -> dict[str, Any]:
+    if any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" for ch in module + function):
+        return {"ok": False, "error": "invalid_uapi_operation"}
+    remote = ["uapi", "--output=json", module, function]
+    for key, value in params.items():
+        if not key or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" for ch in key):
+            return {"ok": False, "error": "invalid_uapi_parameter", "key": key}
+        remote.append(f"{key}={value}")
+    remote_command = " ".join(shlex.quote(part) for part in remote)
+    command = [
+        "ssh",
+        "-o", "BatchMode=yes",
+        "-o", "StrictHostKeyChecking=yes",
+        "-p", str(HOSTGATOR_SSH_PORT),
+        f"{HOSTGATOR_SSH_USER}@{HOSTGATOR_SSH_HOST}",
+        remote_command,
+    ]
+    result = _run(command, Path("/"), timeout=120)
+    if not result.get("ok"):
+        return {"ok": False, "error": "hostgator_uapi_transport_failed", "exit_code": result.get("exit_code"), "stderr": result.get("stderr", "")[-4000:]}
+    try:
+        payload = json.loads(str(result.get("stdout") or "{}"))
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "hostgator_uapi_invalid_json"}
+    uapi_result = payload.get("result", {}) if isinstance(payload, dict) else {}
+    status = int(uapi_result.get("status", 0) or 0)
+    return {
+        "ok": status == 1,
+        "status": status,
+        "data": uapi_result.get("data"),
+        "errors": uapi_result.get("errors"),
+        "messages": uapi_result.get("messages"),
+    }
+
+
+def _dns_a_records(hostname: str) -> dict[str, Any]:
+    host = _validate_dns_hostname(hostname)
+    fetched = _hostgator_uapi("ZoneEdit", "fetchzone_records", {"domain": DNS_ALLOWED_ZONE})
+    if not fetched.get("ok"):
+        return {"ok": False, "error": "dns_zone_read_failed", "detail": fetched}
+    data = fetched.get("data") or []
+    if isinstance(data, dict):
+        data = data.get("records", []) or data.get("zone", []) or []
+    records: list[dict[str, Any]] = []
+    for item in data if isinstance(data, list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip().lower().rstrip(".")
+        rtype = str(item.get("type") or "").strip().upper()
+        if name != host or rtype != "A":
+            continue
+        value = item.get("address")
+        if value in (None, ""):
+            value = item.get("record")
+        if value in (None, ""):
+            value = item.get("data")
+        records.append({"name": name, "type": rtype, "value": str(value or "").strip(), "line": item.get("line"), "ttl": item.get("ttl")})
+    return {"ok": True, "hostname": host, "records": records}
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def dns_record_status(hostname: str) -> dict[str, Any]:
+    try:
+        result = _dns_a_records(hostname)
+    except (ValueError, PermissionError) as exc:
+        result = {"ok": False, "error": str(exc), "hostname": str(hostname or "")}
+    _audit("dns_record_status", {"hostname": str(hostname or "")}, {"ok": result.get("ok", False), "record_count": len(result.get("records", []))})
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def dns_record_upsert(hostname: str, address: str, ttl: int = 300, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    try:
+        host = _validate_dns_hostname(hostname)
+        ip = str(ipaddress.ip_address(str(address or "").strip()))
+        if ":" in ip:
+            raise ValueError("ipv4_required")
+        ttl_value = max(60, min(int(ttl), 86400))
+    except (ValueError, PermissionError) as exc:
+        return {"ok": False, "error": str(exc), "hostname": str(hostname or "")}
+
+    current = _dns_a_records(host)
+    if not current.get("ok"):
+        return current
+    records = current.get("records", [])
+    if any(record.get("value") == ip for record in records):
+        result = {"ok": True, "status": "unchanged", "hostname": host, "address": ip, "ttl": ttl_value}
+        _audit("dns_record_upsert", {"hostname": host, "address": ip, "ttl": ttl_value}, {"ok": True, "status": "unchanged"})
+        return result
+    if records:
+        result = {"ok": False, "error": "dns_record_conflict", "hostname": host, "existing": records, "requested_address": ip}
+        _audit("dns_record_upsert", {"hostname": host, "address": ip, "ttl": ttl_value}, {"ok": False, "error": "dns_record_conflict"})
+        return result
+
+    created = _hostgator_uapi(
+        "ZoneEdit",
+        "add_zone_record",
+        {
+            "domain": DNS_ALLOWED_ZONE,
+            "name": host + ".",
+            "type": "A",
+            "address": ip,
+            "ttl": str(ttl_value),
+        },
+    )
+    if not created.get("ok"):
+        result = {"ok": False, "error": "dns_record_create_failed", "hostname": host, "detail": created}
+        _audit("dns_record_upsert", {"hostname": host, "address": ip, "ttl": ttl_value}, {"ok": False, "error": "dns_record_create_failed"})
+        return result
+
+    verified = _dns_a_records(host)
+    ok = bool(verified.get("ok") and any(record.get("value") == ip for record in verified.get("records", [])))
+    result = {"ok": ok, "status": "created" if ok else "created_unverified", "hostname": host, "address": ip, "ttl": ttl_value, "records": verified.get("records", []) if verified.get("ok") else []}
+    if not ok:
+        result["error"] = "dns_record_verification_failed"
+    _audit("dns_record_upsert", {"hostname": host, "address": ip, "ttl": ttl_value}, {"ok": ok, "status": result["status"]})
     return result
 
 
