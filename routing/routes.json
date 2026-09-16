@@ -14,7 +14,7 @@
     },
     {
       "id": "social-hml",
-      "hostname": "social.hml.vitrineaipro.com.br",
+      "hostname": "social.hml.vitrineiapro.com.br",
       "upstream": "http://social_recovery_hml_web:80",
       "network": "n8n-traefik_app_network",
       "environment": "homologation",
