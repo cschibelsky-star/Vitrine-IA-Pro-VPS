@@ -16,7 +16,7 @@ from typing import Any
 import main
 
 ROUTING_PROJECT_ID = "vitrine-super-centro-operacional-candidate-https"
-ALLOWED_DOMAIN_SUFFIX = ".vitrineiapro.com.br"
+ALLOWED_DOMAIN_SUFFIX = ".vitrineaipro.com.br"
 
 
 def _safe_hostname(hostname: str) -> str:

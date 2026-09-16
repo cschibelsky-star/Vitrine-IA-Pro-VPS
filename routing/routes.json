@@ -33,6 +33,17 @@
       "cert_resolver": "le",
       "entrypoint": "websecure",
       "status": "pending_dns_proxy"
+    },
+    {
+      "id": "social-hml",
+      "hostname": "social.hml.vitrineaipro.com.br",
+      "upstream": "http://social_recovery_hml_web:80",
+      "network": "vitrine_net",
+      "environment": "homologation",
+      "ssl": true,
+      "cert_resolver": "le",
+      "entrypoint": "websecure",
+      "status": "pending_dns_proxy"
     }
   ]
 }
