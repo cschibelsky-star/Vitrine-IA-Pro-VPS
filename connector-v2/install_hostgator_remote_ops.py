@@ -99,6 +99,10 @@ def main() -> None:
             tools_import,
             "from hostgator_tools import (",
         )
+    elif "_hostgator_dns_status" not in main_text:
+        import_anchor = "    hostgator_health as _hostgator_health,\n"
+        import_addition = "    hostgator_dns_status as _hostgator_dns_status,\n    hostgator_dns_upsert as _hostgator_dns_upsert,\n"
+        main_text = ensure_after(main_text, import_anchor, import_addition, "_hostgator_dns_status")
 
     tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_health() -> dict[str, Any]:\n    return _hostgator_health()\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_dns_status(hostname: str) -> dict[str, Any]:\n    return _hostgator_dns_status(hostname)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef hostgator_dns_upsert(hostname: str, address: str, ttl: int = 300, confirm: str = "") -> dict[str, Any]:\n    return _hostgator_dns_upsert(hostname, address, ttl, confirm)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_git_status(root: str) -> dict[str, Any]:\n    return _hostgator_git_status(root)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_git_compare(root: str) -> dict[str, Any]:\n    return _hostgator_git_compare(root)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_list_files(root: str, path: str = ".", max_depth: int = 2, max_entries: int = 1000, include_hidden: bool = False) -> dict[str, Any]:\n    return _hostgator_list_files(root, path, max_depth, max_entries, include_hidden)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_read_file(root: str, path: str, max_bytes: int = 100000) -> dict[str, Any]:\n    return _hostgator_read_file(root, path, max_bytes)\n'''
     if "def hostgator_health()" not in main_text:
@@ -107,6 +111,14 @@ def main() -> None:
             '\nif __name__ == "__main__":\n',
             tools_block,
             "def hostgator_health()",
+        )
+    elif "def hostgator_dns_status(" not in main_text:
+        dns_tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef hostgator_dns_status(hostname: str) -> dict[str, Any]:\n    return _hostgator_dns_status(hostname)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef hostgator_dns_upsert(hostname: str, address: str, ttl: int = 300, confirm: str = "") -> dict[str, Any]:\n    return _hostgator_dns_upsert(hostname, address, ttl, confirm)\n'''
+        main_text = ensure_before(
+            main_text,
+            '\nif __name__ == "__main__":\n',
+            dns_tools_block,
+            "def hostgator_dns_status(",
         )
     main_py.write_text(main_text, encoding="utf-8")
 
