@@ -32,6 +32,14 @@ def hostgator_health() -> dict[str, Any]:
     return _request("GET", "/hostgator/health")
 
 
+def hostgator_dns_status(hostname: str) -> dict[str, Any]:
+    return _request("POST", "/hostgator/dns/status", {"hostname": hostname})
+
+
+def hostgator_dns_upsert(hostname: str, address: str, ttl: int = 300, confirm: str = "") -> dict[str, Any]:
+    return _request("POST", "/hostgator/dns/upsert", {"hostname": hostname, "address": address, "ttl": ttl, "confirm": confirm})
+
+
 def hostgator_git_status(root: str) -> dict[str, Any]:
     return _request("POST", "/hostgator/git/status", {"root": root})
 
