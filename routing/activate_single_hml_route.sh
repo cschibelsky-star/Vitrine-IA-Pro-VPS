@@ -59,7 +59,7 @@ upstream=str(r['upstream'])
 network=str(r['network'])
 resolver=str(r['cert_resolver'])
 entrypoint=str(r['entrypoint'])
-if not hostname.endswith('.vitrineaipro.com.br'):
+if not hostname.endswith('.vitrineiapro.com.br'):
     raise SystemExit(20)
 m=re.fullmatch(r'http://([A-Za-z0-9_.-]+):([0-9]{1,5})', upstream)
 if not m:
@@ -123,12 +123,11 @@ if ! docker inspect traefik --format '{{json .NetworkSettings.Networks}}' | grep
 fi
 
 # Prefer the Docker provider: connect Traefik directly to the already-running
-# tvsumare_web container by applying labels to a tiny route-carrier container.
+# target application container by applying labels to a tiny route-carrier container.
 # This avoids rewriting the application container and keeps the route isolated.
 carrier="vitrine_route_${route_id}"
 image="alpine:3.20"
 
-# Do not replace an unrelated container with the same name.
 if docker inspect "$carrier" >/dev/null 2>&1; then
   current_route="$(docker inspect "$carrier" --format '{{index .Config.Labels "vitrine.route.id"}}' 2>/dev/null || true)"
   if [ "$current_route" != "$route_id" ]; then
@@ -138,9 +137,6 @@ if docker inspect "$carrier" >/dev/null 2>&1; then
   docker rm -f "$carrier" >/dev/null
 fi
 
-# Traefik resolves the service URL through the shared Docker network. The
-# carrier itself is inert; labels declare a router whose service points to the
-# TV Sumare container through a file-less load balancer URL.
 docker run -d \
   --name "$carrier" \
   --restart unless-stopped \
