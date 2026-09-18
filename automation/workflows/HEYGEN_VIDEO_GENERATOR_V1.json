@@ -1,0 +1,153 @@
+{
+  "id": "vitrineHeyGenVideoV1",
+  "name": "HEYGEN_VIDEO_GENERATOR V1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vitrine-heygen-video-v1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "heygen-webhook-v1",
+      "name": "heygen.video.requested",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "vitrine-heygen-video-v1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\nconst required = ['request_id','avatar_id'];\nconst missing = required.filter((key) => !body[key]);\nif (missing.length) throw new Error('heygen.video.requested missing fields: ' + missing.join(', '));\n\nconst sources = ['script','audio_url','audio_asset_id'].filter((key) => body[key]);\nif (sources.length !== 1) throw new Error('Provide exactly one of script, audio_url, audio_asset_id');\n\nconst payload = {\n  type: 'avatar',\n  avatar_id: String(body.avatar_id),\n  title: body.title ?? ('Vitrine HeyGen ' + String(body.request_id)),\n  aspect_ratio: body.aspect_ratio ?? '9:16',\n  resolution: body.resolution ?? '1080p',\n  callback_id: String(body.request_id)\n};\n\nif (body.script) payload.script = String(body.script);\nif (body.voice_id) payload.voice_id = String(body.voice_id);\nif (body.audio_url) payload.audio_url = String(body.audio_url);\nif (body.audio_asset_id) payload.audio_asset_id = String(body.audio_asset_id);\nif (body.callback_url) payload.callback_url = String(body.callback_url);\nif (body.motion_prompt) payload.motion_prompt = String(body.motion_prompt);\n\nreturn [{json:{\n  request_id:String(body.request_id),\n  idempotency_key:String(body.request_id),\n  heygen_payload:payload\n}}];"
+      },
+      "id": "heygen-validate-v1",
+      "name": "Validate HeyGen Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.heygen.com/v3/videos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "={{ $env.HEYGEN_API_KEY }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.heygen_payload) }}",
+        "options": {}
+      },
+      "id": "heygen-create-video-v1",
+      "name": "Create HeyGen Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json;\nconst videoId = response.video_id ?? response.data?.video_id ?? response.id ?? response.data?.id ?? null;\nreturn [{json:{\n  ok:true,\n  accepted:true,\n  provider:'heygen',\n  video_id:videoId,\n  status:response.status ?? response.data?.status ?? 'submitted',\n  provider_response:response\n}}];"
+      },
+      "id": "heygen-normalize-response-v1",
+      "name": "Normalize HeyGen Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "heygen-respond-v1",
+      "name": "Respond HeyGen Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1040,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "heygen.video.requested": {
+      "main": [
+        [
+          {
+            "node": "Validate HeyGen Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate HeyGen Request": {
+      "main": [
+        [
+          {
+            "node": "Create HeyGen Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create HeyGen Video": {
+      "main": [
+        [
+          {
+            "node": "Normalize HeyGen Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize HeyGen Response": {
+      "main": [
+        [
+          {
+            "node": "Respond HeyGen Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "vitrineErrorHandlerV1"
+  }
+}
