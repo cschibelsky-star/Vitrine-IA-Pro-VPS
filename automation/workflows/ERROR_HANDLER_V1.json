@@ -7,7 +7,10 @@
       "name": "Error Trigger",
       "type": "n8n-nodes-base.errorTrigger",
       "typeVersion": 1,
-      "position": [0, 0]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
@@ -57,7 +60,10 @@
       "name": "Normalize Error",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [280, 0]
+      "position": [
+        280,
+        0
+      ]
     }
   ],
   "connections": {
@@ -76,5 +82,6 @@
   "active": false,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "id": "vitrineErrorHandlerV1"
 }
