@@ -1,0 +1,56 @@
+name: Import n8n Automation HML
+
+on:
+  push:
+    branches:
+      - feature/n8n-automation-foundation-v1
+    paths:
+      - "automation/**"
+      - ".github/workflows/import-n8n-automation-hml.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: n8n-automation-hml
+  cancel-in-progress: false
+
+jobs:
+  import:
+    name: Import n8n workflows as drafts
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout automation branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/n8n-automation-foundation-v1
+          fetch-depth: 1
+          clean: true
+
+      - name: Validate target container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker inspect n8n-main >/dev/null
+          test "$(docker inspect -f '{{.State.Running}}' n8n-main)" = "true"
+          docker exec n8n-main n8n --version
+
+      - name: Import workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in automation/workflows/*.json; do
+            test -f "$file"
+            base="$(basename "$file")"
+            tmp="/tmp/$base"
+            docker cp "$file" "n8n-main:$tmp"
+            docker exec n8n-main n8n import:workflow --input="$tmp"
+            docker exec n8n-main rm -f "$tmp"
+          done
+
+      - name: List imported workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec n8n-main n8n list:workflow
