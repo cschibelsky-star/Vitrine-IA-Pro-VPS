@@ -1,0 +1,80 @@
+{
+  "name": "ERROR_HANDLER V1",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger-v1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "event-type",
+              "name": "event_type",
+              "value": "automation.failed",
+              "type": "string"
+            },
+            {
+              "id": "workflow-name",
+              "name": "workflow_name",
+              "value": "={{ $json.workflow?.name || 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "workflow-id",
+              "name": "workflow_id",
+              "value": "={{ $json.workflow?.id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "execution-id",
+              "name": "execution_id",
+              "value": "={{ $json.execution?.id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "error-message",
+              "name": "error_message",
+              "value": "={{ $json.execution?.error?.message || $json.error?.message || 'unknown error' }}",
+              "type": "string"
+            },
+            {
+              "id": "failed-at",
+              "name": "failed_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "normalize-error-v1",
+      "name": "Normalize Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [280, 0]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
