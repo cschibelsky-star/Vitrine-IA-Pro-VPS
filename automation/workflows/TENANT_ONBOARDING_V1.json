@@ -1,0 +1,72 @@
+{
+  "name": "TENANT_ONBOARDING V1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vitrine-tenant-provisioned-v1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "tenant-provisioned-webhook-v1",
+      "name": "tenant.provisioned",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "webhookId": "vitrine-tenant-provisioned-v1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\nconst required = ['event_id','tenant_id','product','status'];\nconst missing = required.filter((key) => !body[key]);\nif (missing.length) {\n  throw new Error('tenant.provisioned missing fields: ' + missing.join(', '));\n}\nreturn [{json:{\n  event_id:String(body.event_id),\n  event_type:'tenant.provisioned',\n  tenant_id:String(body.tenant_id),\n  product:String(body.product),\n  status:String(body.status),\n  tenant_url:body.tenant_url ?? null,\n  admin_url:body.admin_url ?? null,\n  company_id:body.company_id ?? null,\n  license_id:body.license_id ?? null,\n  occurred_at:body.occurred_at ?? new Date().toISOString(),\n  idempotency_key:String(body.event_id)\n}}];"
+      },
+      "id": "validate-event-v1",
+      "name": "Validate Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, accepted: true, event_id: $json.event_id, idempotency_key: $json.idempotency_key, next_action: 'onboarding_dispatch_pending' } }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "respond-accepted-v1",
+      "name": "Respond Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [520, 0]
+    }
+  ],
+  "connections": {
+    "tenant.provisioned": {
+      "main": [
+        [
+          {
+            "node": "Validate Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Event": {
+      "main": [
+        [
+          {
+            "node": "Respond Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": ""
+  }
+}
