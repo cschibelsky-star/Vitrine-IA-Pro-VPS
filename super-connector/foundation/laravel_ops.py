@@ -138,6 +138,17 @@ def _resolve_laravel_container(project_id: str, service: str) -> tuple[dict[str,
     )
     container = str(lookup.get("stdout", "")).strip()
     if not lookup.get("ok") or not container:
+        fallback = main._run(
+            [
+                "docker", "ps", "-q",
+                "--filter", f"label=com.docker.compose.project={docker_project}",
+                "--filter", f"label=com.docker.compose.service={service}",
+            ],
+            repository,
+            timeout=30,
+        )
+        container = str(fallback.get("stdout", "")).strip().splitlines()[0] if fallback.get("ok") and str(fallback.get("stdout", "")).strip() else ""
+    if not container:
         return {"ok": False, "error": "service_container_not_running", "project_id": project_id, "service": service}, None, None
     return {"ok": True, "container": container, "service": service}, repository, container
 
