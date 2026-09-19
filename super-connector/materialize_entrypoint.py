@@ -168,7 +168,7 @@ def project_materialize(project_id: str, confirm: str = "") -> dict[str, Any]:
 @main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def project_compose_service_execute(project_id: str, service: str, operation: str, confirm: str = "") -> dict[str, Any]:
     op = str(operation or "").strip().lower()
-    allowed_operations = {"build", "up", "status", "logs"}
+    allowed_operations = {"build", "up", "restart", "status", "logs"}
     if op not in allowed_operations:
         return {"ok": False, "error": "compose_operation_not_allowed", "allowed_operations": sorted(allowed_operations)}
     if op in {"build", "up"} and confirm != "EXECUTAR":
@@ -198,13 +198,27 @@ def project_compose_service_execute(project_id: str, service: str, operation: st
         main._audit("project.compose_service_execute", {"project_id": project_id, "service": service_name, "operation": op}, response)
         return response
 
-    base = ["docker", "compose", "-p", project_name, "-f", str(compose_file)]
+    workspace = _workspace(project)
+    env_file_value = str(project.get("runtime", {}).get("env_file", "") or "").strip().replace("\\", "/")
+    base = ["docker", "compose", "-p", project_name]
+    if env_file_value:
+        if env_file_value.startswith("/") or ".." in env_file_value.split("/"):
+            return {"ok": False, "error": "invalid_runtime_env_file", "project_id": project_id}
+        env_file = (workspace / env_file_value).resolve()
+        if workspace != env_file and workspace not in env_file.parents:
+            return {"ok": False, "error": "runtime_env_file_outside_workspace", "project_id": project_id}
+        if env_file.is_file():
+            base.extend(["--env-file", str(env_file)])
+    base.extend(["-f", str(compose_file)])
     if op == "build":
         command = [*base, "build", service_name]
         timeout = 1800
     elif op == "up":
         command = [*base, "up", "-d", service_name]
         timeout = 600
+    elif op == "restart":
+        command = [*base, "restart", service_name]
+        timeout = 300
     elif op == "status":
         command = [*base, "ps", service_name]
         timeout = 60
