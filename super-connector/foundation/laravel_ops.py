@@ -187,7 +187,7 @@ $app = require "/var/www/html/bootstrap/app.php";
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 $u = App\Models\User::where("email", getenv("VITRINE_ADMIN_EMAIL"))->first();
 if (!$u) { echo json_encode(["ok"=>false,"error"=>"user_not_found"]); exit(2); }
-echo json_encode(["ok"=>true,"email"=>$u->email,"role"=>$u->role,"is_active"=>(bool)$u->is_active]);
+echo json_encode(["ok"=>true,"email"=>$u->email,"role"=>$u->role,"status"=>$u->status,"is_active"=>(bool)($u->is_active ?? false)]);
 '''
     result = main._run(
         ["docker", "exec", "-e", f"VITRINE_ADMIN_EMAIL={email}", str(container), "php", "-r", code],
@@ -219,9 +219,10 @@ $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 $u = App\Models\User::where("email", getenv("VITRINE_ADMIN_EMAIL"))->first();
 if (!$u) { echo json_encode(["ok"=>false,"error"=>"user_not_found"]); exit(2); }
 $u->role = "admin";
-$u->is_active = true;
+$u->status = "active";
+if (Illuminate\Support\Facades\Schema::hasColumn("users", "is_active")) { $u->is_active = true; }
 $u->save();
-echo json_encode(["ok"=>true,"status"=>"repaired","email"=>$u->email,"role"=>$u->role,"is_active"=>(bool)$u->is_active]);
+echo json_encode(["ok"=>true,"result"=>"repaired","email"=>$u->email,"role"=>$u->role,"status"=>$u->status,"is_active"=>(bool)($u->is_active ?? false)]);
 '''
     result = main._run(
         ["docker", "exec", "-e", f"VITRINE_ADMIN_EMAIL={email}", str(container), "php", "-r", code],
@@ -258,7 +259,8 @@ if (!$u) { echo json_encode(["ok"=>false,"error"=>"user_not_found"]); exit(2); }
 $password = stream_get_contents(STDIN);
 if (strlen($password) < 12) { echo json_encode(["ok"=>false,"error"=>"password_policy_failed"]); exit(3); }
 $u->role = "admin";
-$u->is_active = true;
+$u->status = "active";
+if (Illuminate\Support\Facades\Schema::hasColumn("users", "is_active")) { $u->is_active = true; }
 $u->password = Illuminate\Support\Facades\Hash::make($password);
 $u->save();
 echo json_encode(["ok"=>true,"status"=>"reset","email"=>$u->email,"role"=>$u->role,"is_active"=>(bool)$u->is_active]);
