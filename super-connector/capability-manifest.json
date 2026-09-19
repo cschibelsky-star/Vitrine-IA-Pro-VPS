@@ -41,6 +41,7 @@
     "project_list_files",
     "project_gemini_api_probe",
     "project_inspect",
+    "project_laravel_route_list",
     "project_manifest_runtime_configure",
     "project_materialize",
     "project_bootstrap_from_git",

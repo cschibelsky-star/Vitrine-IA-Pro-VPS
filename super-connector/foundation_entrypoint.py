@@ -415,6 +415,11 @@ def laravel_test_v2(project_id: str) -> dict[str, Any]:
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_laravel_route_list(project_id: str, service: str, path_prefix: str = "") -> dict[str, Any]:
+    return laravel_ops.route_list(project_id, service, path_prefix)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def project_admin_access_status(project_id: str, email: str, service: str) -> dict[str, Any]:
     return laravel_ops.admin_access_status(project_id, email, service)
 

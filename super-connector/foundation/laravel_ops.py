@@ -142,6 +142,27 @@ def _resolve_laravel_container(project_id: str, service: str) -> tuple[dict[str,
     return {"ok": True, "container": container, "service": service}, repository, container
 
 
+def route_list(project_id: str, service: str, path_prefix: str = "") -> dict[str, Any]:
+    resolved, repository, container = _resolve_laravel_container(project_id, service)
+    if not resolved.get("ok"):
+        return resolved
+    prefix = str(path_prefix or "").strip().strip("/")
+    args = ["docker", "exec", str(container), "php", "artisan", "route:list", "--json", "--no-ansi"]
+    result = main._run(args, repository, timeout=60)
+    if not result.get("ok"):
+        result.update({"project_id": project_id, "service": service})
+        return result
+    try:
+        routes = main.json.loads(str(result.get("stdout", "")).strip() or "[]")
+    except main.json.JSONDecodeError:
+        return {"ok": False, "error": "invalid_route_list_json", "project_id": project_id, "service": service}
+    if prefix:
+        routes = [route for route in routes if str(route.get("uri", "")).lstrip("/").startswith(prefix)]
+    payload = {"ok": True, "project_id": project_id, "service": service, "path_prefix": prefix, "count": len(routes), "routes": routes}
+    main._audit("laravel.route_list", {"project_id": project_id, "service": service, "path_prefix": prefix}, {"ok": True, "count": len(routes)})
+    return payload
+
+
 def admin_access_status(project_id: str, email: str, service: str) -> dict[str, Any]:
     email = str(email or "").strip().lower()
     resolved, repository, container = _resolve_laravel_container(project_id, service)
