@@ -37,6 +37,7 @@
     "project_compose_service_execute",
     "project_discover",
     "project_file_read_safe",
+    "project_file_replace_safe",
     "project_list_files",
     "project_gemini_api_probe",
     "project_inspect",
