@@ -1,0 +1,85 @@
+name: Validate and Publish HeyGen HML
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/n8n-automation-foundation-v1
+    paths:
+      - ".github/workflows/validate-publish-heygen-hml.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heygen-hml-publish
+  cancel-in-progress: false
+
+jobs:
+  validate_publish:
+    name: Validate HeyGen credential and publish workflow
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feature/n8n-automation-foundation-v1
+          fetch-depth: 1
+          clean: true
+
+      - name: Validate n8n runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker inspect n8n-main >/dev/null
+          test "$(docker inspect -f '{{.State.Running}}' n8n-main)" = "true"
+          docker exec n8n-main n8n --version
+
+      - name: Validate HeyGen secret presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker exec n8n-main sh -lc 'test -n "${HEYGEN_API_KEY:-}"'; then
+            echo "HEYGEN_API_KEY_PRESENT=true"
+          else
+            echo "HEYGEN_API_KEY_PRESENT=false"
+            exit 21
+          fi
+
+      - name: HeyGen API smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec n8n-main node - <<'NODE'
+          const key = process.env.HEYGEN_API_KEY;
+          if (!key) process.exit(21);
+          const response = await fetch('https://api.heygen.com/v3/voices?limit=1', {
+            headers: { 'X-Api-Key': key, 'Accept': 'application/json' }
+          });
+          console.log('HEYGEN_HTTP_STATUS=' + response.status);
+          if (!response.ok) process.exit(22);
+          NODE
+
+      - name: Publish error handler and HeyGen workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec n8n-main n8n publish:workflow --id=vitrineErrorHandlerV1
+          docker exec n8n-main n8n publish:workflow --id=vitrineHeyGenVideoV1
+
+      - name: Verify exported workflow state
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec n8n-main n8n export:workflow --id=vitrineHeyGenVideoV1 --output=/tmp/heygen-v1.json
+          docker exec n8n-main node - <<'NODE'
+          const fs = require('fs');
+          const data = JSON.parse(fs.readFileSync('/tmp/heygen-v1.json', 'utf8'));
+          const wf = Array.isArray(data) ? data[0] : data;
+          console.log('WORKFLOW_ID=' + wf.id);
+          console.log('WORKFLOW_NAME=' + wf.name);
+          console.log('WORKFLOW_ACTIVE=' + String(wf.active));
+          if (wf.id !== 'vitrineHeyGenVideoV1') process.exit(31);
+          NODE
+          docker exec n8n-main rm -f /tmp/heygen-v1.json
