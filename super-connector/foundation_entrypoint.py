@@ -10,7 +10,7 @@ import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
 from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.8-admin-access"
+main.VERSION = "0.3.9-safe-file-replace"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -273,6 +273,11 @@ def project_file_read_safe(project_id: str, path: str, max_bytes: int = 100000) 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def project_read_file(project_id: str, path: str, start_line: int = 1, end_line: int = 400) -> dict[str, Any]:
     return files_ops.read_lines(project_id, path, start_line, end_line)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_file_replace_safe(project_id: str, path: str, old: str, new: str, confirm: str = "") -> dict[str, Any]:
+    return files_ops.replace_exact(project_id, path, old, new, confirm)
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
