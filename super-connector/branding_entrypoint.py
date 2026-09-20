@@ -234,7 +234,7 @@ def _video_producer_brand(
 
 php_ops.video_producer_download = _video_producer_download_with_branding
 main.mcp.tool()(_video_producer_brand)
-main.VERSION = "0.3.13-admin-access"
+main.VERSION = "0.3.14-secret-broker"
 
 
 if __name__ == "__main__":
