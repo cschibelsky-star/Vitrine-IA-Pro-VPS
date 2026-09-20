@@ -10,7 +10,7 @@ import main
 import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
 from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
-main.VERSION = "0.3.9-safe-file-replace"
+main.VERSION = "0.3.10-secret-broker"
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
@@ -402,6 +402,40 @@ def project_runtime_secret_copy(source_project_id: str, target_project_id: str, 
         key,
         confirm,
     )
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_runtime_binding_list(project_id: str) -> dict[str, Any]:
+    return runtime_ops.runtime_binding_list(project_id)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_runtime_binding_configure(
+    target_project_id: str,
+    target_key: str,
+    source_project_id: str,
+    source_key: str = "",
+    enabled: bool = True,
+    confirm: str = "",
+) -> dict[str, Any]:
+    return runtime_ops.runtime_binding_configure(
+        target_project_id,
+        target_key,
+        source_project_id,
+        source_key,
+        enabled,
+        confirm,
+    )
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_runtime_binding_status(project_id: str) -> dict[str, Any]:
+    return runtime_ops.runtime_binding_status(project_id)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_runtime_binding_apply(project_id: str, confirm: str = "") -> dict[str, Any]:
+    return runtime_ops.runtime_binding_apply(project_id, confirm)
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})

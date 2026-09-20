@@ -110,7 +110,12 @@ def manifest_runtime_configure(project_id: str, runtime_allowed_keys: list[str],
         allowed = _safe_runtime_keys(runtime_allowed_keys)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
-    project["runtime"] = {"env_file": raw, "allowed_keys": allowed}
+    existing_runtime = project.get("runtime", {}) or {}
+    project["runtime"] = {
+        "env_file": raw,
+        "allowed_keys": allowed,
+        "bindings": dict(existing_runtime.get("bindings", {}) or {}),
+    }
     registry = main._registry_path(project_id)
     registry.parent.mkdir(parents=True, exist_ok=True)
     tmp = registry.with_suffix(".json.tmp")
@@ -294,6 +299,199 @@ def runtime_secret_copy(source_project_id: str, target_project_id: str, key: str
     )
 
     return audit_result
+
+
+def runtime_binding_list(project_id: str) -> dict[str, Any]:
+    try:
+        project = main._load_project(project_id)
+        bindings = dict((project.get("runtime", {}) or {}).get("bindings", {}) or {})
+        items: list[dict[str, Any]] = []
+        for target_key, binding in sorted(bindings.items()):
+            if not isinstance(binding, dict):
+                continue
+            try:
+                safe_target = _safe_runtime_key(target_key)
+                source_project_id = str(binding.get("source_project_id", "") or "").strip()
+                source_key = _safe_runtime_key(str(binding.get("source_key", safe_target) or safe_target))
+                enabled = bool(binding.get("enabled", True))
+            except ValueError:
+                continue
+            items.append({
+                "target_key": safe_target,
+                "source_project_id": source_project_id,
+                "source_key": source_key,
+                "enabled": enabled,
+            })
+        result = {"ok": True, "project_id": project_id, "bindings": items, "count": len(items)}
+    except (FileNotFoundError, ValueError, PermissionError, KeyError) as exc:
+        result = {"ok": False, "error": str(exc), "project_id": project_id}
+    main._audit("runtime.binding_list", {"project_id": project_id}, {"ok": result.get("ok"), "count": result.get("count", 0)})
+    return result
+
+
+def runtime_binding_configure(
+    target_project_id: str,
+    target_key: str,
+    source_project_id: str,
+    source_key: str = "",
+    enabled: bool = True,
+    confirm: str = "",
+) -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    try:
+        target = main._load_project(target_project_id)
+        source = main._load_project(source_project_id)
+        safe_target_key = _safe_runtime_key(target_key)
+        safe_source_key = _safe_runtime_key(source_key or safe_target_key)
+        target_allowed = _safe_runtime_keys(list((target.get("runtime", {}) or {}).get("allowed_keys", []) or []))
+        source_allowed = _safe_runtime_keys(list((source.get("runtime", {}) or {}).get("allowed_keys", []) or []))
+        if safe_target_key not in target_allowed:
+            return {"ok": False, "error": "target_runtime_key_not_allowed", "key": safe_target_key}
+        if safe_source_key not in source_allowed:
+            return {"ok": False, "error": "source_runtime_key_not_allowed", "key": safe_source_key}
+
+        runtime = dict(target.get("runtime", {}) or {})
+        bindings = dict(runtime.get("bindings", {}) or {})
+        if enabled:
+            bindings[safe_target_key] = {
+                "source_project_id": source_project_id,
+                "source_key": safe_source_key,
+                "enabled": True,
+            }
+            status = "configured"
+        else:
+            bindings.pop(safe_target_key, None)
+            status = "revoked"
+
+        runtime["bindings"] = bindings
+        target["runtime"] = runtime
+        registry = main._registry_path(target_project_id)
+        registry.parent.mkdir(parents=True, exist_ok=True)
+        tmp = registry.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(target, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, registry)
+        result = {
+            "ok": True,
+            "status": status,
+            "target_project_id": target_project_id,
+            "target_key": safe_target_key,
+            "source_project_id": source_project_id,
+            "source_key": safe_source_key,
+            "enabled": bool(enabled),
+        }
+    except (FileNotFoundError, ValueError, PermissionError, KeyError, OSError) as exc:
+        result = {"ok": False, "error": str(exc), "target_project_id": target_project_id}
+    main._audit(
+        "runtime.binding_configure",
+        {
+            "target_project_id": target_project_id,
+            "target_key": str(target_key or ""),
+            "source_project_id": source_project_id,
+            "source_key": str(source_key or ""),
+            "enabled": bool(enabled),
+        },
+        {"ok": result.get("ok"), "status": result.get("status")},
+    )
+    return result
+
+
+def runtime_binding_status(project_id: str) -> dict[str, Any]:
+    try:
+        target = main._load_project(project_id)
+        target_path = _runtime_path(target)
+        target_present = _parse_present_keys(target_path)
+        bindings = dict((target.get("runtime", {}) or {}).get("bindings", {}) or {})
+        items: list[dict[str, Any]] = []
+        for target_key, binding in sorted(bindings.items()):
+            if not isinstance(binding, dict):
+                continue
+            safe_target_key = _safe_runtime_key(target_key)
+            source_project_id = str(binding.get("source_project_id", "") or "").strip()
+            source_key = _safe_runtime_key(str(binding.get("source_key", safe_target_key) or safe_target_key))
+            enabled = bool(binding.get("enabled", True))
+            source_present = False
+            source_error = None
+            try:
+                source = main._load_project(source_project_id)
+                source_present = source_key in _parse_present_keys(_runtime_path(source))
+            except (FileNotFoundError, ValueError, PermissionError, KeyError):
+                source_error = "source_unavailable"
+            items.append({
+                "target_key": safe_target_key,
+                "source_project_id": source_project_id,
+                "source_key": source_key,
+                "enabled": enabled,
+                "source_present": source_present,
+                "target_present": safe_target_key in target_present,
+                "source_status": "ok" if source_error is None else source_error,
+            })
+        result = {"ok": True, "project_id": project_id, "bindings": items, "count": len(items)}
+    except (FileNotFoundError, ValueError, PermissionError, KeyError) as exc:
+        result = {"ok": False, "error": str(exc), "project_id": project_id}
+    main._audit("runtime.binding_status", {"project_id": project_id}, {"ok": result.get("ok"), "count": result.get("count", 0)})
+    return result
+
+
+def runtime_binding_apply(project_id: str, confirm: str = "") -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    try:
+        target = main._load_project(project_id)
+        target_allowed = _safe_runtime_keys(list((target.get("runtime", {}) or {}).get("allowed_keys", []) or []))
+        bindings = dict((target.get("runtime", {}) or {}).get("bindings", {}) or {})
+        applied: list[dict[str, Any]] = []
+
+        for target_key, binding in sorted(bindings.items()):
+            if not isinstance(binding, dict) or not bool(binding.get("enabled", True)):
+                continue
+            try:
+                safe_target_key = _safe_runtime_key(target_key)
+                source_project_id = str(binding.get("source_project_id", "") or "").strip()
+                safe_source_key = _safe_runtime_key(str(binding.get("source_key", safe_target_key) or safe_target_key))
+                if safe_target_key not in target_allowed:
+                    raise ValueError("target_runtime_key_not_allowed")
+                source = main._load_project(source_project_id)
+                source_allowed = _safe_runtime_keys(list((source.get("runtime", {}) or {}).get("allowed_keys", []) or []))
+                if safe_source_key not in source_allowed:
+                    raise ValueError("source_runtime_key_not_allowed")
+                secret = _read_secret(source, safe_source_key)
+                stored = runtime_secret_set(project_id, safe_target_key, secret, confirm="EXECUTAR")
+                applied.append({
+                    "target_key": safe_target_key,
+                    "source_project_id": source_project_id,
+                    "source_key": safe_source_key,
+                    "applied": bool(stored.get("ok") and stored.get("stored")),
+                    "error": None if stored.get("ok") else str(stored.get("error", "store_failed")),
+                })
+            except (FileNotFoundError, ValueError, PermissionError, KeyError, OSError) as exc:
+                applied.append({
+                    "target_key": str(target_key),
+                    "source_project_id": str(binding.get("source_project_id", "") or ""),
+                    "source_key": str(binding.get("source_key", target_key) or target_key),
+                    "applied": False,
+                    "error": str(exc),
+                })
+
+        result = {
+            "ok": all(item.get("applied") for item in applied) if applied else True,
+            "project_id": project_id,
+            "applied": applied,
+            "applied_count": sum(1 for item in applied if item.get("applied")),
+            "failed_count": sum(1 for item in applied if not item.get("applied")),
+        }
+    except (FileNotFoundError, ValueError, PermissionError, KeyError) as exc:
+        result = {"ok": False, "error": str(exc), "project_id": project_id}
+    main._audit(
+        "runtime.binding_apply",
+        {"project_id": project_id},
+        {
+            "ok": result.get("ok"),
+            "applied_count": result.get("applied_count", 0),
+            "failed_count": result.get("failed_count", 0),
+        },
+    )
+    return result
 
 
 def gemini_api_probe(project_id: str) -> dict[str, Any]:
