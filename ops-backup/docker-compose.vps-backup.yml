@@ -1,15 +1,17 @@
 services:
   vps_backup:
-    image: alpine:3.20
+    image: rclone/rclone:latest
     container_name: vitrine_vps_backup
-    command: ["/bin/sh", "/app/vps-backup.sh"]
+    entrypoint: ["/bin/sh"]
+    command: ["/app/vps-backup.sh"]
     environment:
-      BACKUP_ROOT: /backup
-      RETENTION_DAYS: "14"
+      STAGING_ROOT: /staging
+      REMOTE_ROOT: "vitrine-drive-crypt:Vitrine-IA-Pro/Backups/VPS"
       INTERVAL_SECONDS: "86400"
       SOURCE_ROOT: /source
     volumes:
       - /:/source:ro
-      - /srv/backups/vps:/backup:rw
+      - /srv/vitrine/backups/staging:/staging:rw
+      - /root/.config/rclone:/config/rclone:rw
       - ./vps-backup.sh:/app/vps-backup.sh:ro
     restart: unless-stopped
