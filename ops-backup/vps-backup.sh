@@ -1,62 +1,71 @@
 #!/bin/sh
 set -eu
 
-BACKUP_ROOT="${BACKUP_ROOT:-/backup}"
-RETENTION_DAYS="${RETENTION_DAYS:-14}"
+STAGING_ROOT="${STAGING_ROOT:-/staging}"
+REMOTE_ROOT="${REMOTE_ROOT:-vitrine-drive-crypt:Vitrine-IA-Pro/Backups/VPS}"
 INTERVAL_SECONDS="${INTERVAL_SECONDS:-86400}"
 SOURCE_ROOT="${SOURCE_ROOT:-/source}"
+ARCHIVE_NAME="vps-latest.tar.gz"
+CHECKSUM_NAME="${ARCHIVE_NAME}.sha256"
 
-mkdir -p "$BACKUP_ROOT"
+mkdir -p "$STAGING_ROOT"
 umask 077
 
 run_backup() {
-  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  base="vitrine-vps-${stamp}"
-  partial="${BACKUP_ROOT}/${base}.tar.gz.partial"
-  archive="${BACKUP_ROOT}/${base}.tar.gz"
-  checksum="${archive}.sha256"
+  archive="$STAGING_ROOT/$ARCHIVE_NAME"
+  partial="$STAGING_ROOT/$ARCHIVE_NAME.partial"
+  checksum="$STAGING_ROOT/$CHECKSUM_NAME"
 
-  echo "[$(date -u +%FT%TZ)] backup_start archive=${archive}"
+  echo "[$(date -u +%FT%TZ)] backup_start remote=$REMOTE_ROOT/$ARCHIVE_NAME"
 
-  rm -f "$partial"
+  rm -f "$partial" "$archive" "$checksum"
 
-  if ! tar -czf "$partial" \
-    -C "$SOURCE_ROOT" \
-    --exclude='./proc' \
-    --exclude='./sys' \
-    --exclude='./dev' \
-    --exclude='./run' \
-    --exclude='./tmp' \
-    --exclude='./mnt' \
-    --exclude='./media' \
-    --exclude='./var/lib/docker' \
-    --exclude='./srv/backups/vps' \
-    .; then
+  if ! tar -czf "$partial" -C "$SOURCE_ROOT" \
+    --exclude='srv/backups' \
+    --exclude='srv/vitrine/backups' \
+    --exclude='var/lib/docker' \
+    --exclude='var/lib/containerd' \
+    srv/projects \
+    srv/tvsumare \
+    srv/connectors \
+    opt/n8n-traefik \
+    srv/vitrine/docker/nginx/conf.d \
+    srv/vitrine/docker/nginx/html \
+    srv/vitrine/ssl \
+    etc; then
     rm -f "$partial"
     echo "[$(date -u +%FT%TZ)] backup_failed stage=archive" >&2
     return 1
   fi
 
-  if [ ! -s "$partial" ]; then
+  [ -s "$partial" ] || {
     rm -f "$partial"
     echo "[$(date -u +%FT%TZ)] backup_failed stage=empty_archive" >&2
     return 1
-  fi
+  }
 
   mv "$partial" "$archive"
+  sha256sum "$archive" | sed "s|$STAGING_ROOT/||" > "$checksum"
 
-  if ! sha256sum "$archive" > "$checksum"; then
-    rm -f "$checksum"
-    echo "[$(date -u +%FT%TZ)] backup_failed stage=checksum" >&2
+  if ! rclone copyto "$archive" "$REMOTE_ROOT/$ARCHIVE_NAME.uploading"; then
+    echo "[$(date -u +%FT%TZ)] backup_failed stage=upload_archive" >&2
     return 1
   fi
 
-  find "$BACKUP_ROOT" -maxdepth 1 -type f \
-    \( -name 'vitrine-vps-*.tar.gz' -o -name 'vitrine-vps-*.tar.gz.sha256' -o -name 'vitrine-vps-*.partial' \) \
-    -mtime "+${RETENTION_DAYS}" -delete
+  if ! rclone moveto "$REMOTE_ROOT/$ARCHIVE_NAME.uploading" "$REMOTE_ROOT/$ARCHIVE_NAME"; then
+    echo "[$(date -u +%FT%TZ)] backup_failed stage=publish_archive" >&2
+    return 1
+  fi
 
-  size="$(wc -c < "$archive" | tr -d ' ')"
-  echo "[$(date -u +%FT%TZ)] backup_ok archive=${archive} bytes=${size} checksum=${checksum}"
+  if ! rclone copyto "$checksum" "$REMOTE_ROOT/$CHECKSUM_NAME"; then
+    echo "[$(date -u +%FT%TZ)] backup_failed stage=upload_checksum" >&2
+    return 1
+  fi
+
+  remote_size="$(rclone size "$REMOTE_ROOT/$ARCHIVE_NAME" --json | tr -d '\n' || true)"
+  echo "[$(date -u +%FT%TZ)] backup_ok remote=$REMOTE_ROOT/$ARCHIVE_NAME verify=$remote_size"
+
+  rm -f "$archive" "$checksum"
 }
 
 if [ "${RUN_ONCE:-0}" = "1" ]; then
