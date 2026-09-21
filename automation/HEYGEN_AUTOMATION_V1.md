@@ -1,43 +1,34 @@
-# HeyGen Automation V1
+# Avatar Video Automation V1
 
-## Workflow
+## Canonical workflow
 
-`HEYGEN_VIDEO_GENERATOR V1`
+`VITRINE / HML / MEDIA / AVATAR_VIDEO / V1`
 
-Webhook: `POST /webhook/vitrine-heygen-video-v1`
+The Flow layer does not call HeyGen directly. It receives the integration event and delegates avatar-video domain processing to the Vitrine IA Pro Core.
 
-## Runtime secret
+## Flow
 
-The n8n runtime must contain `HEYGEN_API_KEY`. Never commit or print the value.
+`producer -> n8n -> Core /api/internal/media/avatar-video -> HeyGen -> Core callback/status/ledger -> downstream Flow`
+
+## n8n runtime secret
+
+The n8n runtime needs only the Core internal service credential used by this workflow:
+
+- `CENTRO_IA_INTERNAL_TOKEN`
+
+HeyGen credentials remain owned by Core and must not be copied into this workflow.
 
 ## Request contract
 
 Required:
-- `request_id`
+- `request_id` (idempotency/event key)
+- `project_id`
 - `avatar_id`
-- exactly one of `script`, `audio_url`, `audio_asset_id`
+- `script`
 
 Optional:
+- `company_id`
 - `voice_id`
 - `title`
-- `aspect_ratio` (default `9:16`)
-- `resolution` (default `1080p`)
-- `callback_url`
-- `motion_prompt`
 
-Example:
-
-```json
-{
-  "request_id": "vid_20260918_001",
-  "avatar_id": "YOUR_AVATAR_LOOK_ID",
-  "script": "Texto exato do vídeo.",
-  "voice_id": "OPTIONAL_PRIVATE_VOICE_ID",
-  "aspect_ratio": "9:16",
-  "resolution": "1080p"
-}
-```
-
-## Safety
-
-The workflow is imported as a draft. Publication requires a successful API credential smoke test and an HML request using non-sensitive synthetic content.
+The Core owns provider selection, HeyGen job persistence, callbacks and credit ledger.
