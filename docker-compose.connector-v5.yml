@@ -50,33 +50,10 @@ services:
       context: .
       dockerfile: connector-v5/Dockerfile
     container_name: vitrine_vps_backup_scheduler
-    command:
-      - python
-      - -c
-      - |
-        import os, time
-        from main import _vps_filesystem_backup_impl
-        interval = max(3600, int(os.getenv("VPS_BACKUP_INTERVAL_SECONDS", "86400")))
-        while True:
-            print(_vps_filesystem_backup_impl(confirm="EXECUTAR"), flush=True)
-            time.sleep(interval)
-    environment:
-      VPS_BACKUP_ROOT: /srv/vitrine/backups/vps
-      VPS_BACKUP_RETENTION_DAYS: 14
-      VPS_BACKUP_INTERVAL_SECONDS: 86400
-      OPS_AUDIT_LOG: /var/log/vitrine-ops-v5/audit.jsonl
-    volumes:
-      - /srv/projects:/srv/projects:ro
-      - /srv/tvsumare:/srv/tvsumare:ro
-      - /srv/connectors:/srv/connectors:ro
-      - /opt/n8n-traefik:/opt/n8n-traefik:ro
-      - /srv/vitrine/docker/nginx/conf.d:/srv/vitrine/docker/nginx/conf.d:ro
-      - /srv/vitrine/docker/nginx/html:/srv/vitrine/docker/nginx/html:ro
-      - /srv/vitrine/ssl:/srv/vitrine/ssl:ro
-      - /srv/vitrine/backups:/srv/vitrine/backups:rw
-      - /var/log/vitrine-ops-v5:/var/log/vitrine-ops-v5:rw
+    profiles: ["disabled"]
+    command: ["sh", "-lc", "echo backup_scheduler_disabled"]
     network_mode: "none"
-    restart: unless-stopped
+    restart: "no"
 
 networks:
   vitrine_net:
