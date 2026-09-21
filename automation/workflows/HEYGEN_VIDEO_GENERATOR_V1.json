@@ -1,6 +1,6 @@
 {
   "id": "vitrineHeyGenVideoV1",
-  "name": "HEYGEN_VIDEO_GENERATOR V1",
+  "name": "VITRINE / HML / MEDIA / AVATAR_VIDEO / V1",
   "nodes": [
     {
       "parameters": {
@@ -21,7 +21,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body ?? $json;\nconst required = ['request_id','avatar_id'];\nconst missing = required.filter((key) => !body[key]);\nif (missing.length) throw new Error('heygen.video.requested missing fields: ' + missing.join(', '));\n\nconst sources = ['script','audio_url','audio_asset_id'].filter((key) => body[key]);\nif (sources.length !== 1) throw new Error('Provide exactly one of script, audio_url, audio_asset_id');\n\nconst payload = {\n  type: 'avatar',\n  avatar_id: String(body.avatar_id),\n  title: body.title ?? ('Vitrine HeyGen ' + String(body.request_id)),\n  aspect_ratio: body.aspect_ratio ?? '9:16',\n  resolution: body.resolution ?? '1080p',\n  callback_id: String(body.request_id)\n};\n\nif (body.script) payload.script = String(body.script);\nif (body.voice_id) payload.voice_id = String(body.voice_id);\nif (body.audio_url) payload.audio_url = String(body.audio_url);\nif (body.audio_asset_id) payload.audio_asset_id = String(body.audio_asset_id);\nif (body.callback_url) payload.callback_url = String(body.callback_url);\nif (body.motion_prompt) payload.motion_prompt = String(body.motion_prompt);\n\nreturn [{json:{\n  request_id:String(body.request_id),\n  idempotency_key:String(body.request_id),\n  heygen_payload:payload\n}}];"
+        "jsCode": "const body = $json.body ?? $json;\nconst required = ['request_id','project_id','avatar_id','script'];\nconst missing = required.filter((key) => !body[key]);\nif (missing.length) throw new Error('heygen.video.requested missing fields: ' + missing.join(', '));\n\nconst payload = {\n  type: 'avatar',\n  avatar_id: String(body.avatar_id),\n  title: body.title ?? ('Vitrine HeyGen ' + String(body.request_id)),\n  aspect_ratio: body.aspect_ratio ?? '9:16',\n  resolution: body.resolution ?? '1080p',\n  callback_id: String(body.request_id)\n};\n\nif (body.script) payload.script = String(body.script);\nif (body.voice_id) payload.voice_id = String(body.voice_id);\nif (body.audio_url) payload.audio_url = String(body.audio_url);\nif (body.audio_asset_id) payload.audio_asset_id = String(body.audio_asset_id);\nif (body.callback_url) payload.callback_url = String(body.callback_url);\nif (body.motion_prompt) payload.motion_prompt = String(body.motion_prompt);\n\nreturn [{json:{\n  request_id:String(body.request_id),\n  project_id:String(body.project_id),\n  company_id:body.company_id ?? null,\n  idempotency_key:String(body.request_id),\n  heygen_payload:payload\n}}];"
       },
       "id": "heygen-validate-v1",
       "name": "Validate HeyGen Request",
@@ -35,13 +35,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.heygen.com/v3/videos",
+        "url": "https://core.hml.vitrineiapro.com.br/api/internal/media/avatar-video",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "X-Api-Key",
-              "value": "={{ $env.HEYGEN_API_KEY }}"
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.CENTRO_IA_INTERNAL_TOKEN }}"
+            },
+            {
+              "name": "X-Vitrine-Project",
+              "value": "={{ $json.project_id }}"
             },
             {
               "name": "Accept",
@@ -56,11 +60,11 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify($json.heygen_payload) }}",
+        "body": "={{ JSON.stringify({event_id:$json.request_id,project_id:$json.project_id,company_id:$json.company_id ?? null,title:$json.heygen_payload.title,script:$json.heygen_payload.script,avatar_id:$json.heygen_payload.avatar_id,voice_id:$json.heygen_payload.voice_id ?? null}) }}",
         "options": {}
       },
       "id": "heygen-create-video-v1",
-      "name": "Create HeyGen Video",
+      "name": "Request Avatar Video from Core",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -70,7 +74,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const response = $json;\nconst videoId = response.video_id ?? response.data?.video_id ?? response.id ?? response.data?.id ?? null;\nreturn [{json:{\n  ok:true,\n  accepted:true,\n  provider:'heygen',\n  video_id:videoId,\n  status:response.status ?? response.data?.status ?? 'submitted',\n  provider_response:response\n}}];"
+        "jsCode": "const response = $json;\nreturn [{json:{\n  ok: response.ok !== false,\n  accepted: true,\n  provider: response.provider ?? 'heygen',\n  job_id: response.job_id ?? null,\n  video_id: response.video_id ?? null,\n  status: response.status ?? 'accepted',\n  duplicate: response.duplicate ?? false\n}}];"
       },
       "id": "heygen-normalize-response-v1",
       "name": "Normalize HeyGen Response",
@@ -115,18 +119,7 @@
       "main": [
         [
           {
-            "node": "Create HeyGen Video",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Create HeyGen Video": {
-      "main": [
-        [
-          {
-            "node": "Normalize HeyGen Response",
+            "node": "Request Avatar Video from Core",
             "type": "main",
             "index": 0
           }
@@ -138,6 +131,17 @@
         [
           {
             "node": "Respond HeyGen Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Avatar Video from Core": {
+      "main": [
+        [
+          {
+            "node": "Normalize HeyGen Response",
             "type": "main",
             "index": 0
           }
