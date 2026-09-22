@@ -258,6 +258,20 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": {"studio_app", "studio_worker", "studio_scheduler"},
         "up": {"studio_app", "studio_web", "studio_worker", "studio_scheduler"},
     },
+    "vitrine-ai-social-enterprise-recovery-hml": {
+        "compose_files": {"compose.recovery-hml.yml"},
+        "services": {"recovery_app", "recovery_web", "recovery_worker"},
+        "run_once": set(),
+        "build": set(),
+        "up": {"recovery_app"},
+    },
+    "vitrine-social-offer-hml": {
+        "compose_files": {"compose.recovery-hml.yml"},
+        "services": {"recovery_app", "recovery_web", "recovery_worker"},
+        "run_once": set(),
+        "build": set(),
+        "up": {"recovery_app"},
+    },
     "tvsumare": {
         "compose_files": {"docker-compose.vps.yml"},
         "services": {"web"},
