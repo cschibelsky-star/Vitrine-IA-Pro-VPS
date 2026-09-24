@@ -4,10 +4,14 @@ import hashlib
 import ipaddress
 import json
 import os
+import re
 import shlex
 import shutil
+import socket
 import subprocess
 import tarfile
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -628,6 +632,147 @@ def project_file_patch_text(project_id: str, path: str, old: str, new: str, conf
             tmp.unlink()
     result = {"ok": True, "status": "patched", "path": relative, "backup": backup.name}
     _audit("project_file_patch_text", {"project_id": project_id, "path": relative}, result)
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_http_check(project_id: str, url: str, method: str = "GET") -> dict[str, Any]:
+    try:
+        _load_manifest(project_id)
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        return {"ok": False, "error": str(exc), "project_id": project_id}
+    value = str(url or "").strip()
+    if not value.startswith(("http://", "https://")):
+        return {"ok": False, "error": "invalid_url", "project_id": project_id}
+    verb = str(method or "GET").strip().upper()
+    if verb not in {"GET", "HEAD"}:
+        return {"ok": False, "error": "invalid_method", "method": verb}
+    request = urllib.request.Request(value, method=verb, headers={"User-Agent": "Vitrine-Ops-V5/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            result = {
+                "ok": True,
+                "project_id": project_id,
+                "status": response.status,
+                "final_url": response.geturl(),
+                "headers": dict(response.headers.items()),
+            }
+    except urllib.error.HTTPError as exc:
+        result = {
+            "ok": False,
+            "project_id": project_id,
+            "status": exc.code,
+            "final_url": exc.geturl(),
+            "headers": dict(exc.headers.items()),
+        }
+    except Exception as exc:
+        result = {"ok": False, "project_id": project_id, "error": type(exc).__name__}
+    _audit("project_http_check", {"project_id": project_id, "url": value, "method": verb}, {"ok": result.get("ok", False), "status": result.get("status"), "error": result.get("error")})
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_port_check(project_id: str, host: str, port: int) -> dict[str, Any]:
+    try:
+        _load_manifest(project_id)
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        return {"ok": False, "error": str(exc), "project_id": project_id}
+    value = str(host or "").strip()
+    if not re.fullmatch(r"(127\.0\.0\.1|localhost|[A-Za-z0-9.-]+)", value):
+        return {"ok": False, "error": "invalid_host", "host": value}
+    try:
+        port_value = int(port)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "invalid_port", "port": port}
+    if not 1 <= port_value <= 65535:
+        return {"ok": False, "error": "invalid_port", "port": port_value}
+    try:
+        with socket.create_connection((value, port_value), timeout=5):
+            result = {"ok": True, "project_id": project_id, "host": value, "port": port_value, "open": True}
+    except OSError as exc:
+        result = {"ok": True, "project_id": project_id, "host": value, "port": port_value, "open": False, "error": type(exc).__name__}
+    _audit("project_port_check", {"project_id": project_id, "host": value, "port": port_value}, {"ok": result.get("ok", False), "open": result.get("open")})
+    return result
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+def project_container_exec(
+    project_id: str,
+    container_name: str,
+    command: list[str],
+    workdir: str = "/var/www/html",
+    confirm: str = "",
+) -> dict[str, Any]:
+    try:
+        manifest, _, repository = _project_paths(project_id)
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        return {"ok": False, "error": str(exc), "project_id": project_id}
+
+    name = str(container_name or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name):
+        return {"ok": False, "error": "invalid_container_name", "container_name": name}
+
+    inspected = _run(["docker", "inspect", name], repository, timeout=30)
+    if not inspected.get("ok"):
+        return {"ok": False, "error": "container_not_found", "container_name": name}
+    try:
+        payload = json.loads(str(inspected.get("stdout") or "[]"))
+        item = payload[0] if isinstance(payload, list) and payload else {}
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "container_inspect_invalid", "container_name": name}
+
+    labels = item.get("Config", {}).get("Labels", {}) or {}
+    expected_project = str(manifest.get("docker", {}).get("project_name", "") or "").strip()
+    actual_project = str(labels.get("com.docker.compose.project", "") or "").strip()
+    if expected_project and actual_project and actual_project != expected_project:
+        return {
+            "ok": False,
+            "error": "container_project_mismatch",
+            "container_name": name,
+            "expected_project": expected_project,
+            "actual_project": actual_project,
+        }
+
+    cmd = [str(part) for part in (command or [])]
+    if not cmd or len(cmd) > 20 or any(not part or len(part) > 500 for part in cmd):
+        return {"ok": False, "error": "invalid_command"}
+    binary = cmd[0]
+    allowed_bins = {"php", "node", "npm", "composer", "cat", "ls", "find", "grep", "test"}
+    if binary not in allowed_bins:
+        return {"ok": False, "error": "command_not_allowed", "binary": binary}
+
+    mutating = False
+    if binary == "php" and len(cmd) >= 3 and cmd[1] == "artisan":
+        artisan = cmd[2]
+        allowed_artisan = {
+            "about", "route:list", "migrate:status",
+            "optimize:clear", "config:clear", "cache:clear",
+            "route:clear", "view:clear", "filament:assets",
+        }
+        if artisan not in allowed_artisan:
+            return {"ok": False, "error": "artisan_command_not_allowed", "command": artisan}
+        mutating = artisan in {"optimize:clear", "config:clear", "cache:clear", "route:clear", "view:clear", "filament:assets"}
+    elif binary in {"npm", "composer"}:
+        allowed_prefixes = {
+            ("npm", "test"),
+            ("npm", "run", "test"),
+            ("npm", "run", "build"),
+            ("composer", "validate"),
+            ("composer", "install"),
+        }
+        if not any(tuple(cmd[:len(prefix)]) == prefix for prefix in allowed_prefixes):
+            return {"ok": False, "error": "package_command_not_allowed"}
+        mutating = binary == "composer" and len(cmd) > 1 and cmd[1] == "install"
+
+    wd = str(workdir or "/var/www/html").strip()
+    if not wd.startswith("/") or ".." in Path(wd).parts:
+        return {"ok": False, "error": "invalid_workdir", "workdir": wd}
+    if mutating and confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+
+    result = _run(["docker", "exec", "-w", wd, name, *cmd], repository, timeout=1200)
+    result.update({"project_id": project_id, "container_name": name, "command": cmd, "workdir": wd, "mutating": mutating})
+    _audit("project_container_exec", {"project_id": project_id, "container_name": name, "command": cmd, "workdir": wd, "mutating": mutating}, {"ok": result.get("ok", False), "exit_code": result.get("exit_code")})
     return result
 
 
