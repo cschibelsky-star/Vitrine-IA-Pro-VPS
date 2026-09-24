@@ -796,8 +796,9 @@ def project_php_validate(project_id: str, operation: str = "tests_marketing") ->
     bootstrap = (
         "set -eu; "
         "mkdir -p /work/project; "
-        "cp -R /var/www/html/. /work/project/; "
-        "find /source -mindepth 1 -maxdepth 1 ! -name .git -exec cp -R {} /work/project/ \\;; "
+        "find /source -mindepth 1 -maxdepth 1 ! -name .git ! -name .env ! -name vendor -exec cp -R {} /work/project/ \\;; "
+        "cp -R /var/www/html/vendor /work/project/vendor; "
+        "mkdir -p /work/project/storage/framework/cache/data /work/project/storage/framework/sessions /work/project/storage/framework/views /work/project/bootstrap/cache; "
         "cd /work/project; "
         + commands[operation]
     )
