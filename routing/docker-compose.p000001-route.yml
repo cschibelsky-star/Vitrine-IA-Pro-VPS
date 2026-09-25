@@ -1,0 +1,28 @@
+services:
+  p000001_route:
+    image: alpine:3.20
+    container_name: vitrine_route_p000001_hml
+    restart: unless-stopped
+    command: ["sh","-c","exec sleep infinity"]
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - traefik
+    labels:
+      - "vitrine.route.id=p000001-hml"
+      - "traefik.enable=true"
+      - "traefik.docker.network=n8n-traefik_app_network"
+      - "traefik.http.routers.p000001-hml.rule=Host(`p000001.hml.vitrineiapro.com.br`) || Host(`jarvis.hml.vitrineiapro.com.br`)"
+      - "traefik.http.routers.p000001-hml.entrypoints=websecure"
+      - "traefik.http.routers.p000001-hml.tls=true"
+      - "traefik.http.routers.p000001-hml.tls.certresolver=le"
+      - "traefik.http.routers.p000001-hml.service=p000001-hml"
+      - "traefik.http.services.p000001-hml.loadbalancer.server.url=http://jarvis_hml_agent:8000"
+
+networks:
+  traefik:
+    external: true
+    name: n8n-traefik_app_network
