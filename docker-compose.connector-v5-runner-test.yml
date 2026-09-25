@@ -54,9 +54,10 @@ services:
         output = pathlib.Path("/results/php-runner-smoke.json")
         files = ["app/Marketing/Domain/Agents/AgentRegistry.php","app/Marketing/Domain/Agents/AgentType.php","app/Marketing/Domain/Approvals/ApprovalDecision.php","app/Marketing/Domain/Artifacts/ArtifactStatus.php","app/Marketing/Domain/Campaigns/CampaignStatus.php","app/Marketing/Domain/Contracts/CommonEnvelope.php","app/Marketing/Domain/Tasks/TaskStatus.php","app/Marketing/Infrastructure/Persistence/Models/Concerns/BelongsToCompany.php","app/Marketing/Infrastructure/Persistence/Models/MarketingAgentDefinition.php","app/Marketing/Infrastructure/Persistence/Models/MarketingApproval.php","app/Marketing/Infrastructure/Persistence/Models/MarketingArtifactVersion.php","app/Marketing/Infrastructure/Persistence/Models/MarketingAuditEvent.php","app/Marketing/Infrastructure/Persistence/Models/MarketingCampaign.php","app/Marketing/Infrastructure/Persistence/Models/MarketingCampaignTask.php","app/Marketing/Infrastructure/Persistence/Models/MarketingQaIssue.php","app/Marketing/Infrastructure/Persistence/Models/MarketingTaskDependency.php","config/marketing_agents.php","database/migrations/2026_09_01_190001_create_marketing_campaigns_table.php","database/migrations/2026_09_01_190002_create_marketing_agent_definitions_table.php","database/migrations/2026_09_01_190003_create_marketing_campaign_tasks_table.php","database/migrations/2026_09_01_190004_create_marketing_task_dependencies_table.php","database/migrations/2026_09_01_190005_create_marketing_artifact_versions_table.php","database/migrations/2026_09_01_190006_create_marketing_qa_issues_table.php","database/migrations/2026_09_01_190007_create_marketing_approvals_table.php","database/migrations/2026_09_01_190008_create_marketing_audit_events_table.php","tests/Unit/Marketing/AgentRegistryTest.php","tests/Unit/Marketing/CommonEnvelopeTest.php","tests/Unit/Marketing/MarketingMigrationContractTest.php","tests/Unit/Marketing/SchemaFilesTest.php"]
         try:
-            import main
-            lint_tool = main.project_php_lint
-            validate_tool = main.project_php_validate
+            import main_ext
+            core = main_ext.core
+            lint_tool = core.project_php_lint
+            validate_tool = core.project_php_validate
             lint_invoke = getattr(lint_tool, "fn", None) or getattr(lint_tool, "function", None) or getattr(lint_tool, "_fn", None)
             validate_invoke = getattr(validate_tool, "fn", None) or getattr(validate_tool, "function", None) or getattr(validate_tool, "_fn", None)
             if lint_invoke is None or validate_invoke is None:
@@ -146,3 +147,76 @@ services:
       timeout: 3s
       retries: 12
       start_period: 5s
+
+  v5_cutover_prepare:
+    image: vitrine-mcp-v5-php-runner-test-v59:local
+    container_name: vitrine_mcp_v5_cutover_prepare
+    command: ["sh", "-lc", "docker stop vitrine_mcp_v5 && docker rename vitrine_mcp_v5 vitrine_mcp_v5_rollback_20260924"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  v5_cutover_rollback:
+    image: vitrine-mcp-v5-php-runner-test-v59:local
+    container_name: vitrine_mcp_v5_cutover_rollback
+    command: ["sh", "-lc", "docker rm -f vitrine_mcp_v5 2>/dev/null || true; docker rename vitrine_mcp_v5_rollback_20260924 vitrine_mcp_v5; docker start vitrine_mcp_v5"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  social_runner_smoke:
+    image: vitrine-mcp-v5-php-runner-test-v59:local
+    container_name: vitrine_mcp_v5_social_runner_smoke
+    command:
+      - python
+      - -c
+      - |
+        import json
+        import sys
+        import main_ext
+        tool = main_ext.core.project_php_validate
+        invoke = getattr(tool, "fn", None) or getattr(tool, "function", None) or getattr(tool, "_fn", None)
+        if invoke is None:
+            raise RuntimeError("function_tool_callable_missing")
+        result = invoke("vitrine-ai-social-enterprise", "tests_laravel")
+        print(json.dumps(result, ensure_ascii=False), flush=True)
+        sys.exit(0 if result.get("ok") else 1)
+    environment:
+      PROJECT_MANIFEST_ROOT: /app/project-manifests
+      PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
+      PROJECT_PHP_RUNNER_IMAGE: vitrine-core-hml-app:latest
+      OPS_AUDIT_LOG: /tmp/audit.jsonl
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:ro
+      - /srv/projects:/srv/projects:ro
+      - /srv/tvsumare:/srv/tvsumare:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1
+    restart: "no"
