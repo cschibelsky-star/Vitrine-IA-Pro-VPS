@@ -1,16 +1,19 @@
 {
-  "id": "<cliente>-<produto>",
+  "id": "c######",
   "project_id": "<project_id>",
   "client_id": "<client_id>",
+  "customer_code": "c######",
   "product": "<produto>",
   "environment": "production",
-  "provisional_hostname": "<slug>.cliente.vitrineiapro.com.br",
+  "hostname": "c######.vitrineaipro.com.br",
+  "friendly_aliases": [],
   "custom_domains": [],
-  "primary_hostname": "<slug>.cliente.vitrineiapro.com.br",
+  "primary_hostname": "c######.vitrineaipro.com.br",
   "upstream": "<container_or_service>:80",
-  "health_path": "/health.php",
+  "health_path": "/health",
   "ssl": true,
-  "provisional_domain_policy": "alias",
+  "friendly_alias_policy": "optional",
+  "custom_domain_policy": "alias",
   "status": "planned",
-  "notes": "Quando o cliente fornecer domínio próprio, adicionar em custom_domains, promover para primary_hostname e definir provisional_domain_policy como alias ou redirect_301."
+  "notes": "O hostname técnico c######.vitrineaipro.com.br é imutável. Alias amigável e domínio próprio são opcionais e nunca substituem a identidade técnica."
 }
