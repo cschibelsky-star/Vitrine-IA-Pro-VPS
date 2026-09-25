@@ -272,6 +272,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": set(),
         "up": {"recovery_app"},
     },
+    "gerocadastro-whatsapp": {
+        "compose_files": {"infra/whatsapp/docker-compose.evolution-hml.yml"},
+        "services": {"evolution_postgres", "evolution_redis", "evolution_api", "evolution_manager"},
+        "run_once": set(),
+        "build": set(),
+        "up": {"evolution_postgres", "evolution_redis", "evolution_api", "evolution_manager"},
+    },
     "tvsumare": {
         "compose_files": {"docker-compose.vps.yml"},
         "services": {"web"},
