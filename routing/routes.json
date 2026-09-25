@@ -20,7 +20,7 @@
     "hml",
     "www"
   ],
-  "network": "vitrine_net",
+  "network": "n8n-traefik_app_network",
   "routes": [
     {
       "id": "tvsumare-hml",
@@ -29,12 +29,17 @@
       "environment": "homologation",
       "hostname": "tv.hml.vitrineiapro.com.br",
       "friendly_aliases": [],
-      "legacy_aliases": ["tv-hml.vitrineiapro.com.br"],
-      "upstream": "tvsumare_web:80",
+      "legacy_aliases": [
+        "tv-hml.vitrineiapro.com.br"
+      ],
+      "upstream": "http://tvsumare_web:80",
       "health_path": "/health.php",
       "ssl": true,
       "status": "active",
-      "legacy": true
+      "legacy": true,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
     },
     {
       "id": "cursos-ia-hml",
@@ -44,11 +49,14 @@
       "hostname": "cursos.hml.vitrineiapro.com.br",
       "friendly_aliases": [],
       "legacy_aliases": [],
-      "upstream": "cursos_ia_mvp_hml:80",
+      "upstream": "http://cursos_ia_mvp_hml:80",
       "health_path": "/health.php",
       "ssl": true,
       "status": "pending_dns_proxy",
-      "legacy": true
+      "legacy": true,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
     },
     {
       "id": "p000001-hml",
@@ -56,13 +64,20 @@
       "deployment_code": "p000001",
       "environment": "homologation",
       "hostname": "p000001.hml.vitrineiapro.com.br",
-      "friendly_aliases": ["jarvis.hml.vitrineiapro.com.br"],
-      "legacy_aliases": ["jarvis-hml.vitrineiapro.com.br"],
-      "upstream": "jarvis_hml_agent:8000",
+      "friendly_aliases": [
+        "jarvis.hml.vitrineiapro.com.br"
+      ],
+      "legacy_aliases": [
+        "jarvis-hml.vitrineiapro.com.br"
+      ],
+      "upstream": "http://jarvis_hml_agent:8000",
       "health_path": "/health",
       "ssl": true,
       "status": "pending_dns_proxy",
-      "legacy": false
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
     }
   ]
 }
