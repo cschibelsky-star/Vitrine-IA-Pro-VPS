@@ -1,27 +1,68 @@
 {
-  "version": 1,
+  "schema_version": "2.0",
+  "base_domains": {
+    "homologation": "hml.vitrineiapro.com.br",
+    "customer_root": "vitrineaipro.com.br"
+  },
+  "code_policy": {
+    "project_prefix": "p",
+    "customer_prefix": "c",
+    "width": 6,
+    "project_next": 2,
+    "customer_next": 1
+  },
+  "reserved_root_labels": [
+    "app",
+    "demo",
+    "cliente",
+    "core",
+    "factory",
+    "hml",
+    "www"
+  ],
+  "network": "vitrine_net",
   "routes": [
     {
-      "id": "tvsumare",
-      "hostname": "tv-hml.vitrineiapro.com.br",
-      "upstream": "http://tvsumare_web:80",
-      "network": "vitrine_net",
+      "id": "tvsumare-hml",
+      "project_id": "tvsumare",
+      "deployment_code": null,
       "environment": "homologation",
+      "hostname": "tv.hml.vitrineiapro.com.br",
+      "friendly_aliases": [],
+      "legacy_aliases": ["tv-hml.vitrineiapro.com.br"],
+      "upstream": "tvsumare_web:80",
+      "health_path": "/health.php",
       "ssl": true,
-      "cert_resolver": "le",
-      "entrypoint": "websecure",
-      "status": "pending_dns_proxy"
+      "status": "active",
+      "legacy": true
     },
     {
-      "id": "social-hml",
-      "hostname": "social.hml.vitrineiapro.com.br",
-      "upstream": "http://social_recovery_hml_web:80",
-      "network": "n8n-traefik_app_network",
+      "id": "cursos-ia-hml",
+      "project_id": "cursos-ia-mvp",
+      "deployment_code": null,
       "environment": "homologation",
+      "hostname": "cursos.hml.vitrineiapro.com.br",
+      "friendly_aliases": [],
+      "legacy_aliases": [],
+      "upstream": "cursos_ia_mvp_hml:80",
+      "health_path": "/health.php",
       "ssl": true,
-      "cert_resolver": "le",
-      "entrypoint": "websecure",
-      "status": "pending_dns_proxy"
+      "status": "pending_dns_proxy",
+      "legacy": true
+    },
+    {
+      "id": "p000001-hml",
+      "project_id": "jarvis",
+      "deployment_code": "p000001",
+      "environment": "homologation",
+      "hostname": "p000001.hml.vitrineiapro.com.br",
+      "friendly_aliases": ["jarvis.hml.vitrineiapro.com.br"],
+      "legacy_aliases": ["jarvis-hml.vitrineiapro.com.br"],
+      "upstream": "jarvis_hml_agent:8000",
+      "health_path": "/health",
+      "ssl": true,
+      "status": "pending_dns_proxy",
+      "legacy": false
     }
   ]
 }
