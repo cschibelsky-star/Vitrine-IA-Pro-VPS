@@ -19,8 +19,8 @@ def _replace_once(source: str, old: str, new: str, label: str) -> str:
 def apply(source: str) -> str:
     source = _replace_once(
         source,
-        'VERSION = "0.5.11-generic-laravel-test-runner"',
-        'VERSION = "0.5.11-marketing-live-homologation"',
+        'VERSION = "0.5.12-vps-filesystem-backup"',
+        'VERSION = "0.5.12-marketing-live-homologation"',
         "version",
     )
 
