@@ -17,23 +17,31 @@ def _replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def apply(source: str) -> str:
-    source = _replace_once(
-        source,
-        'VERSION = "0.5.11-generic-laravel-test-runner"',
-        'VERSION = "0.5.11-marketing-live-homologation"',
-        "version",
-    )
+    if 'VERSION = "0.5.11-generic-laravel-test-runner"' in source:
+        source = source.replace(
+            'VERSION = "0.5.11-generic-laravel-test-runner"',
+            'VERSION = "0.5.11-marketing-live-homologation"',
+            1,
+        )
+    elif 'VERSION = "0.5.12-vps-filesystem-backup"' in source:
+        source = source.replace(
+            'VERSION = "0.5.12-vps-filesystem-backup"',
+            'VERSION = "0.5.12-marketing-live-homologation"',
+            1,
+        )
+    elif 'marketing-live-homologation' not in source:
+        raise RuntimeError("marketing_live_patch_version_match_count:0")
 
     source = _replace_once(
         source,
         '''    commands = {
         "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
-        "tests_laravel": "php artisan test --colors=never",
+        "tests_laravel": "php vendor/bin/phpunit --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
     }''',
         '''    commands = {
         "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
-        "tests_laravel": "php artisan test --colors=never",
+        "tests_laravel": "php vendor/bin/phpunit --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
         "marketing_gemini_live": "php vendor/bin/phpunit tests/Unit/Marketing/MarketingGeminiLiveHomologationTest.php --colors=never",
     }''',
