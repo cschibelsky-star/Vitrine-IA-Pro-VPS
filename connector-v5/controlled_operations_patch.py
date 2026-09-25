@@ -25,12 +25,20 @@ def _replace_section(source: str, start: str, end: str, replacement: str, label:
 
 
 def apply(source: str) -> str:
-    source = _replace_once(
-        source,
-        'VERSION = "0.5.11-marketing-live-homologation"',
-        'VERSION = "0.5.14-runtime-secret-import"',
-        "version",
-    )
+    if 'VERSION = "0.5.11-marketing-live-homologation"' in source:
+        source = source.replace(
+            'VERSION = "0.5.11-marketing-live-homologation"',
+            'VERSION = "0.5.14-runtime-secret-import"',
+            1,
+        )
+    elif 'VERSION = "0.5.12-marketing-live-homologation"' in source:
+        source = source.replace(
+            'VERSION = "0.5.12-marketing-live-homologation"',
+            'VERSION = "0.5.14-runtime-secret-import"',
+            1,
+        )
+    elif 'VERSION = "0.5.14-runtime-secret-import"' not in source:
+        raise RuntimeError("controlled_operations_patch_version_match_count:0")
 
     runtime_import_marker = '@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_laravel_migration_status('
     runtime_import_block = r'''
