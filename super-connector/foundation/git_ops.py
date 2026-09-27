@@ -43,6 +43,74 @@ def diff(project_id: str, ref: str = "HEAD") -> dict[str, Any]:
     return {**result, "project_id": project_id, "ref": target}
 
 
+def checkout(project_id: str, branch: str, confirm: str = "") -> dict[str, Any]:
+    auth = authorize("git_checkout", confirm=confirm)
+    if not auth.get("ok"):
+        return auth
+
+    project = main._load_project(project_id)
+    repository = main._repository(project)
+    target = main._safe_branch(branch)
+
+    status = main._run(["git", "status", "--porcelain"], repository, timeout=30)
+    if not status.get("ok"):
+        return {"ok": False, "error": "git_status_failed", "detail": status}
+    if str(status.get("stdout", "")).strip():
+        return {"ok": False, "error": "dirty_tree_checkout_blocked", "project_id": project_id}
+
+    current_result = main._run(["git", "branch", "--show-current"], repository, timeout=30)
+    if not current_result.get("ok"):
+        return {"ok": False, "error": "current_branch_check_failed", "detail": current_result}
+    current = str(current_result.get("stdout", "")).strip()
+    if not current:
+        return {"ok": False, "error": "detached_head_not_supported", "project_id": project_id}
+
+    fetch = main._run(["git", "fetch", "--prune", "origin"], repository, timeout=180)
+    if not fetch.get("ok"):
+        return {"ok": False, "error": "git_fetch_failed", "detail": fetch}
+
+    target_ref = f"refs/remotes/origin/{target}"
+    target_check = main._run(["git", "rev-parse", "--verify", target_ref], repository, timeout=30)
+    if not target_check.get("ok"):
+        return {"ok": False, "error": "target_remote_branch_not_found", "project_id": project_id, "target_branch": target}
+
+    source_sha_result = main._run(["git", "rev-parse", "HEAD"], repository, timeout=30)
+    if not source_sha_result.get("ok"):
+        return {"ok": False, "error": "source_head_unavailable", "detail": source_sha_result}
+    source_sha = str(source_sha_result.get("stdout", "")).strip()
+
+    ancestor = main._run(["git", "merge-base", "--is-ancestor", source_sha, f"origin/{target}"], repository, timeout=30)
+    if ancestor.get("exit_code") != 0:
+        return {
+            "ok": False,
+            "error": "target_does_not_contain_current_head",
+            "project_id": project_id,
+            "current_branch": current,
+            "target_branch": target,
+            "current_head": source_sha,
+        }
+
+    result = main._run(["git", "checkout", "-B", target, f"origin/{target}"], repository, timeout=120)
+    if not result.get("ok"):
+        return {"ok": False, "error": "git_checkout_failed", "detail": result}
+
+    head_result = main._run(["git", "rev-parse", "HEAD"], repository, timeout=30)
+    response = {
+        **result,
+        "project_id": project_id,
+        "previous_branch": current,
+        "target_branch": target,
+        "head": str(head_result.get("stdout", "")).strip() if head_result.get("ok") else "",
+        "preserved": True,
+    }
+    main._audit(
+        "git.checkout",
+        {"project_id": project_id, "previous_branch": current, "target_branch": target},
+        {"ok": response.get("ok"), "head": response.get("head")},
+    )
+    return response
+
+
 def reconcile(project_id: str, branch: str = "", confirm: str = "") -> dict[str, Any]:
     auth = authorize("git_reconcile", confirm=confirm)
     if not auth.get("ok"):

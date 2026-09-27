@@ -19,6 +19,7 @@ class PolicyRule:
 
 RULES: dict[str, PolicyRule] = {
     "git_reconcile": PolicyRule("git_reconcile", CONTROLLED),
+    "git_checkout": PolicyRule("git_checkout", CONTROLLED, preservation_required=True),
     "compose_build": PolicyRule("compose_build", CONTROLLED),
     "compose_up": PolicyRule("compose_up", CONTROLLED),
     "git_reset_hard": PolicyRule("git_reset_hard", CRITICAL, preservation_required=True),

@@ -370,6 +370,11 @@ def git_diff(project_id: str, ref: str = "HEAD") -> dict[str, Any]:
 
 
 @main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def git_checkout(project_id: str, branch: str, confirm: str = "") -> dict[str, Any]:
+    return git_ops.checkout(project_id, branch, confirm)
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def git_reconcile(project_id: str, branch: str = "", confirm: str = "") -> dict[str, Any]:
     return git_ops.reconcile(project_id, branch, confirm)
 
