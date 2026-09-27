@@ -63,6 +63,7 @@ services:
       SUPER_CANDIDATE_IMAGE: vitrine-super-centro-operacional-candidate-super_connector:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ..:/source:ro
     restart: "no"
     network_mode: none
     security_opt:
