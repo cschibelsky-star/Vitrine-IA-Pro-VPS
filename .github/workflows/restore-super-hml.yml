@@ -1,0 +1,121 @@
+name: Restore Super HML
+
+on:
+  push:
+    branches:
+      - feature/super-centro-operacional-v0.1
+    paths:
+      - .github/workflows/restore-super-hml.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: super-hml-restore
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Controlled Super restore
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    env:
+      OPS_REPO_DIR: /srv/projects/vitrine-super-centro-operacional-candidate/repository
+      DEPLOY_BRANCH: feature/super-centro-operacional-v0.1
+      COMPOSE_FILE: super-connector/docker-compose.yml
+      DOCKER_PROJECT: vitrine-super-centro-operacional-candidate
+      SERVICE: super_connector
+      CONTAINER: vitrine_super_connector_candidate
+      IMAGE_TAG: vitrine-super-centro-operacional-candidate-super_connector:latest
+
+    steps:
+      - name: Checkout canonical Super branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/super-centro-operacional-v0.1
+          fetch-depth: 1
+          clean: true
+
+      - name: Capture known-good image
+        shell: bash
+        run: |
+          set -euo pipefail
+          OLD_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$CONTAINER")"
+          test -n "$OLD_IMAGE_ID"
+          KNOWN_GOOD_TAG="vitrine-super-centro-operacional-candidate-super_connector:known-good-$GITHUB_RUN_ID"
+          docker image tag "$OLD_IMAGE_ID" "$KNOWN_GOOD_TAG"
+          echo "OLD_IMAGE_ID=$OLD_IMAGE_ID" >> "$GITHUB_ENV"
+          echo "KNOWN_GOOD_TAG=$KNOWN_GOOD_TAG" >> "$GITHUB_ENV"
+
+      - name: Build corrected Super image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" build "$SERVICE"
+
+      - name: Sync operational source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$OPS_REPO_DIR"
+          git fetch origin "$DEPLOY_BRANCH"
+          git reset --hard "origin/$DEPLOY_BRANCH"
+
+      - name: Recreate only Super connector
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$OPS_REPO_DIR"
+          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
+
+      - name: Wait for healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            STATE="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER" 2>/dev/null || true)"
+            echo "health[$i]=$STATE"
+            if [ "$STATE" = "healthy" ]; then
+              exit 0
+            fi
+            if [ "$STATE" = "unhealthy" ] || [ "$STATE" = "exited" ] || [ "$STATE" = "dead" ]; then
+              break
+            fi
+            sleep 5
+          done
+          docker logs --tail 100 "$CONTAINER" || true
+          exit 20
+
+      - name: Validate MCP route
+        shell: bash
+        run: |
+          set -euo pipefail
+          HTTP_CODE="$(curl -sS -o /tmp/super-mcp-probe.out -w '%{http_code}' http://127.0.0.1:8870/mcp || true)"
+          echo "MCP HTTP code: $HTTP_CODE"
+          if [ -z "$HTTP_CODE" ] || [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "404" ]; then
+            cat /tmp/super-mcp-probe.out 2>/dev/null || true
+            exit 21
+          fi
+          NEW_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$CONTAINER")"
+          echo "NEW_IMAGE_ID=$NEW_IMAGE_ID" >> "$GITHUB_ENV"
+
+      - name: Roll back automatically on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$KNOWN_GOOD_TAG" ]; then
+            exit 31
+          fi
+          docker image tag "$KNOWN_GOOD_TAG" "$IMAGE_TAG"
+          cd "$OPS_REPO_DIR"
+          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
+
+      - name: Restoration summary
+        if: always()
+        shell: bash
+        run: |
+          echo "Old image: $OLD_IMAGE_ID"
+          echo "New image: $NEW_IMAGE_ID"
+          docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER" || true
