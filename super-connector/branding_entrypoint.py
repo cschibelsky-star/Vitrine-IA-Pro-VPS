@@ -238,4 +238,4 @@ main.VERSION = "0.3.14-secret-broker"
 
 
 if __name__ == "__main__":
-    main.mcp.run(transport="http", host="0.0.0.0", port=8000)
+    main.mcp.run(transport="http", host="0.0.0.0", port=8000, path="/mcp")

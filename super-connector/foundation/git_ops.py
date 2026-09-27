@@ -81,21 +81,6 @@ def reconcile(project_id: str, branch: str = "", confirm: str = "") -> dict[str,
         return {"ok": False, "error": "source_head_unavailable", "detail": source_sha_result}
     source_sha = str(source_sha_result.get("stdout", "")).strip()
 
-    preserve = main._run(
-        ["git", "push", "origin", f"{source_sha}:refs/heads/{current}"],
-        repository,
-        timeout=300,
-    )
-    if not preserve.get("ok"):
-        return {
-            "ok": False,
-            "error": "source_branch_preservation_failed",
-            "project_id": project_id,
-            "current_branch": current,
-            "target_branch": target,
-            "detail": preserve,
-        }
-
     target_ref = f"refs/remotes/origin/{target}"
     target_check = main._run(["git", "rev-parse", "--verify", target_ref], repository, timeout=30)
     if not target_check.get("ok"):
@@ -152,6 +137,21 @@ def reconcile(project_id: str, branch: str = "", confirm: str = "") -> dict[str,
             {"ok": response.get("ok"), "exit_code": response.get("exit_code")},
         )
         return response
+
+    preserve = main._run(
+        ["git", "push", "origin", f"{source_sha}:refs/heads/{current}"],
+        repository,
+        timeout=300,
+    )
+    if not preserve.get("ok"):
+        return {
+            "ok": False,
+            "error": "source_branch_preservation_failed",
+            "project_id": project_id,
+            "current_branch": current,
+            "target_branch": target,
+            "detail": preserve,
+        }
 
     ancestor = main._run(
         ["git", "merge-base", "--is-ancestor", f"origin/{target}", source_sha],

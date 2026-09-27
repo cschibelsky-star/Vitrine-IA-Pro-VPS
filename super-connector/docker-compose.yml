@@ -52,17 +52,18 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  super_emergency:
+  super_repair_once:
     build:
       context: ..
       dockerfile: super-connector/Dockerfile.emergency
-    container_name: vitrine_super_emergency_executor_backup
+    container_name: vitrine_super_repair_once_20260927
     command: ["replace-super", "EXECUTAR"]
     environment:
       SUPER_CANDIDATE_CONTAINER: vitrine_super_connector_candidate
       SUPER_CANDIDATE_IMAGE: vitrine-super-centro-operacional-candidate-super_connector:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ..:/source:ro
     restart: "no"
     network_mode: none
     security_opt:
