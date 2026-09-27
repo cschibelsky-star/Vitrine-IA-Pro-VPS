@@ -46,6 +46,11 @@ SENSITIVE_ENV_MARKERS = (
     "CREDENTIAL",
 )
 SAFE_CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+URL_CREDENTIAL_RE = re.compile(r"://[^/\s?#@]*:[^/\s?#@]+@")
+DSN_CREDENTIAL_RE = re.compile(
+    r"(?:^|[?;&\s])[A-Za-z0-9_]*(?:password|passwd|secret|token|api_?key|private_key|access_key|auth|credential)[A-Za-z0-9_]*\s*=",
+    re.IGNORECASE,
+)
 
 
 class ProjectRequest(BaseModel):
@@ -140,11 +145,11 @@ def load_manifest(project_id: str) -> dict[str, Any]:
     return data
 
 
-def run(command: list[str], cwd: Path) -> dict[str, Any]:
+def run(command: list[str], cwd: Path | None, *, full_stdout: bool = False) -> dict[str, Any]:
     try:
         proc = subprocess.run(
             command,
-            cwd=str(cwd),
+            cwd=str(cwd) if cwd is not None else None,
             text=True,
             capture_output=True,
             timeout=TIMEOUT,
@@ -154,17 +159,19 @@ def run(command: list[str], cwd: Path) -> dict[str, Any]:
         return {
             "ok": proc.returncode == 0,
             "exit_code": proc.returncode,
-            "stdout": proc.stdout[-50000:],
+            "stdout": proc.stdout if full_stdout else proc.stdout[-50000:],
             "stderr": proc.stderr[-20000:],
         }
     except subprocess.TimeoutExpired:
         return {"ok": False, "exit_code": 124, "stdout": "", "stderr": "timeout"}
 
 
-def run_json(command: list[str], cwd: Path) -> Any:
-    result = run(command, cwd)
+def run_json(command: list[str]) -> Any:
+    result = run(command, None, full_stdout=True)
     if not result["ok"]:
-        raise HTTPException(status_code=502, detail={"command_failed": result})
+        raise HTTPException(status_code=502, detail={"command_failed": {
+            "exit_code": result["exit_code"], "stderr": result["stderr"],
+        }})
     try:
         return json.loads(result["stdout"])
     except json.JSONDecodeError as exc:
@@ -212,7 +219,12 @@ def redact_container_env(env_items: list[str]) -> dict[str, str]:
         if not separator:
             continue
         upper = key.upper()
-        safe[key] = "***REDACTED***" if any(marker in upper for marker in SENSITIVE_ENV_MARKERS) else value
+        sensitive = (
+            any(marker in upper for marker in SENSITIVE_ENV_MARKERS)
+            or URL_CREDENTIAL_RE.search(value)
+            or DSN_CREDENTIAL_RE.search(value)
+        )
+        safe[key] = "***REDACTED***" if sensitive else value
     return safe
 
 
@@ -346,9 +358,8 @@ def project_status(project_id: str) -> dict[str, Any]:
 @router.post("/docker/container-info", dependencies=[Depends(auth)])
 def project_docker_container_info(req: ProjectContainerRequest) -> dict[str, Any]:
     manifest = load_manifest(req.project_id)
-    root, _, _ = project_paths(manifest)
     name = validate_container_name(req.container_name)
-    inspected = run_json(["docker", "inspect", name], root)
+    inspected = run_json(["docker", "inspect", name])
     if not isinstance(inspected, list) or not inspected:
         raise HTTPException(status_code=404, detail="container_not_found")
 
@@ -381,9 +392,8 @@ def project_docker_container_info(req: ProjectContainerRequest) -> dict[str, Any
 @router.post("/docker/container-env-safe", dependencies=[Depends(auth)])
 def project_docker_container_env_safe(req: ProjectContainerRequest) -> dict[str, Any]:
     manifest = load_manifest(req.project_id)
-    root, _, _ = project_paths(manifest)
     name = validate_container_name(req.container_name)
-    inspected = run_json(["docker", "inspect", name], root)
+    inspected = run_json(["docker", "inspect", name])
     if not isinstance(inspected, list) or not inspected:
         raise HTTPException(status_code=404, detail="container_not_found")
 
