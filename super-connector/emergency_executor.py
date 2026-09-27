@@ -61,6 +61,20 @@ def _candidate_run(image: str) -> list[str]:
 def _replace_super(confirm: str) -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    built = subprocess.run(
+        ["docker", "build", "-f", "/source/super-connector/Dockerfile", "-t", CANDIDATE_IMAGE, "/source"],
+        text=True,
+        capture_output=True,
+        timeout=900,
+        check=False,
+    )
+    if built.returncode != 0:
+        return {
+            "ok": False,
+            "error": "candidate_build_failed",
+            "stdout": built.stdout[-12000:],
+            "stderr": built.stderr[-12000:],
+        }
     previous = subprocess.run(["docker", "inspect", "--format", "{{.Image}}", CANDIDATE], text=True, capture_output=True, timeout=30, check=False)
     previous_image = previous.stdout.strip() if previous.returncode == 0 else ""
     subprocess.run(["docker", "stop", "--time", "20", CANDIDATE], text=True, capture_output=True, timeout=60, check=False)
