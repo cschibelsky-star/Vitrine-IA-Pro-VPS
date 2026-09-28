@@ -271,10 +271,59 @@ def git_commit(project_id: str, message: str, confirm: str = "") -> dict[str, An
     commit_message = str(message or "").strip()
     if not commit_message:
         return {"ok": False, "error": "commit_message_required"}
+
     project = _load_project(project_id)
     repository = _repository(project)
+    official = _safe_branch(str(project.get("repository", {}).get("branch", "main")))
+
+    current = _run(["git", "branch", "--show-current"], repository, timeout=30)
+    current_branch = str(current.get("stdout", "")).strip()
+    if current_branch != official:
+        result = {
+            "ok": False,
+            "error": "runtime_branch_not_official",
+            "project_id": project_id,
+            "current_branch": current_branch or "detached",
+            "official_branch": official,
+        }
+        _audit("git.commit", {"project_id": project_id, "message": commit_message}, result)
+        return result
+
+    fetch = _run(
+        ["git", "fetch", "--prune", "origin", f"refs/heads/{official}:refs/remotes/origin/{official}"],
+        repository,
+        timeout=300,
+    )
+    if not fetch.get("ok"):
+        return {"ok": False, "error": "fetch_failed_before_commit", "detail": fetch}
+
+    counts = _run(
+        ["git", "rev-list", "--left-right", "--count", f"HEAD...origin/{official}"],
+        repository,
+        timeout=30,
+    )
+    if not counts.get("ok"):
+        return {"ok": False, "error": "git_divergence_unknown", "detail": counts}
+    try:
+        ahead_s, behind_s = str(counts.get("stdout", "")).strip().split()
+        ahead, behind = int(ahead_s), int(behind_s)
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "git_divergence_parse_failed", "detail": counts}
+
+    if ahead != 0 or behind != 0:
+        result = {
+            "ok": False,
+            "error": "runtime_not_synchronized_before_commit",
+            "project_id": project_id,
+            "official_branch": official,
+            "ahead": ahead,
+            "behind": behind,
+        }
+        _audit("git.commit", {"project_id": project_id, "message": commit_message}, result)
+        return result
+
     result = _run(["git", "commit", "-m", commit_message], repository, timeout=120)
-    _audit("git.commit", {"project_id": project_id, "message": commit_message}, {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
+    _audit("git.commit", {"project_id": project_id, "message": commit_message, "official_branch": official}, {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
     return result
 
 
@@ -352,20 +401,72 @@ def git_preserve(project_id: str, include_untracked_paths: list[str] | None = No
 def git_push(project_id: str, branch: str = "", confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+
     project = _load_project(project_id)
     repository = _repository(project)
-    target = _safe_branch(branch or str(project.get("repository", {}).get("branch", "main")))
+    official = _safe_branch(str(project.get("repository", {}).get("branch", "main")))
+    target = _safe_branch(branch or official)
+
+    if target != official:
+        return {
+            "ok": False,
+            "error": "runtime_push_target_not_official",
+            "project_id": project_id,
+            "requested": target,
+            "official_branch": official,
+        }
+
     status = _run(["git", "status", "--porcelain=v1"], repository, timeout=30)
     if not status.get("ok"):
         return {"ok": False, "error": "git_status_failed", "detail": status}
     if str(status.get("stdout", "")).strip():
         return {"ok": False, "error": "dirty_tree_push_blocked"}
+
     current = _run(["git", "branch", "--show-current"], repository, timeout=30)
     current_branch = str(current.get("stdout", "")).strip()
-    if current_branch != target:
-        return {"ok": False, "error": "branch_mismatch", "current": current_branch, "requested": target}
-    result = _run(["git", "push", "-u", "origin", target], repository, timeout=300)
-    _audit("git.push", {"project_id": project_id, "branch": target}, {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
+    if current_branch != official:
+        return {
+            "ok": False,
+            "error": "runtime_branch_not_official",
+            "current": current_branch or "detached",
+            "official_branch": official,
+        }
+
+    fetch = _run(
+        ["git", "fetch", "--prune", "origin", f"refs/heads/{official}:refs/remotes/origin/{official}"],
+        repository,
+        timeout=300,
+    )
+    if not fetch.get("ok"):
+        return {"ok": False, "error": "fetch_failed_before_push", "detail": fetch}
+
+    counts = _run(
+        ["git", "rev-list", "--left-right", "--count", f"HEAD...origin/{official}"],
+        repository,
+        timeout=30,
+    )
+    if not counts.get("ok"):
+        return {"ok": False, "error": "git_divergence_unknown", "detail": counts}
+    try:
+        ahead_s, behind_s = str(counts.get("stdout", "")).strip().split()
+        ahead, behind = int(ahead_s), int(behind_s)
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "git_divergence_parse_failed", "detail": counts}
+
+    if behind > 0:
+        result = {
+            "ok": False,
+            "error": "remote_advanced_reconcile_required",
+            "project_id": project_id,
+            "official_branch": official,
+            "ahead": ahead,
+            "behind": behind,
+        }
+        _audit("git.push", {"project_id": project_id, "branch": official}, result)
+        return result
+
+    result = _run(["git", "push", "-u", "origin", official], repository, timeout=300)
+    _audit("git.push", {"project_id": project_id, "branch": official, "ahead": ahead, "behind": behind}, {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
     return result
 
 
