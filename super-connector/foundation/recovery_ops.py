@@ -445,6 +445,102 @@ def backup_recovery_restore_file(archive_name: str, member_path: str, destinatio
         }
 
 
+def hml_route_provision(
+    project_id: str,
+    upstream: str,
+    health_path: str = "/health",
+    friendly: str = "",
+    confirm: str = "",
+) -> dict[str, Any]:
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    try:
+        safe_project = main._safe_project_id(project_id)
+        upstream_value = str(upstream or "").strip()
+        allowed_upstream = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-:"
+        if not upstream_value or any(ch not in allowed_upstream for ch in upstream_value):
+            raise ValueError("invalid_upstream")
+        if ":" not in upstream_value:
+            raise ValueError("upstream_port_required")
+        host_part, port_part = upstream_value.rsplit(":", 1)
+        if not host_part or not port_part.isdigit() or not (1 <= int(port_part) <= 65535):
+            raise ValueError("invalid_upstream")
+        health_value = str(health_path or "/health").strip()
+        if not health_value.startswith("/") or ".." in health_value.split("/") or len(health_value) > 200:
+            raise ValueError("invalid_health_path")
+        friendly_value = str(friendly or "").strip()
+        repository = _routing_repository()
+        script = repository / "routing" / "provision_route.py"
+        if not script.is_file():
+            raise FileNotFoundError("route_provisioner_missing")
+
+        branch_result = main._run(["git", "branch", "--show-current"], repository, timeout=30)
+        branch = str(branch_result.get("stdout", "")).strip()
+        if not branch_result.get("ok") or not branch:
+            return {"ok": False, "error": "routing_branch_unavailable"}
+
+        dirty = main._run(["git", "status", "--porcelain=v1"], repository, timeout=30)
+        if not dirty.get("ok"):
+            return {"ok": False, "error": "routing_status_failed", "detail": dirty}
+        if str(dirty.get("stdout", "")).strip():
+            return {"ok": False, "error": "routing_repository_dirty", "detail": dirty.get("stdout", "")}
+
+        fetch = main._run(["git", "fetch", "origin", branch], repository, timeout=180)
+        if not fetch.get("ok"):
+            return {"ok": False, "error": "routing_fetch_failed", "detail": fetch}
+
+        relation = main._run(["git", "rev-list", "--left-right", "--count", f"HEAD...origin/{branch}"], repository, timeout=30)
+        if not relation.get("ok"):
+            return {"ok": False, "error": "routing_compare_failed", "detail": relation}
+        counts = str(relation.get("stdout", "")).strip().split()
+        if len(counts) != 2 or counts != ["0", "0"]:
+            return {"ok": False, "error": "routing_repository_not_synced", "ahead_behind": counts}
+
+        command = [
+            "python3", str(script),
+            "--kind", "project",
+            "--project-id", safe_project,
+            "--upstream", upstream_value,
+            "--health-path", health_value,
+        ]
+        if friendly_value:
+            command.extend(["--friendly", friendly_value])
+
+        provisioned = main._run(command, repository, timeout=120)
+        if not provisioned.get("ok"):
+            return {"ok": False, "error": "route_provision_failed", "detail": provisioned}
+
+        stdout_lines = [line.strip() for line in str(provisioned.get("stdout", "")).splitlines() if line.strip()]
+        try:
+            route = json.loads(stdout_lines[-1]) if stdout_lines else {}
+        except json.JSONDecodeError:
+            route = {}
+        if not route.get("id"):
+            return {"ok": False, "error": "route_provision_output_invalid", "detail": provisioned}
+
+        staged = main._run(["git", "add", "--", "routing/routes.json"], repository, timeout=30)
+        if not staged.get("ok"):
+            return {"ok": False, "error": "routing_stage_failed", "route": route, "detail": staged}
+
+        committed = main._run(["git", "commit", "-m", f"routing: provision {route['id']}"], repository, timeout=60)
+        if not committed.get("ok"):
+            return {"ok": False, "error": "routing_commit_failed", "route": route, "detail": committed}
+
+        pushed = main._run(["git", "push", "origin", branch], repository, timeout=180)
+        if not pushed.get("ok"):
+            return {"ok": False, "error": "routing_push_failed", "route": route, "detail": pushed}
+
+        return {
+            "ok": True,
+            "status": "planned",
+            "route": route,
+            "branch": branch,
+            "commit": str(committed.get("stdout", "")).strip(),
+        }
+    except (FileNotFoundError, ValueError, PermissionError, OSError, json.JSONDecodeError) as exc:
+        return {"ok": False, "error": str(exc), "project_id": str(project_id or "")}
+
+
 def hml_route_inspect(route_id: str) -> dict[str, Any]:
     try:
         _, route = _load_route(route_id)

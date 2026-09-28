@@ -589,6 +589,23 @@ def mcp_publication_check(hostname: str, container: str = "") -> dict[str, Any]:
     return result
 
 
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def hml_route_provision(
+    project_id: str,
+    upstream: str,
+    health_path: str = "/health",
+    friendly: str = "",
+    confirm: str = "",
+) -> dict[str, Any]:
+    result = recovery_ops.hml_route_provision(project_id, upstream, health_path, friendly, confirm)
+    main._audit(
+        "routing.hml_route_provision",
+        {"project_id": project_id, "upstream": upstream, "health_path": health_path, "friendly": friendly},
+        {"ok": result.get("ok"), "status": result.get("status"), "route_id": (result.get("route") or {}).get("id")},
+    )
+    return result
+
+
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def hml_route_inspect(route_id: str) -> dict[str, Any]:
     result = recovery_ops.hml_route_inspect(route_id)
