@@ -23,6 +23,8 @@ services:
     environment:
       TVSUMARE_ROOT: /srv/tvsumare
       PROJECT_WORKSPACE_ROOTS: /srv/tvsumare,/srv/projects
+      AI_DEV_HUB_BASE_URL: ${AI_DEV_HUB_BASE_URL}
+      AI_DEV_HUB_INTERNAL_TOKEN: ${AI_DEV_HUB_INTERNAL_TOKEN}
     volumes:
       - /srv/tvsumare:/host/tvsumare:ro
       - /srv/projects:/host/projects:ro
