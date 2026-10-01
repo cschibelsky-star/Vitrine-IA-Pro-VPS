@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "base_domains": {
     "homologation": "hml.vitrineiapro.com.br",
-    "customer_root": "vitrineaipro.com.br"
+    "customer_root": "vitrineiapro.com.br"
   },
   "code_policy": {
     "project_prefix": "p",
