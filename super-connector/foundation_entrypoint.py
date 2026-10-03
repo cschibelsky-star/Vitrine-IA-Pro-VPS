@@ -620,5 +620,122 @@ def hml_route_activate(route_id: str, confirm: str = "") -> dict[str, Any]:
     return result
 
 
+# Fixed-scope Roteia operations; no arbitrary commands, paths or projects.
+_ROTEIA_SERVICE_PATH = "app/Services/Ai/AiMediaGenerationService.php"
+_ROTEIA_AUDIT_PATH = "app/Console/Commands/RoteiaUsageAuditCommand.php"
+_ROTEIA_AUDIT_SOURCE = "<?php\n\nnamespace App\\Console\\Commands;\n\nuse Illuminate\\Console\\Command;\nuse Illuminate\\Support\\Facades\\DB;\nuse Illuminate\\Support\\Facades\\Schema;\nuse Illuminate\\Support\\Facades\\Storage;\n\nclass RoteiaUsageAuditCommand extends Command\n{\n    protected $signature = 'ai:roteia-audit {csv : Caminho local do CSV exportado da Roteia}';\n    protected $description = 'Cruza cobranças Roteia com registros e arquivos, somente leitura, sem gerar mídia';\n\n    public function handle(): int\n    {\n        $file = fopen((string) $this->argument('csv'), 'r');\n        if ($file === false) {\n            $this->error('CSV indisponível.');\n            return self::FAILURE;\n        }\n        try {\n            $header = fgetcsv($file);\n            if (! is_array($header)) {\n                throw new \\RuntimeException('CSV vazio.');\n            }\n            $header[0] = preg_replace('/^\\\\xEF\\\\xBB\\\\xBF/', '', $header[0]);\n            foreach (['request_id', 'model', 'cost_brl'] as $column) {\n                if (! in_array($column, $header, true)) {\n                    throw new \\RuntimeException('Coluna obrigatória ausente: '.$column);\n                }\n            }\n            $mediaAvailable = Schema::hasTable('ai_media_generations');\n            $ledgerAvailable = Schema::hasTable('ai_consumptions')\n                && Schema::hasColumn('ai_consumptions', 'request_id');\n            $this->line('request_id,cost_brl,ledger_matches,media_matches,delivery');\n            while (($values = fgetcsv($file)) !== false) {\n                if (count($values) !== count($header)) {\n                    throw new \\RuntimeException('Linha CSV inválida.');\n                }\n                $row = array_combine($header, $values);\n                if (! preg_match('/image|seedream/i', $row['model'])) {\n                    continue;\n                }\n                $id = $row['request_id'];\n                if (! preg_match('/^[a-f0-9-]{36}$/i', $id)) {\n                    throw new \\RuntimeException('ID de requisição inválido.');\n                }\n                $ledgerCount = $ledgerAvailable\n                    ? DB::table('ai_consumptions')->where('request_id', $id)->count()\n                    : null;\n                $media = $mediaAvailable\n                    ? DB::table('ai_media_generations')\n                        ->where(function ($query) use ($id): void {\n                            $query->where('operation_id', $id)\n                                ->orWhere('metadata->provider_request_id', $id);\n                        })->get(['id', 'asset_path', 'metadata'])\n                    : collect();\n                $delivery = 'unverified';\n                foreach ($media as $generation) {\n                    $metadata = json_decode((string) $generation->metadata, true) ?: [];\n                    $disk = $metadata['storage_disk'] ?? config('filesystems.default', 'local');\n                    if ($generation->asset_path && Storage::disk($disk)->exists($generation->asset_path)) {\n                        $stream = Storage::disk($disk)->readStream($generation->asset_path);\n                        if (is_resource($stream)) {\n                            try {\n                                $binary = stream_get_contents($stream, 20 * 1024 * 1024 + 1);\n                                if (is_string($binary) && strlen($binary) <= 20 * 1024 * 1024\n                                    && @getimagesizefromstring($binary) !== false) {\n                                    $delivery = 'file_verified';\n                                }\n                            } finally {\n                                fclose($stream);\n                            }\n                        }\n                    }\n                }\n                $this->line(implode(',', [$id, $row['cost_brl'], $ledgerCount ?? 'unavailable', $media->count(), $delivery]));\n            }\n            $this->info('Auditoria somente leitura. Ausência de vínculo não comprova perda ou ausência de cobrança.');\n            return self::SUCCESS;\n        } catch (\\Throwable $e) {\n            $this->error('Auditoria interrompida; nenhuma geração ou alteração executada.');\n            return self::FAILURE;\n        } finally {\n            fclose($file);\n        }\n    }\n}\n"
+_ROTEIA_SERVICE_SHA256 = "f6dec8589238770b8e674fc04739f910186d3f56f337fbb99f2ceaa7b3eb6806"
+_ROTEIA_BASE_HEAD = "d0c2545c6ac4c34b4a5481f4c568ac414fdc1e18"
+
+
+def _roteia_core_repository():
+    repository = main._repository(main._load_project("vitrine-ia-pro-core")).resolve()
+    if str(repository) != "/srv/projects/vitrine-ia-pro-core/repository":
+        raise PermissionError("unexpected_core_repository")
+    return repository
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def core_roteia_usage_audit(csv_text: str, confirm: str = "") -> dict[str, Any]:
+    """Install the reviewed audit command and audit CSV; never generate media or write DB."""
+    import csv
+    import io
+    import tempfile
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required"}
+    if len(csv_text.encode("utf-8")) > 1024 * 1024:
+        return {"ok": False, "error": "csv_size_limit"}
+    try:
+        rows = list(csv.DictReader(io.StringIO(csv_text.lstrip("\ufeff"))))
+        if not rows or len(rows) > 5000:
+            raise ValueError("csv_row_limit")
+        for row in rows:
+            if not all(key in row for key in ("request_id", "model", "cost_brl")):
+                raise ValueError("csv_columns_invalid")
+        repository = _roteia_core_repository()
+        target = repository / _ROTEIA_AUDIT_PATH
+        if target.is_symlink() or target.parent.resolve() != repository / "app/Console/Commands":
+            raise PermissionError("audit_path_blocked")
+        if target.exists() and target.read_text() != _ROTEIA_AUDIT_SOURCE:
+            raise ValueError("existing_audit_file_differs")
+        target.write_text(_ROTEIA_AUDIT_SOURCE, encoding="utf-8")
+        # docker cp reads files from this connector; execution is fixed to Core.
+        copied = main._run(["docker", "cp", str(target),
+            "vitrine_core_app_hml:/var/www/html/" + _ROTEIA_AUDIT_PATH], repository, timeout=30)
+        if not copied.get("ok"):
+            return {"ok": False, "error": "audit_install_failed"}
+        lint = main._run(["docker", "exec", "vitrine_core_app_hml", "php", "-l",
+            "/var/www/html/" + _ROTEIA_AUDIT_PATH], repository, timeout=30)
+        if not lint.get("ok"):
+            return {"ok": False, "error": "audit_lint_failed"}
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory) / "roteia.csv"
+            csv_path.write_text(csv_text, encoding="utf-8")
+            container_path = "/tmp/roteia-audit-" + hashlib.sha256(csv_text.encode()).hexdigest() + ".csv"
+            copied = main._run(["docker", "cp", str(csv_path),
+                "vitrine_core_app_hml:" + container_path], repository, timeout=30)
+            if not copied.get("ok"):
+                return {"ok": False, "error": "csv_copy_failed"}
+            try:
+                result = main._run(["docker", "exec", "-w", "/var/www/html",
+                    "vitrine_core_app_hml", "php", "artisan", "ai:roteia-audit",
+                    container_path, "--no-ansi", "--no-interaction"], repository, timeout=120)
+            finally:
+                main._run(["docker", "exec", "vitrine_core_app_hml", "rm", "-f", container_path],
+                    repository, timeout=30)
+        main._audit("core.roteia_usage_audit", {"rows": len(rows)},
+            {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
+        return result
+    except (OSError, ValueError, PermissionError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@main.mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def core_roteia_commit_verified(confirm: str = "") -> dict[str, Any]:
+    """Commit only the reviewed Roteia files on the existing Core feature branch."""
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required"}
+    try:
+        repository = _roteia_core_repository()
+        branch = main._run(["git", "branch", "--show-current"], repository, timeout=30)
+        head = main._run(["git", "rev-parse", "HEAD"], repository, timeout=30)
+        if not branch.get("ok") or branch.get("stdout", "").strip() != "feature/ai-cost-center-v1":
+            raise ValueError("unexpected_core_branch")
+        if not head.get("ok") or head.get("stdout", "").strip() != _ROTEIA_BASE_HEAD:
+            raise ValueError("core_head_changed")
+        service = repository / _ROTEIA_SERVICE_PATH
+        if service.is_symlink() or _sha256_file(service) != _ROTEIA_SERVICE_SHA256:
+            raise ValueError("service_hash_mismatch")
+        audit = repository / _ROTEIA_AUDIT_PATH
+        if audit.is_symlink() or not audit.is_file() or audit.read_text() != _ROTEIA_AUDIT_SOURCE:
+            raise ValueError("audit_hash_mismatch")
+        status = main._run(["git", "status", "--porcelain=v1", "--untracked-files=all"],
+            repository, timeout=30)
+        allowed = {_ROTEIA_SERVICE_PATH, _ROTEIA_AUDIT_PATH}
+        if not status.get("ok") or any(line[3:] not in allowed
+                for line in status.get("stdout", "").splitlines()):
+            raise ValueError("unrelated_changes_block_commit")
+        # Preserve the previous HEAD without checkout, reset, merge or reconciliation.
+        preserved = main._run(["git", "branch",
+            "preservation/roteia-core-before-20261003", _ROTEIA_BASE_HEAD],
+            repository, timeout=30)
+        if not preserved.get("ok"):
+            check = main._run(["git", "rev-parse", "preservation/roteia-core-before-20261003"],
+                repository, timeout=30)
+            if not check.get("ok") or check.get("stdout", "").strip() != _ROTEIA_BASE_HEAD:
+                raise ValueError("preservation_failed")
+        staged = main._run(["git", "add", "--", *sorted(allowed)], repository, timeout=30)
+        if not staged.get("ok"):
+            raise ValueError("stage_failed")
+        result = main._run(["git", "commit", "-m",
+            "fix: persist and audit Roteia image deliveries (PR #83)"],
+            repository, timeout=120)
+        main._audit("core.roteia_commit_verified", {"previous_head": _ROTEIA_BASE_HEAD},
+            {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
+        return result
+    except (OSError, ValueError, PermissionError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 if __name__ == "__main__":
     main.mcp.run(transport="http", host="0.0.0.0", port=8000)
