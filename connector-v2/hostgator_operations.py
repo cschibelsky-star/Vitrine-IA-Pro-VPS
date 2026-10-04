@@ -151,9 +151,28 @@ def run_uapi(module: str, function: str, params: dict[str, str]) -> dict[str, An
     status = int(block.get("status", 0) or 0)
     return {"ok": status == 1, "status": status, "data": block.get("data"), "errors": block.get("errors"), "messages": block.get("messages")}
 
+
+def run_cpapi2(module: str, function: str, params: dict[str, str]) -> dict[str, Any]:
+    parts = ["/usr/local/cpanel/bin/cpapi2", f"--user={USER}", module, function]
+    for key, value in params.items():
+        parts.append(f"{key}={value}")
+    result = run_remote(" ".join(shlex.quote(part) for part in parts))
+    if not result.get("ok"):
+        return {"ok": False, "error": "cpapi2_transport_failed", "remote": result}
+    try:
+        payload = json.loads(result.get("stdout") or "{}")
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "cpapi2_invalid_json", "remote": result}
+    block = payload.get("cpanelresult", {}) if isinstance(payload, dict) else {}
+    event = block.get("event", {}) if isinstance(block, dict) else {}
+    status = int(event.get("result", 0) or 0)
+    return {"ok": status == 1, "status": status, "data": block.get("data"), "errors": block.get("error"), "messages": block.get("messages")}
+
 def fetch_dns_a_records(hostname: str) -> dict[str, Any]:
     host = normalize_dns_hostname(hostname)
     result = run_uapi("ZoneEdit", "fetchzone_records", {"domain": DNS_ALLOWED_ZONE})
+    if not result.get("ok"):
+        result = run_cpapi2("ZoneEdit", "fetchzone_records", {"domain": DNS_ALLOWED_ZONE})
     if not result.get("ok"):
         return {"ok": False, "error": "dns_zone_read_failed", "detail": result}
     data = result.get("data") or []
@@ -204,6 +223,8 @@ def hostgator_dns_upsert(req: DnsUpsertRequest) -> dict[str, Any]:
         audit("dns_upsert", req.model_dump(), result)
         return result
     created = run_uapi("ZoneEdit", "add_zone_record", {"domain": DNS_ALLOWED_ZONE, "name": host + ".", "type": "A", "address": address, "ttl": str(req.ttl)})
+    if not created.get("ok"):
+        created = run_cpapi2("ZoneEdit", "add_zone_record", {"domain": DNS_ALLOWED_ZONE, "name": host + ".", "type": "A", "address": address, "ttl": str(req.ttl), "class": "IN"})
     if not created.get("ok"):
         result = {"ok": False, "error": "dns_record_create_failed", "hostname": host, "detail": created}
         audit("dns_upsert", req.model_dump(), result)
