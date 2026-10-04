@@ -156,17 +156,45 @@ def run_cpapi2(module: str, function: str, params: dict[str, str]) -> dict[str, 
     parts = ["/usr/local/cpanel/bin/cpapi2", "--output=json", module, function]
     for key, value in params.items():
         parts.append(f"{key}={value}")
-    result = run_remote(" ".join(shlex.quote(part) for part in parts))
-    if not result.get("ok"):
-        return {"ok": False, "error": "cpapi2_transport_failed", "remote": result}
+    command = " ".join(shlex.quote(part) for part in parts)
     try:
-        payload = json.loads(result.get("stdout") or "{}")
+        proc = subprocess.run(
+            [*ssh_base(), command],
+            text=True,
+            capture_output=True,
+            timeout=TIMEOUT,
+            check=False,
+            env={**os.environ, "LC_ALL": "C.UTF-8"},
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "cpapi2_timeout"}
+    except OSError as exc:
+        return {"ok": False, "error": "cpapi2_transport_failed", "detail": type(exc).__name__}
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "error": "cpapi2_transport_failed",
+            "exit_code": proc.returncode,
+            "stderr": proc.stderr[-4000:],
+        }
+    try:
+        payload = json.loads(proc.stdout or "{}")
     except json.JSONDecodeError:
-        return {"ok": False, "error": "cpapi2_invalid_json", "remote": result}
+        return {
+            "ok": False,
+            "error": "cpapi2_invalid_json",
+            "stdout_bytes": len((proc.stdout or "").encode("utf-8")),
+        }
     block = payload.get("cpanelresult", {}) if isinstance(payload, dict) else {}
     event = block.get("event", {}) if isinstance(block, dict) else {}
     status = int(event.get("result", 0) or 0)
-    return {"ok": status == 1, "status": status, "data": block.get("data"), "errors": block.get("error"), "messages": block.get("messages")}
+    return {
+        "ok": status == 1,
+        "status": status,
+        "data": block.get("data"),
+        "errors": block.get("error"),
+        "messages": block.get("messages"),
+    }
 
 def fetch_dns_a_records(hostname: str) -> dict[str, Any]:
     host = normalize_dns_hostname(hostname)
@@ -179,16 +207,32 @@ def fetch_dns_a_records(hostname: str) -> dict[str, Any]:
     if isinstance(data, dict):
         data = data.get("records", []) or data.get("zone", []) or []
     records = []
+    wildcard_records = []
+    wildcard_name = None
+    labels = host.split(".")
+    if len(labels) > 2:
+        wildcard_name = "*." + ".".join(labels[1:])
     for item in data if isinstance(data, list) else []:
         if not isinstance(item, dict):
             continue
         name = str(item.get("name") or "").strip().lower().rstrip(".")
         record_type = str(item.get("type") or "").strip().upper()
-        if name != host or record_type != "A":
+        if record_type != "A":
             continue
         value = item.get("address") or item.get("record") or item.get("data") or ""
-        records.append({"name": name, "type": record_type, "value": str(value).strip(), "line": item.get("line"), "ttl": item.get("ttl")})
-    return {"ok": True, "hostname": host, "records": records}
+        normalized = {"name": name, "type": record_type, "value": str(value).strip(), "line": item.get("line"), "ttl": item.get("ttl")}
+        if name == host:
+            records.append(normalized)
+        elif wildcard_name and name == wildcard_name:
+            wildcard_records.append(normalized)
+    return {
+        "ok": True,
+        "hostname": host,
+        "records": records,
+        "wildcard_records": wildcard_records,
+        "covered_by_wildcard": bool(not records and wildcard_records),
+        "wildcard_name": wildcard_name if wildcard_records else None,
+    }
 
 @router.get("/health", dependencies=[Depends(auth)])
 def hostgator_health() -> dict[str, Any]:
@@ -214,12 +258,33 @@ def hostgator_dns_upsert(req: DnsUpsertRequest) -> dict[str, Any]:
         audit("dns_upsert", req.model_dump(), current)
         return current
     records = current.get("records", [])
+    wildcard_records = current.get("wildcard_records", [])
     if any(record.get("value") == address for record in records):
         result = {"ok": True, "status": "unchanged", "hostname": host, "address": address, "ttl": req.ttl}
         audit("dns_upsert", req.model_dump(), result)
         return result
     if records:
         result = {"ok": False, "error": "dns_record_conflict", "hostname": host, "existing": records, "requested_address": address}
+        audit("dns_upsert", req.model_dump(), result)
+        return result
+    if any(record.get("value") == address for record in wildcard_records):
+        result = {
+            "ok": True,
+            "status": "covered_by_wildcard",
+            "hostname": host,
+            "address": address,
+            "wildcard_name": current.get("wildcard_name"),
+        }
+        audit("dns_upsert", req.model_dump(), result)
+        return result
+    if wildcard_records:
+        result = {
+            "ok": False,
+            "error": "dns_wildcard_conflict",
+            "hostname": host,
+            "wildcard_records": wildcard_records,
+            "requested_address": address,
+        }
         audit("dns_upsert", req.model_dump(), result)
         return result
     created = run_uapi("ZoneEdit", "add_zone_record", {"domain": DNS_ALLOWED_ZONE, "name": host + ".", "type": "A", "address": address, "ttl": str(req.ttl)})
