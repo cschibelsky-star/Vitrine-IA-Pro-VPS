@@ -2,13 +2,13 @@
   "schema_version": "2.0",
   "base_domains": {
     "homologation": "hml.vitrineiapro.com.br",
-    "customer_root": "vitrineiapro.com.br"
+    "customer_root": "vitrineaipro.com.br"
   },
   "code_policy": {
     "project_prefix": "p",
     "customer_prefix": "c",
     "width": 6,
-    "project_next": 2,
+    "project_next": 5,
     "customer_next": 1
   },
   "reserved_root_labels": [
@@ -20,7 +20,7 @@
     "hml",
     "www"
   ],
-  "network": "vitrine_net",
+  "network": "n8n-traefik_app_network",
   "routes": [
     {
       "id": "tvsumare-hml",
@@ -29,12 +29,17 @@
       "environment": "homologation",
       "hostname": "tv.hml.vitrineiapro.com.br",
       "friendly_aliases": [],
-      "legacy_aliases": ["tv-hml.vitrineiapro.com.br"],
-      "upstream": "tvsumare_web:80",
+      "legacy_aliases": [
+        "tv-hml.vitrineiapro.com.br"
+      ],
+      "upstream": "http://tvsumare_web:80",
       "health_path": "/health.php",
       "ssl": true,
       "status": "active",
-      "legacy": true
+      "legacy": true,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
     },
     {
       "id": "cursos-ia-hml",
@@ -44,11 +49,14 @@
       "hostname": "cursos.hml.vitrineiapro.com.br",
       "friendly_aliases": [],
       "legacy_aliases": [],
-      "upstream": "cursos_ia_mvp_hml:80",
+      "upstream": "http://cursos_ia_mvp_hml:80",
       "health_path": "/health.php",
       "ssl": true,
       "status": "pending_dns_proxy",
-      "legacy": true
+      "legacy": true,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
     },
     {
       "id": "p000001-hml",
@@ -56,13 +64,71 @@
       "deployment_code": "p000001",
       "environment": "homologation",
       "hostname": "p000001.hml.vitrineiapro.com.br",
-      "friendly_aliases": ["jarvis.hml.vitrineiapro.com.br"],
-      "legacy_aliases": ["jarvis-hml.vitrineiapro.com.br"],
-      "upstream": "jarvis_hml_agent:8000",
+      "friendly_aliases": [
+        "jarvis.hml.vitrineiapro.com.br"
+      ],
+      "legacy_aliases": [
+        "jarvis-hml.vitrineiapro.com.br"
+      ],
+      "upstream": "http://jarvis_hml_agent:8000",
       "health_path": "/health",
       "ssl": true,
       "status": "pending_dns_proxy",
-      "legacy": false
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
+    },
+    {
+      "id": "p000002-hml",
+      "project_id": "conheca-sumare-independent",
+      "deployment_code": "p000002",
+      "environment": "homologation",
+      "hostname": "p000002.hml.vitrineiapro.com.br",
+      "friendly_aliases": ["conheca-sumare.hml.vitrineiapro.com.br"],
+      "legacy_aliases": [],
+      "upstream": "http://conheca_sumare_web_hml:80",
+      "health_path": "/",
+      "ssl": true,
+      "status": "active",
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
+    },
+    {
+      "id": "p000003-hml",
+      "project_id": "conheca-sumare-prod",
+      "deployment_code": "p000003",
+      "environment": "homologation",
+      "hostname": "p000003.hml.vitrineiapro.com.br",
+      "friendly_aliases": ["conheca-sumare-prod.hml.vitrineiapro.com.br"],
+      "legacy_aliases": [],
+      "upstream": "http://conheca_sumare_web_prod:80",
+      "health_path": "/",
+      "ssl": true,
+      "status": "active",
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
+    },
+    {
+      "id": "p000004-hml",
+      "project_id": "projeto-lucas",
+      "deployment_code": "p000004",
+      "environment": "homologation",
+      "hostname": "p000004.hml.vitrineiapro.com.br",
+      "friendly_aliases": ["lucas.hml.vitrineiapro.com.br"],
+      "legacy_aliases": [],
+      "upstream": "http://projeto_lucas_hml_web:80",
+      "health_path": "/health",
+      "ssl": true,
+      "status": "pending_dns_proxy",
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
     }
   ]
 }
