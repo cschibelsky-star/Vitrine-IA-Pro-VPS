@@ -124,7 +124,7 @@
       "upstream": "http://projeto_lucas_hml_web:80",
       "health_path": "/health",
       "ssl": true,
-      "status": "pending_dns_proxy",
+      "status": "active",
       "legacy": false,
       "network": "n8n-traefik_app_network",
       "cert_resolver": "le",
