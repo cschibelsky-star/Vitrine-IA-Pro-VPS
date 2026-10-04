@@ -153,7 +153,7 @@ def run_uapi(module: str, function: str, params: dict[str, str]) -> dict[str, An
 
 
 def run_cpapi2(module: str, function: str, params: dict[str, str]) -> dict[str, Any]:
-    parts = ["/usr/local/cpanel/bin/cpapi2", f"--user={USER}", module, function]
+    parts = ["/usr/local/cpanel/bin/cpapi2", module, function]
     for key, value in params.items():
         parts.append(f"{key}={value}")
     result = run_remote(" ".join(shlex.quote(part) for part in parts))
