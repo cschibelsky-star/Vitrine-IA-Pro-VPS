@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
+from contextlib import nullcontext
 
 # Reuse the minimal optional-dependency shim used by existing tests.
 from test_project_manager_operations import ops
@@ -26,7 +27,8 @@ class PublicationGateTests(unittest.TestCase):
             ops.publication_preflight(self.manifest, Path('/absent'), None)
 
     def test_no_production_mutation_before_authorization(self):
-        with patch.object(ops, 'load_manifest', return_value=self.manifest), \
+        with patch.object(ops, 'publication_lock', return_value=nullcontext()), \
+             patch.object(ops, 'load_manifest', return_value=self.manifest), \
              patch.object(ops, 'project_paths', return_value=(Path('/absent'), Path('/absent/repo'), Path('/absent/releases'))), \
              patch.object(ops, 'run') as run, \
              patch.object(ops.urllib.request, 'urlopen', side_effect=RuntimeError('blocked')), \
@@ -53,3 +55,30 @@ class PublicationGateTests(unittest.TestCase):
         with patch.object(ops.urllib.request, 'urlopen') as remote:
             self.assertIsNone(ops.publication_preflight(dict(self.manifest, id='hml', environment='homologation'), Path('/absent'), None))
             remote.assert_not_called()
+
+    def test_authorized_update_uses_exact_sha_and_never_pulls_branch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = root / 'repository'
+            (repository / '.git').mkdir(parents=True)
+            def command(args, cwd, **kwargs):
+                output = ''
+                if args[1:4] == ['remote', 'get-url', 'origin']:
+                    output = self.manifest['repository']['url']
+                if args[1:] == ['rev-parse', 'HEAD']:
+                    output = self.sha
+                return {'ok': True, 'stdout': output, 'stderr': '', 'exit_code': 0}
+            response = MagicMock()
+            response.__enter__.return_value.read.return_value = json.dumps({'allowed': True}).encode()
+            with patch.object(ops, 'publication_lock', return_value=nullcontext()), \
+                 patch.object(ops, 'load_manifest', return_value=self.manifest), \
+                 patch.object(ops, 'project_paths', return_value=(root, repository, root / 'releases')), \
+                 patch.object(ops, 'run', side_effect=command) as run, \
+                 patch.object(ops, 'audit'), \
+                 patch.object(ops.urllib.request, 'urlopen', return_value=response), \
+                 patch.dict(ops.os.environ, {'PUBLICATION_CONTROL_URL': 'https://control.example', 'PUBLICATION_EXECUTOR_TOKEN': 'x' * 32}):
+                result = ops.project_clone(ops.PublicationProjectRequest(project_id='conheca-sumare-prod', target_sha=self.sha))
+                self.assertTrue(result['ok'])
+                commands = [call.args[0] for call in run.call_args_list]
+                self.assertIn(['git', 'checkout', '--detach', self.sha], commands)
+                self.assertFalse(any('pull' in command for command in commands))

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import fcntl
+from contextlib import contextmanager
 import os
 import re
 import subprocess
@@ -289,9 +291,32 @@ def publication_preflight(manifest: dict[str, Any], repository: Path, requested_
     return requested_sha
 
 
+@contextmanager
+def publication_lock(project_id: str):
+    if not re.fullmatch(r"[a-z0-9-]+", project_id):
+        raise HTTPException(status_code=422, detail="invalid_publication_project")
+    directory = Path(os.getenv("PUBLICATION_LOCK_DIRECTORY", "/var/lock/vitrine-publication"))
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if directory.stat().st_mode & 0o022 or directory.stat().st_uid != os.getuid():
+        raise HTTPException(status_code=409, detail="publication_lock_directory_untrusted")
+    descriptor = os.open(directory / (project_id + ".lock"), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 @router.post("/clone", dependencies=[Depends(auth)])
 def project_clone(req: PublicationProjectRequest) -> dict[str, Any]:
     manifest = load_manifest(req.project_id)
+    # Hold through the entire update, not just the approval HTTP call.
+    with publication_lock(req.project_id):
+        return project_clone_locked(req, manifest)
+
+
+def project_clone_locked(req: PublicationProjectRequest, manifest: dict[str, Any]) -> dict[str, Any]:
     root, target, _ = project_paths(manifest)
     repository = manifest["repository"]
     branch = str(repository.get("branch", "main")).strip()
