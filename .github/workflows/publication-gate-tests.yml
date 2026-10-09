@@ -1,0 +1,16 @@
+name: Publication Gate Tests
+on:
+  pull_request:
+    paths: ['project-manager/**', '.github/workflows/publication-gate-tests.yml']
+  push:
+    branches: ['feature/hml-gate-enforcement-20261009']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s project-manager -v
+      - run: python3 -m py_compile project-manager/*.py

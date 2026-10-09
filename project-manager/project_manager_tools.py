@@ -36,8 +36,8 @@ def project_workspace(project_id: str) -> dict[str, Any]:
     return _request("POST", "/projects/workspace", {"project_id": project_id})
 
 
-def project_clone(project_id: str) -> dict[str, Any]:
-    return _request("POST", "/projects/clone", {"project_id": project_id})
+def project_clone(project_id: str, target_sha: str | None = None) -> dict[str, Any]:
+    return _request("POST", "/projects/clone", {"project_id": project_id, "target_sha": target_sha})
 
 
 def project_status(project_id: str) -> dict[str, Any]:

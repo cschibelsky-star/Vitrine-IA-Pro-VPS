@@ -110,7 +110,7 @@ def main() -> None:
                 1,
             )
 
-    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_manifest(project_id: str) -> dict[str, Any]:\n    return _project_manifest(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_workspace(project_id: str) -> dict[str, Any]:\n    return _project_workspace(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_clone(project_id: str) -> dict[str, Any]:\n    return _project_clone(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_status(project_id: str) -> dict[str, Any]:\n    return _project_status(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_info(project_id, container_name)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_env_safe(project_id, container_name)\n'''
+    tools_block = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_manifest(project_id: str) -> dict[str, Any]:\n    return _project_manifest(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_workspace(project_id: str) -> dict[str, Any]:\n    return _project_workspace(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})\ndef project_clone(project_id: str, target_sha: str | None = None) -> dict[str, Any]:\n    return _project_clone(project_id, target_sha)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_status(project_id: str) -> dict[str, Any]:\n    return _project_status(project_id)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_info(project_id, container_name)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_env_safe(project_id, container_name)\n'''
 
     text = ensure_block_before(
         text,
@@ -123,6 +123,10 @@ def main() -> None:
         marker = '\nif __name__ == "__main__":\n'
         extra = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_info(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_info(project_id, container_name)\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_docker_container_env_safe(project_id: str, container_name: str) -> dict[str, Any]:\n    return _project_docker_container_env_safe(project_id, container_name)\n'''
         text = text.replace(marker, extra + marker, 1)
+    text = text.replace(
+        'def project_clone(project_id: str) -> dict[str, Any]:\n    return _project_clone(project_id)',
+        'def project_clone(project_id: str, target_sha: str | None = None) -> dict[str, Any]:\n    return _project_clone(project_id, target_sha)',
+    )
     main_py.write_text(text, encoding='utf-8')
 
     dockerfile = ROOT / 'Dockerfile'
