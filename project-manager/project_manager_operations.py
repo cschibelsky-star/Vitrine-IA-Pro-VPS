@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import fcntl
+from contextlib import contextmanager
 import os
 import re
 import subprocess
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -55,6 +58,10 @@ DSN_CREDENTIAL_RE = re.compile(
 
 class ProjectRequest(BaseModel):
     project_id: str
+
+
+class PublicationProjectRequest(ProjectRequest):
+    target_sha: str | None = None
 
 
 class ProjectContainerRequest(BaseModel):
@@ -251,14 +258,71 @@ def project_workspace(req: ProjectRequest) -> dict[str, Any]:
     return result
 
 
+def publication_preflight(manifest: dict[str, Any], repository: Path, requested_sha: str | None) -> str | None:
+    # Missing environment is unknown, never implicit permission to modify a runtime.
+    environment = manifest.get("environment")
+    if environment == "homologation" and manifest["id"] != "conheca-sumare-prod":
+        return None
+    if environment != "production" and manifest["id"] != "conheca-sumare-prod":
+        raise HTTPException(status_code=409, detail="publication_environment_unproven")
+    if not requested_sha or not re.fullmatch(r"[a-f0-9]{40}", requested_sha):
+        raise HTTPException(status_code=409, detail="approved_target_sha_required")
+    if (repository / ".git").is_dir():
+        status = run(["git", "status", "--porcelain", "--untracked-files=all"], repository)
+        if not status["ok"] or status["stdout"].strip():
+            raise HTTPException(status_code=409, detail="preserve_dirty_repository_before_publication")
+    endpoint = os.getenv("PUBLICATION_CONTROL_URL", "").rstrip("/")
+    token = os.getenv("PUBLICATION_EXECUTOR_TOKEN", "")
+    if not endpoint.startswith("https://") or len(token) < 32:
+        raise HTTPException(status_code=409, detail="publication_control_not_configured")
+    project = "conheca-sumare" if manifest["id"] == "conheca-sumare-prod" else manifest["id"]
+    executor = "conheca-sumare-vps" if manifest["id"] == "conheca-sumare-prod" else "vps-project-clone"
+    payload = json.dumps({"project": project, "sha": requested_sha, "executor": executor}).encode()
+    request = urllib.request.Request(endpoint + "/api/publication/consume", data=payload,
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + token})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            decision = json.load(response)
+        if decision.get("allowed") is not True:
+            raise ValueError("blocked")
+    except Exception:
+        # Do not return URLs, credentials or raw remote responses to callers.
+        raise HTTPException(status_code=409, detail="cockpit_publication_blocked") from None
+    return requested_sha
+
+
+@contextmanager
+def publication_lock(project_id: str):
+    if not re.fullmatch(r"[a-z0-9-]+", project_id):
+        raise HTTPException(status_code=422, detail="invalid_publication_project")
+    directory = Path(os.getenv("PUBLICATION_LOCK_DIRECTORY", "/var/lock/vitrine-publication"))
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if directory.stat().st_mode & 0o022 or directory.stat().st_uid != os.getuid():
+        raise HTTPException(status_code=409, detail="publication_lock_directory_untrusted")
+    descriptor = os.open(directory / (project_id + ".lock"), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 @router.post("/clone", dependencies=[Depends(auth)])
-def project_clone(req: ProjectRequest) -> dict[str, Any]:
+def project_clone(req: PublicationProjectRequest) -> dict[str, Any]:
     manifest = load_manifest(req.project_id)
+    # Hold through the entire update, not just the approval HTTP call.
+    with publication_lock(req.project_id):
+        return project_clone_locked(req, manifest)
+
+
+def project_clone_locked(req: PublicationProjectRequest, manifest: dict[str, Any]) -> dict[str, Any]:
     root, target, _ = project_paths(manifest)
     repository = manifest["repository"]
     branch = str(repository.get("branch", "main")).strip()
     url = str(repository["url"]).strip()
 
+    approved_sha = publication_preflight(manifest, target, req.target_sha)
     root.mkdir(parents=True, exist_ok=True)
 
     if (target / ".git").is_dir():
@@ -282,13 +346,19 @@ def project_clone(req: ProjectRequest) -> dict[str, Any]:
             audit("project_clone", req.project_id, req.model_dump(), result)
             return result
 
-        checkout = run(["git", "checkout", branch], target)
+        if approved_sha:
+            fetch_target = run(["git", "fetch", "origin", approved_sha], target)
+            if not fetch_target["ok"]:
+                return {"ok": False, "stage": "approved_sha_fetch", "result": fetch_target}
+        checkout = run(["git", "checkout", "--detach", approved_sha] if approved_sha else ["git", "checkout", branch], target)
         if not checkout["ok"]:
             result = {"ok": False, "stage": "checkout", "result": checkout}
             audit("project_clone", req.project_id, req.model_dump(), result)
             return result
 
-        pull = run(["git", "pull", "--ff-only", "origin", branch], target)
+        pull = run(["git", "rev-parse", "HEAD"], target) if approved_sha else run(["git", "pull", "--ff-only", "origin", branch], target)
+        if approved_sha and pull["stdout"].strip() != approved_sha:
+            pull["ok"] = False
         result = {
             "ok": pull["ok"],
             "operation": "updated",
@@ -318,6 +388,9 @@ def project_clone(req: ProjectRequest) -> dict[str, Any]:
         ["git", "clone", "--branch", branch, "--single-branch", url, str(target)],
         root,
     )
+    if clone["ok"] and approved_sha:
+        fetched = run(["git", "fetch", "origin", approved_sha], target)
+        clone = run(["git", "checkout", "--detach", approved_sha], target) if fetched["ok"] else fetched
     result = {
         "ok": clone["ok"],
         "operation": "cloned",
