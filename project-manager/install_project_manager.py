@@ -61,8 +61,12 @@ def main() -> None:
     manifest_target = ROOT / 'project-manifests'
     manifest_target.mkdir(parents=True, exist_ok=True)
 
+    backup(ROOT / 'project_manager_operations.py')
+    backup(ROOT / 'project_manager_tools.py')
     shutil.copy2(SOURCE / 'project_manager_operations.py', ROOT / 'project_manager_operations.py')
     shutil.copy2(SOURCE / 'project_manager_tools.py', ROOT / 'project_manager_tools.py')
+    backup(ROOT / 'publication_sources.json')
+    shutil.copy2(SOURCE / 'publication_sources.json', ROOT / 'publication_sources.json')
 
     for manifest in manifest_source.glob('*.json'):
         shutil.copy2(manifest, manifest_target / manifest.name)
@@ -139,7 +143,7 @@ def main() -> None:
     if not copy_line:
         raise RuntimeError('Dockerfile: linha COPY não encontrada')
 
-    required = ['project_manager_operations.py', 'project_manager_tools.py']
+    required = ['project_manager_operations.py', 'project_manager_tools.py', 'publication_sources.json']
     updated_line = copy_line
     for item in required:
         if item not in updated_line.split():
@@ -214,3 +218,4 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+
