@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import fcntl
 from contextlib import contextmanager
 import os
@@ -258,25 +259,72 @@ def project_workspace(req: ProjectRequest) -> dict[str, Any]:
     return result
 
 
+def load_publication_sources() -> dict[str, Any]:
+    # Packaged with the reviewed executor, never supplied by an API caller.
+    try:
+        sources = json.loads(Path(__file__).with_name("publication_sources.json").read_text())
+        if not isinstance(sources, dict) or "conheca-sumare" not in sources:
+            raise ValueError("invalid sources")
+        return sources
+    except (OSError, ValueError):
+        raise HTTPException(status_code=409, detail="canonical_source_policy_unavailable") from None
+
+
+def canonical_source_preflight(manifest: dict[str, Any], repository: Path, requested_sha: str | None) -> dict[str, Any] | None:
+    source = load_publication_sources()["conheca-sumare"]
+    root = Path(manifest.get("workspace_root", repository.parent)).resolve()
+    protected_root = any(item in root.parts or item in repository.resolve().parts
+                         for item in source["production_root_names"])
+    domains = manifest.get("domains", {})
+    public_domain = any(host in json.dumps(domains) for host in source["production_hosts"])
+    production = manifest["id"] in source["production_project_ids"] or protected_root or public_domain
+    homologation = manifest["id"] in source["homologation_project_ids"]
+    if not production and not homologation:
+        return None
+    if production and manifest.get("environment") == "homologation":
+        raise HTTPException(status_code=409, detail="production_runtime_cannot_claim_homologation")
+    if manifest["repository"]["url"] != source["repository_url"]:
+        raise HTTPException(status_code=409, detail="canonical_repository_mismatch")
+    if requested_sha != source.get("candidate_sha", source["baseline_sha"]):
+        raise HTTPException(status_code=409, detail="canonical_candidate_sha_mismatch")
+    if production and source["production_enabled"] is not True:
+        raise HTTPException(status_code=409, detail="canonical_production_reconciliation_pending")
+    if homologation:
+        if manifest.get("environment") != "homologation":
+            raise HTTPException(status_code=409, detail="canonical_homologation_environment_required")
+        compose = manifest.get("docker", {}).get("compose_file", "")
+        # Never execute a public-router compose as a homologation candidate.
+        if compose != "docker-compose.origin-hml.yml":
+            raise HTTPException(status_code=409, detail="canonical_isolated_compose_required")
+    return source
+
+
 def publication_preflight(manifest: dict[str, Any], repository: Path, requested_sha: str | None) -> str | None:
+    source = canonical_source_preflight(manifest, repository, requested_sha)
     # Missing environment is unknown, never implicit permission to modify a runtime.
     environment = manifest.get("environment")
+    if source and manifest["id"] in source["production_project_ids"]:
+        environment = "production"
+    if (repository / ".git").exists():
+        status = run(["git", "status", "--porcelain", "--untracked-files=all"], repository)
+        if not status["ok"] or status["stdout"].strip():
+            raise HTTPException(status_code=409, detail="preserve_dirty_repository_before_publication")
+        if source:
+            origin = run(["git", "remote", "get-url", "origin"], repository)
+            if not origin["ok"] or origin["stdout"].strip() != source["repository_url"]:
+                raise HTTPException(status_code=409, detail="canonical_origin_mismatch")
     if environment == "homologation" and manifest["id"] != "conheca-sumare-prod":
-        return None
+        return requested_sha if source else None
     if environment != "production" and manifest["id"] != "conheca-sumare-prod":
         raise HTTPException(status_code=409, detail="publication_environment_unproven")
     if not requested_sha or not re.fullmatch(r"[a-f0-9]{40}", requested_sha):
         raise HTTPException(status_code=409, detail="approved_target_sha_required")
-    if (repository / ".git").is_dir():
-        status = run(["git", "status", "--porcelain", "--untracked-files=all"], repository)
-        if not status["ok"] or status["stdout"].strip():
-            raise HTTPException(status_code=409, detail="preserve_dirty_repository_before_publication")
     endpoint = os.getenv("PUBLICATION_CONTROL_URL", "").rstrip("/")
     token = os.getenv("PUBLICATION_EXECUTOR_TOKEN", "")
     if not endpoint.startswith("https://") or len(token) < 32:
         raise HTTPException(status_code=409, detail="publication_control_not_configured")
-    project = "conheca-sumare" if manifest["id"] == "conheca-sumare-prod" else manifest["id"]
-    executor = "conheca-sumare-vps" if manifest["id"] == "conheca-sumare-prod" else "vps-project-clone"
+    project = "conheca-sumare" if source else manifest["id"]
+    executor = "conheca-sumare-vps" if source else "vps-project-clone"
     payload = json.dumps({"project": project, "sha": requested_sha, "executor": executor}).encode()
     request = urllib.request.Request(endpoint + "/api/publication/consume", data=payload,
         headers={"Content-Type": "application/json", "Authorization": "Bearer " + token})
@@ -312,7 +360,10 @@ def publication_lock(project_id: str):
 def project_clone(req: PublicationProjectRequest) -> dict[str, Any]:
     manifest = load_manifest(req.project_id)
     # Hold through the entire update, not just the approval HTTP call.
-    with publication_lock(req.project_id):
+    # Registry aliases resolving to the same checkout must share the same lock.
+    _, repository, _ = project_paths(manifest)
+    lock_key = "repository-" + hashlib.sha256(str(repository.resolve()).encode()).hexdigest()
+    with publication_lock(lock_key):
         return project_clone_locked(req, manifest)
 
 
@@ -325,7 +376,7 @@ def project_clone_locked(req: PublicationProjectRequest, manifest: dict[str, Any
     approved_sha = publication_preflight(manifest, target, req.target_sha)
     root.mkdir(parents=True, exist_ok=True)
 
-    if (target / ".git").is_dir():
+    if (target / ".git").exists():
         origin = run(["git", "remote", "get-url", "origin"], target)
         if not origin["ok"]:
             result = {"ok": False, "stage": "origin_read", "result": origin}
@@ -333,6 +384,8 @@ def project_clone_locked(req: PublicationProjectRequest, manifest: dict[str, Any
             return result
 
         current_origin = origin["stdout"].strip()
+        if approved_sha and current_origin != url:
+            raise HTTPException(status_code=409, detail="preserve_origin_before_publication")
         if current_origin != url:
             reset_origin = run(["git", "remote", "set-url", "origin", url], target)
             if not reset_origin["ok"]:
@@ -340,16 +393,12 @@ def project_clone_locked(req: PublicationProjectRequest, manifest: dict[str, Any
                 audit("project_clone", req.project_id, req.model_dump(), result)
                 return result
 
-        fetch = run(["git", "fetch", "--all", "--prune"], target)
+        fetch = run(["git", "fetch", "origin", approved_sha] if approved_sha else ["git", "fetch", "--all", "--prune"], target)
         if not fetch["ok"]:
             result = {"ok": False, "stage": "fetch", "result": fetch}
             audit("project_clone", req.project_id, req.model_dump(), result)
             return result
 
-        if approved_sha:
-            fetch_target = run(["git", "fetch", "origin", approved_sha], target)
-            if not fetch_target["ok"]:
-                return {"ok": False, "stage": "approved_sha_fetch", "result": fetch_target}
         checkout = run(["git", "checkout", "--detach", approved_sha] if approved_sha else ["git", "checkout", branch], target)
         if not checkout["ok"]:
             result = {"ok": False, "stage": "checkout", "result": checkout}
@@ -384,13 +433,20 @@ def project_clone_locked(req: PublicationProjectRequest, manifest: dict[str, Any
     if target.exists():
         target.rmdir()
 
-    clone = run(
-        ["git", "clone", "--branch", branch, "--single-branch", url, str(target)],
-        root,
-    )
-    if clone["ok"] and approved_sha:
-        fetched = run(["git", "fetch", "origin", approved_sha], target)
-        clone = run(["git", "checkout", "--detach", approved_sha], target) if fetched["ok"] else fetched
+    if approved_sha:
+        # A new checkout must never briefly materialize the moving branch template.
+        clone = run(["git", "init", str(target)], root)
+        if clone["ok"]:
+            clone = run(["git", "remote", "add", "origin", url], target)
+        if clone["ok"]:
+            clone = run(["git", "fetch", "origin", approved_sha], target)
+        if clone["ok"]:
+            clone = run(["git", "checkout", "--detach", approved_sha], target)
+        if clone["ok"]:
+            clone = run(["git", "rev-parse", "HEAD"], target)
+            clone["ok"] = clone["ok"] and clone["stdout"].strip() == approved_sha
+    else:
+        clone = run(["git", "clone", "--branch", branch, "--single-branch", url, str(target)], root)
     result = {
         "ok": clone["ok"],
         "operation": "cloned",
@@ -479,3 +535,4 @@ def project_docker_container_env_safe(req: ProjectContainerRequest) -> dict[str,
     }
     audit("project_docker_container_env_safe", req.project_id, {"project_id": req.project_id, "container_name": name}, result)
     return result
+
