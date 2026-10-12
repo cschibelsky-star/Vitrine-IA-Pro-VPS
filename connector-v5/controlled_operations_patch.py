@@ -286,6 +286,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": set(),
         "up": {"web"},
     },
+    "projeto-lucas-hml": {
+        "compose_files": {"products/assistiva-ai/hml/docker-compose.hml.yml"},
+        "services": {"web"},
+        "run_once": set(),
+        "build": set(),
+        "up": {"web"},
+    },
 }
 
 

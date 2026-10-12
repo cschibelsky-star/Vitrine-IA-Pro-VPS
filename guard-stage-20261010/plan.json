@@ -1,0 +1,1 @@
+{"container": "vitrine_mcp_v5", "transformed": ["main_ext.py"], "extra": ["publication_sources.json", "runtime_publication_guard.py", "install_runtime_publication_guard.py"], "guarded_tools": ["project_clone", "project_git_reconcile_to_origin", "project_compose_service_execute"], "backup": "/v5/guard-backups/20261010-publication-guard"}

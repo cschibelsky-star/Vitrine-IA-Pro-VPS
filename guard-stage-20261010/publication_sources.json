@@ -1,0 +1,23 @@
+{
+  "conheca-sumare": {
+    "repository_url": "https://github.com/cschibelsky-star/vitrine-ai-pro.git",
+    "baseline_sha": "429b304e97b5fe59d05bd656f93c8767a1de8a7c",
+    "production_enabled": false,
+    "production_project_ids": [
+      "conheca-sumare",
+      "conheca-sumare-prod"
+    ],
+    "production_hosts": [
+      "conhecasumare.com.br",
+      "www.conhecasumare.com.br"
+    ],
+    "homologation_project_ids": [
+      "conheca-sumare-origin-hml"
+    ],
+    "candidate_sha": "a416a9480fd33e282c23158df204b80404eeb10d",
+    "production_root_names": [
+      "conheca-sumare",
+      "conheca-sumare-prod"
+    ]
+  }
+}

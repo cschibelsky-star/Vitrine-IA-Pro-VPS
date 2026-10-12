@@ -1,8 +1,9 @@
 services:
   connector_v5:
+    image: vitrine-publication-guard-v5:20261010
     build:
       context: .
-      dockerfile: connector-v5/Dockerfile
+      dockerfile: guard-stage-20261010/Dockerfile
     container_name: vitrine_mcp_v5
     command: ["python", "/app/main_ext.py"]
     environment:

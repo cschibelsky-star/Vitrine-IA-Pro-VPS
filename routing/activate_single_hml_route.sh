@@ -59,23 +59,31 @@ upstream=str(r['upstream'])
 network=str(r['network'])
 resolver=str(r['cert_resolver'])
 entrypoint=str(r['entrypoint'])
-if not hostname.endswith('.vitrineiapro.com.br'):
-    raise SystemExit(20)
+hosts=[hostname]
+for key in ('friendly_aliases', 'legacy_aliases'):
+    for raw in r.get(key, []) or []:
+        alias=str(raw).strip().lower()
+        if alias and alias not in hosts:
+            hosts.append(alias)
+for host in hosts:
+    if not re.fullmatch(r'[a-z0-9.-]+', host) or not host.endswith('.vitrineiapro.com.br'):
+        raise SystemExit(20)
 m=re.fullmatch(r'http://([A-Za-z0-9_.-]+):([0-9]{1,5})', upstream)
 if not m:
     raise SystemExit(21)
 port=int(m.group(2))
 if port < 1 or port > 65535:
     raise SystemExit(22)
-print('\t'.join((hostname, m.group(1), network, resolver, entrypoint, str(port))))
+route_rule=' || '.join(f'Host(`{host}`)' for host in hosts)
+print('\t'.join((hostname, m.group(1), network, resolver, entrypoint, str(port), route_rule)))
 PY
 )" || {
   rc=$?
   echo "ERROR route_field_validation_failed rc=$rc" >&2
   exit "$rc"
 }
-IFS=$'\t' read -r hostname target_container network resolver entrypoint target_port <<< "$field_line"
-if [ -z "${hostname:-}" ] || [ -z "${target_container:-}" ] || [ -z "${target_port:-}" ]; then
+IFS=$'\t' read -r hostname target_container network resolver entrypoint target_port route_rule <<< "$field_line"
+if [ -z "${hostname:-}" ] || [ -z "${target_container:-}" ] || [ -z "${target_port:-}" ] || [ -z "${route_rule:-}" ]; then
   echo "ERROR route_field_parse_empty" >&2
   exit 25
 fi
@@ -146,7 +154,7 @@ docker run -d \
   --security-opt no-new-privileges:true \
   --label "vitrine.route.id=$route_id" \
   --label "traefik.enable=true" \
-  --label "traefik.http.routers.${route_id}.rule=Host(\`${hostname}\`)" \
+  --label "traefik.http.routers.${route_id}.rule=${route_rule}" \
   --label "traefik.http.routers.${route_id}.entrypoints=${entrypoint}" \
   --label "traefik.http.routers.${route_id}.tls=true" \
   --label "traefik.http.routers.${route_id}.tls.certresolver=${resolver}" \
