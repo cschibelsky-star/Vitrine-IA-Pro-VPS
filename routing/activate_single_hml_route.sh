@@ -75,14 +75,28 @@ port=int(m.group(2))
 if port < 1 or port > 65535:
     raise SystemExit(22)
 route_rule=' || '.join(f'Host(`{host}`)' for host in hosts)
-print('\t'.join((hostname, m.group(1), network, resolver, entrypoint, str(port), route_rule)))
+for field in (hostname, m.group(1), network, resolver, entrypoint, str(port), route_rule):
+    if '\n' in field or '\r' in field:
+        raise SystemExit(26)
+    print(field)
 PY
 )" || {
   rc=$?
   echo "ERROR route_field_validation_failed rc=$rc" >&2
   exit "$rc"
 }
-IFS=$'\t' read -r hostname target_container network resolver entrypoint target_port route_rule <<< "$field_line"
+mapfile -t route_fields <<< "$field_line"
+if [ "${#route_fields[@]}" -ne 7 ]; then
+  echo "ERROR route_field_count_invalid" >&2
+  exit 25
+fi
+hostname="${route_fields[0]}"
+target_container="${route_fields[1]}"
+network="${route_fields[2]}"
+resolver="${route_fields[3]}"
+entrypoint="${route_fields[4]}"
+target_port="${route_fields[5]}"
+route_rule="${route_fields[6]}"
 if [ -z "${hostname:-}" ] || [ -z "${target_container:-}" ] || [ -z "${target_port:-}" ] || [ -z "${route_rule:-}" ]; then
   echo "ERROR route_field_parse_empty" >&2
   exit 25
