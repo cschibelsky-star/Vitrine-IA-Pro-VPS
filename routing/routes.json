@@ -8,7 +8,7 @@
     "project_prefix": "p",
     "customer_prefix": "c",
     "width": 6,
-    "project_next": 5,
+    "project_next": 6,
     "customer_next": 1
   },
   "reserved_root_labels": [
@@ -125,6 +125,23 @@
       "health_path": "/health",
       "ssl": true,
       "status": "active",
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
+    },
+    {
+      "id": "p000005-hml",
+      "project_id": "v5-reviewed-homologation-hml",
+      "deployment_code": "p000005",
+      "environment": "homologation",
+      "hostname": "p000005.hml.vitrineiapro.com.br",
+      "friendly_aliases": ["reviewed-project-manager.hml.vitrineiapro.com.br"],
+      "legacy_aliases": [],
+      "upstream": "http://vitrine_mcp_v5_reviewed_hml:8000",
+      "health_path": "/mcp",
+      "ssl": true,
+      "status": "pending_dns_proxy",
       "legacy": false,
       "network": "n8n-traefik_app_network",
       "cert_resolver": "le",
