@@ -721,6 +721,29 @@ def project_php_lint(project_id: str, path: str) -> dict[str, Any]:
     return result
 
 
+def _project_validation_bootstrap(command: str) -> str:
+    """Build a disposable project without inheriting another app's state."""
+    return (
+        "set -eu; "
+        "export MAIL_MAILER=array PNCP_LIVE_ACCEPTANCE=0; "
+        "mkdir -p /work/project; "
+        "find /source -mindepth 1 -maxdepth 1 "
+        "! -name .git ! -name '.env*' ! -name vendor ! -name node_modules "
+        "! -name storage ! -name bootstrap "
+        "-exec cp -R {} /work/project/ \\;; "
+        "mkdir -p /work/project/bootstrap; "
+        "find /source/bootstrap -mindepth 1 -maxdepth 1 ! -name cache "
+        "-exec cp -R {} /work/project/bootstrap/ \\;; "
+        "cp -R /var/www/html/vendor /work/project/vendor; "
+        "cd /work/project; "
+        "mkdir -p bootstrap/cache storage/framework/cache/data "
+        "storage/framework/sessions storage/framework/views storage/logs; "
+        ": > .env; "
+        "php artisan package:discover --no-interaction; "
+        + command
+    )
+
+
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 def project_php_validate(project_id: str, operation: str = "tests_marketing") -> dict[str, Any]:
     operation = str(operation or "").strip().lower()
@@ -794,12 +817,7 @@ def project_php_validate(project_id: str, operation: str = "tests_marketing") ->
     extra_mounts: list[str] = []
 
     bootstrap = (
-        "set -eu; "
-        "mkdir -p /work/project; "
-        "cp -R /var/www/html/. /work/project/; "
-        "find /source -mindepth 1 -maxdepth 1 ! -name .git -exec cp -R {} /work/project/ \\;; "
-        "cd /work/project; "
-        + commands[operation]
+        _project_validation_bootstrap(commands[operation])
     )
     result = _run([
         "docker", "run", "--rm",
