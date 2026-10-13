@@ -21,3 +21,9 @@ if decode "$(printf '%s\n' tv-hml.vitrineiapro.com.br tvsumare_web n8n-traefik_a
   exit 1
 fi
 echo "PASS: HML route fields"
+
+# Provider router namespace must not reuse an application router identifier.
+script="$(dirname "$0")/../activate_single_hml_route.sh"
+grep -Fq 'router_id="vitrine-provider-${route_id}"' "$script"
+grep -Fq 'traefik.http.routers.${router_id}.rule' "$script"
+grep -Fq 'traefik.http.services.${router_id}.loadbalancer.server.url' "$script"
