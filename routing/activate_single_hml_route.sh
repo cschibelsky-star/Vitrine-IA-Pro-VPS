@@ -148,6 +148,8 @@ fi
 # target application container by applying labels to a tiny route-carrier container.
 # This avoids rewriting the application container and keeps the route isolated.
 carrier="vitrine_route_${route_id}"
+# Namespaced router/service IDs prevent collisions with application-owned Traefik labels.
+router_id="vitrine-provider-${route_id}"
 image="alpine:3.20"
 
 if docker inspect "$carrier" >/dev/null 2>&1; then
@@ -168,12 +170,12 @@ docker run -d \
   --security-opt no-new-privileges:true \
   --label "vitrine.route.id=$route_id" \
   --label "traefik.enable=true" \
-  --label "traefik.http.routers.${route_id}.rule=${route_rule}" \
-  --label "traefik.http.routers.${route_id}.entrypoints=${entrypoint}" \
-  --label "traefik.http.routers.${route_id}.tls=true" \
-  --label "traefik.http.routers.${route_id}.tls.certresolver=${resolver}" \
-  --label "traefik.http.routers.${route_id}.service=${route_id}" \
-  --label "traefik.http.services.${route_id}.loadbalancer.server.url=${upstream}" \
+  --label "traefik.http.routers.${router_id}.rule=${route_rule}" \
+  --label "traefik.http.routers.${router_id}.entrypoints=${entrypoint}" \
+  --label "traefik.http.routers.${router_id}.tls=true" \
+  --label "traefik.http.routers.${router_id}.tls.certresolver=${resolver}" \
+  --label "traefik.http.routers.${router_id}.service=${router_id}" \
+  --label "traefik.http.services.${router_id}.loadbalancer.server.url=${upstream}" \
   "$image" sh -c 'exec sleep infinity' >/dev/null
 
 sleep 2
