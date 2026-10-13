@@ -1,0 +1,21 @@
+name: HML route parser tests
+on:
+  pull_request:
+    paths:
+      - 'routing/activate_single_hml_route.sh'
+      - 'routing/tests/**'
+      - '.github/workflows/test-hml-route-parser.yml'
+  push:
+    branches:
+      - 'fix/hml-route-field-parse-20261012'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax
+        run: bash -n routing/activate_single_hml_route.sh routing/tests/test_hml_route_fields.sh
+      - name: Regression check
+        run: bash routing/tests/test_hml_route_fields.sh
