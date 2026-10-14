@@ -7,9 +7,10 @@ services:
     profiles: ["build-only"]
 
   super_connector:
+    image: vitrine-publication-guard-super:20261010
     build:
       context: ..
-      dockerfile: super-connector/Dockerfile
+      dockerfile: guard-stage-20261010/Dockerfile
     container_name: vitrine_super_connector_candidate
     environment:
       SUPER_REGISTRY_ROOT: /data/registry/projects
