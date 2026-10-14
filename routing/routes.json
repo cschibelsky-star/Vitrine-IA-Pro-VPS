@@ -2,13 +2,13 @@
   "schema_version": "2.0",
   "base_domains": {
     "homologation": "hml.vitrineiapro.com.br",
-    "customer_root": "vitrineaipro.com.br"
+    "customer_root": "vitrineiapro.com.br"
   },
   "code_policy": {
     "project_prefix": "p",
     "customer_prefix": "c",
     "width": 6,
-    "project_next": 5,
+    "project_next": 7,
     "customer_next": 1
   },
   "reserved_root_labels": [
@@ -85,7 +85,9 @@
       "deployment_code": "p000002",
       "environment": "homologation",
       "hostname": "p000002.hml.vitrineiapro.com.br",
-      "friendly_aliases": ["conheca-sumare.hml.vitrineiapro.com.br"],
+      "friendly_aliases": [
+        "conheca-sumare.hml.vitrineiapro.com.br"
+      ],
       "legacy_aliases": [],
       "upstream": "http://conheca_sumare_hml_web:80",
       "health_path": "/",
@@ -102,7 +104,9 @@
       "deployment_code": "p000003",
       "environment": "homologation",
       "hostname": "p000003.hml.vitrineiapro.com.br",
-      "friendly_aliases": ["conheca-sumare-prod.hml.vitrineiapro.com.br"],
+      "friendly_aliases": [
+        "conheca-sumare-prod.hml.vitrineiapro.com.br"
+      ],
       "legacy_aliases": [],
       "upstream": "http://conheca_sumare_web_prod:80",
       "health_path": "/",
@@ -119,12 +123,33 @@
       "deployment_code": "p000004",
       "environment": "homologation",
       "hostname": "p000004.hml.vitrineiapro.com.br",
-      "friendly_aliases": ["lucas.hml.vitrineiapro.com.br"],
+      "friendly_aliases": [
+        "lucas.hml.vitrineiapro.com.br"
+      ],
       "legacy_aliases": [],
       "upstream": "http://projeto_lucas_hml_web:80",
       "health_path": "/health",
       "ssl": true,
       "status": "active",
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
+    },
+    {
+      "id": "p000006-hml",
+      "project_id": "assessor-online-trial-hml",
+      "deployment_code": "p000006",
+      "environment": "homologation",
+      "hostname": "p000006.hml.vitrineiapro.com.br",
+      "friendly_aliases": [
+        "assessor.hml.vitrineiapro.com.br"
+      ],
+      "legacy_aliases": [],
+      "upstream": "http://assessor-online-trial-hml-assessor_web-1:8080",
+      "health_path": "/health",
+      "ssl": true,
+      "status": "pending_dns_proxy",
       "legacy": false,
       "network": "n8n-traefik_app_network",
       "cert_resolver": "le",
