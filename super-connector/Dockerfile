@@ -12,3 +12,7 @@ COPY super-connector/registry /app/registry-schema
 COPY super-connector/capability-manifest.json /app/capability-manifest.json
 EXPOSE 8000
 CMD ["python", "/app/branding_entrypoint.py"]
+
+# Preserve the deployed publication guard while correcting the HML registry binding.
+FROM vitrine-publication-guard-super:20261010 AS hml_binding
+COPY super-connector/foundation/recovery_ops.py /app/foundation/recovery_ops.py
