@@ -25,6 +25,18 @@ def allocate(kind: str, project_id: str, upstream: str, health_path: str, friend
     with LOCK.open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         data = json.loads(REGISTRY.read_text())
+        # The route activator supports only container DNS names on approved Docker
+        # networks. Never reserve a loopback / host-published endpoint as an HML route.
+        network = data.get("network")
+        if network not in ("vitrine_net", "n8n-traefik_app_network"):
+            raise ValueError("unsupported routing network")
+        match = re.fullmatch(r"http://([A-Za-z0-9_.-]+):([0-9]{1,5})", upstream)
+        if not match or match.group(1).lower() in ("localhost", "127.0.0.1", "0.0.0.0"):
+            raise ValueError("upstream must use an internal container hostname and port")
+        if not 1 <= int(match.group(2)) <= 65535:
+            raise ValueError("upstream port out of range")
+        if not re.fullmatch(r"/[A-Za-z0-9_./-]*", health_path) or ".." in health_path:
+            raise ValueError("invalid health path")
         policy = data["code_policy"]
         is_project = kind == "project"
         prefix = policy["project_prefix"] if is_project else policy["customer_prefix"]
@@ -88,6 +100,10 @@ def allocate(kind: str, project_id: str, upstream: str, health_path: str, friend
             "ssl": True,
             "status": "planned",
             "legacy": False,
+            # Required by activate_single_hml_route.sh before any traffic is exposed.
+            "network": network,
+            "cert_resolver": "le",
+            "entrypoint": "websecure",
         }
         data["routes"].append(route)
         policy[counter_key] = number + 1
