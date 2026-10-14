@@ -15,7 +15,7 @@ from typing import Any
 
 import main
 
-ROUTING_PROJECT_ID = "vitrine-super-centro-operacional-candidate-https"
+ROUTING_PROJECT_ID = "vitrine-ia-pro-vps"
 ALLOWED_DOMAIN_SUFFIX = ".vitrineiapro.com.br"
 
 
