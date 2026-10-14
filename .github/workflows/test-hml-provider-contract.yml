@@ -1,0 +1,21 @@
+name: HML route allocation contract
+on:
+  pull_request:
+    paths:
+      - 'routing/provision_route.py'
+      - 'routing/tests/test_provision_route_contract.py'
+      - '.github/workflows/test-hml-provider-contract.yml'
+  push:
+    branches:
+      - 'fix/hml-provider-contract-assessor-20261014'
+permissions:
+  contents: read
+jobs:
+  allocation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax
+        run: python3 -m py_compile routing/provision_route.py routing/tests/test_provision_route_contract.py
+      - name: Isolated allocation contract tests
+        run: python3 -m unittest discover -s routing/tests -p 'test_provision_route_contract.py' -v
