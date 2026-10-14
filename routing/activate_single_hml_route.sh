@@ -75,14 +75,28 @@ port=int(m.group(2))
 if port < 1 or port > 65535:
     raise SystemExit(22)
 route_rule=' || '.join(f'Host(`{host}`)' for host in hosts)
-print('\t'.join((hostname, m.group(1), network, resolver, entrypoint, str(port), route_rule)))
+for field in (hostname, m.group(1), network, resolver, entrypoint, str(port), route_rule):
+    if '\n' in field or '\r' in field:
+        raise SystemExit(26)
+    print(field)
 PY
 )" || {
   rc=$?
   echo "ERROR route_field_validation_failed rc=$rc" >&2
   exit "$rc"
 }
-IFS=$'\t' read -r hostname target_container network resolver entrypoint target_port route_rule <<< "$field_line"
+mapfile -t route_fields <<< "$field_line"
+if [ "${#route_fields[@]}" -ne 7 ]; then
+  echo "ERROR route_field_count_invalid" >&2
+  exit 25
+fi
+hostname="${route_fields[0]}"
+target_container="${route_fields[1]}"
+network="${route_fields[2]}"
+resolver="${route_fields[3]}"
+entrypoint="${route_fields[4]}"
+target_port="${route_fields[5]}"
+route_rule="${route_fields[6]}"
 if [ -z "${hostname:-}" ] || [ -z "${target_container:-}" ] || [ -z "${target_port:-}" ] || [ -z "${route_rule:-}" ]; then
   echo "ERROR route_field_parse_empty" >&2
   exit 25
@@ -134,6 +148,7 @@ fi
 # target application container by applying labels to a tiny route-carrier container.
 # This avoids rewriting the application container and keeps the route isolated.
 carrier="vitrine_route_${route_id}"
+router_id="vitrine-provider-${route_id}"
 image="alpine:3.20"
 
 if docker inspect "$carrier" >/dev/null 2>&1; then
@@ -154,12 +169,12 @@ docker run -d \
   --security-opt no-new-privileges:true \
   --label "vitrine.route.id=$route_id" \
   --label "traefik.enable=true" \
-  --label "traefik.http.routers.${route_id}.rule=${route_rule}" \
-  --label "traefik.http.routers.${route_id}.entrypoints=${entrypoint}" \
-  --label "traefik.http.routers.${route_id}.tls=true" \
-  --label "traefik.http.routers.${route_id}.tls.certresolver=${resolver}" \
-  --label "traefik.http.routers.${route_id}.service=${route_id}" \
-  --label "traefik.http.services.${route_id}.loadbalancer.server.url=${upstream}" \
+  --label "traefik.http.routers.${router_id}.rule=${route_rule}" \
+  --label "traefik.http.routers.${router_id}.entrypoints=${entrypoint}" \
+  --label "traefik.http.routers.${router_id}.tls=true" \
+  --label "traefik.http.routers.${router_id}.tls.certresolver=${resolver}" \
+  --label "traefik.http.routers.${router_id}.service=${router_id}" \
+  --label "traefik.http.services.${router_id}.loadbalancer.server.url=${upstream}" \
   "$image" sh -c 'exec sleep infinity' >/dev/null
 
 sleep 2
