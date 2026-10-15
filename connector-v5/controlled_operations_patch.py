@@ -27,7 +27,7 @@ def _replace_section(source: str, start: str, end: str, replacement: str, label:
 def apply(source: str) -> str:
     source = _replace_once(
         source,
-        'VERSION = "0.5.11-marketing-live-homologation"',
+        'VERSION = "0.5.12-marketing-live-homologation"',
         'VERSION = "0.5.14-runtime-secret-import"',
         "version",
     )
