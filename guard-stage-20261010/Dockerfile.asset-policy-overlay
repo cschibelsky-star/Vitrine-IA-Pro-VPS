@@ -1,0 +1,4 @@
+# Preserve the exact reviewed V5 image and its publication guard.
+FROM vitrine-publication-guard-v5:20261010
+COPY guard-stage-20261010/asset_host_policy_overlay.py /app/asset_host_policy_overlay.py
+COPY guard-stage-20261010/main_ext_asset_host.py /app/main_ext.py
