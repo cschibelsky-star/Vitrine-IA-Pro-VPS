@@ -6,6 +6,8 @@ import unittest
 
 PROJECT = 'factory-asset-intake-validation-20261015'
 SERVICE = 'asset-validation'
+HOST_SERVICE = 'asset-host'
+HOST_COMPOSE = 'docker-compose.asset-host.yml'
 COMPOSE = 'docker-compose.asset-validation.yml'
 
 class FactoryAssetPolicyTests(unittest.TestCase):
@@ -21,7 +23,7 @@ class FactoryAssetPolicyTests(unittest.TestCase):
         class MCP:
             def tool(self, **kwargs): return lambda fn: fn
         def base(project, compose):
-            if project != PROJECT or compose != COMPOSE:
+            if project != PROJECT or compose not in {COMPOSE, HOST_COMPOSE}:
                 raise PermissionError('controlled_compose_file_not_allowed')
             return ['docker','compose','-p',PROJECT,'-f',COMPOSE],COMPOSE,Path('/isolated')
         def run(command, repository, timeout):
@@ -50,10 +52,15 @@ class FactoryAssetPolicyTests(unittest.TestCase):
         self.assertEqual(self.calls,[])
     def test_only_named_service_and_file_allowed(self):
         policy=self.policy[PROJECT]
-        self.assertEqual(policy['compose_files'],{COMPOSE})
-        self.assertEqual(policy['services'],{SERVICE})
-        self.assertEqual(policy['up'],set())
-        self.assertEqual(policy['build'],{SERVICE})
+        self.assertEqual(policy['compose_files'],{COMPOSE, HOST_COMPOSE})
+        self.assertEqual(policy['services'],{SERVICE, HOST_SERVICE})
+        self.assertEqual(policy['up'],{HOST_SERVICE})
+        self.assertEqual(policy['build'],{SERVICE, HOST_SERVICE})
         self.assertEqual(policy['run_once'],{SERVICE})
+
+    def test_isolated_host_only(self):
+        self.assertTrue(self.call('build',compose_file=HOST_COMPOSE,service=HOST_SERVICE)['ok'])
+        self.assertTrue(self.call('up',compose_file=HOST_COMPOSE,service=HOST_SERVICE)['ok'])
+        self.assertFalse(self.call('run_once',compose_file=HOST_COMPOSE,service=HOST_SERVICE)['ok'])
 
 if __name__=='__main__': unittest.main()
