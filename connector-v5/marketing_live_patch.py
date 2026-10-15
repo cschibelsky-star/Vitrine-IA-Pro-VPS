@@ -3,7 +3,7 @@ from __future__ import annotations
 """Startup patch for the gated Marketing Agents Gemini live homologation.
 
 This patch is intentionally narrow and fail-closed. It upgrades the validated
-0.5.11 generic Laravel runner to the marketing live homologation layer without
+0.5.12 VPS filesystem backup baseline to the marketing live homologation layer without
 exposing a generic shell operation.
 Provenance: validated local commit 27ca2a6a8ff5c173b54383c09d6c29aee37fd4d0.
 """
@@ -19,8 +19,8 @@ def _replace_once(source: str, old: str, new: str, label: str) -> str:
 def apply(source: str) -> str:
     source = _replace_once(
         source,
-        'VERSION = "0.5.11-generic-laravel-test-runner"',
-        'VERSION = "0.5.11-marketing-live-homologation"',
+        'VERSION = "0.5.12-vps-filesystem-backup"',
+        'VERSION = "0.5.12-marketing-live-homologation"',
         "version",
     )
 
