@@ -216,6 +216,13 @@ def project_mariadb_backup(project_id: str, confirm: str = "") -> dict[str, Any]
     activate_start = '@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef activate_hml_route('
     compose_block = r'''
 CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
+    "factory-asset-intake-validation-20261015": {
+        "compose_files": {"docker-compose.asset-validation.yml"},
+        "services": {"asset-validation"},
+        "run_once": {"asset-validation"},
+        "build": {"asset-validation"},
+        "up": set(),
+    },
     "vitrine-ia-pro-core": {
         "compose_files": {"docker-compose.core-hml.yml"},
         "services": {"core_db", "core_migrate", "core_seed_providers", "core_seed_agents", "core_app", "core_web"},
@@ -403,3 +410,4 @@ def project_compose_explicit(project_id: str, compose_file: str, action: str = "
 '''
     source = _replace_section(source, compose_start, activate_start, compose_block, "compose_section")
     return source
+

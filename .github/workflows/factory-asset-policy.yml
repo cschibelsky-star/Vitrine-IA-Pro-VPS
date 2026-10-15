@@ -1,0 +1,19 @@
+name: Factory asset runner policy
+on:
+  pull_request:
+    paths:
+      - 'connector-v5/controlled_operations_patch.py'
+      - 'connector-v5/test_factory_asset_policy.py'
+      - '.github/workflows/factory-asset-policy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scoped-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile policy and regression tests
+        run: python -m py_compile connector-v5/controlled_operations_patch.py connector-v5/test_factory_asset_policy.py
+      - name: Verify allowed and denied operations without Docker
+        run: python -m unittest discover -s connector-v5 -p 'test_factory_asset_policy.py' -v
