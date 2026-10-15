@@ -40,3 +40,7 @@ jobs:
             --tmpfs /tmp:rw,nosuid,nodev,size=16m \
             --entrypoint python v5-asset-policy-ci:${{ github.sha }} \
             -c 'import main_ext; assert main_ext.core.VERSION == "0.5.14-runtime-secret-import"; print("candidate V5 runtime startup: OK")'
+      - name: Verify production-guard-preserving candidate overlay
+        run: |
+          PYTHONPATH=guard-stage-20261010 python -m unittest discover -s guard-stage-20261010 -p 'test_asset_host_policy_overlay.py' -v
+          python -m py_compile guard-stage-20261010/main_ext_asset_host.py
