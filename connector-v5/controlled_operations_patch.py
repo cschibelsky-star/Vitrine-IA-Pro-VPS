@@ -217,11 +217,11 @@ def project_mariadb_backup(project_id: str, confirm: str = "") -> dict[str, Any]
     compose_block = r'''
 CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
     "factory-asset-intake-validation-20261015": {
-        "compose_files": {"docker-compose.asset-validation.yml"},
-        "services": {"asset-validation"},
+        "compose_files": {"docker-compose.asset-validation.yml", "docker-compose.asset-host.yml"},
+        "services": {"asset-validation", "asset-host"},
         "run_once": {"asset-validation"},
-        "build": {"asset-validation"},
-        "up": set(),
+        "build": {"asset-validation", "asset-host"},
+        "up": {"asset-host"},
     },
     "vitrine-ia-pro-core": {
         "compose_files": {"docker-compose.core-hml.yml"},
