@@ -32,3 +32,11 @@ jobs:
           assert '"asset-host"' in upgraded
           print("V5 startup patch chain and isolated asset-host policy: OK")
           PY
+      - name: Build candidate V5 image without publishing
+        run: docker build --file connector-v5/Dockerfile --tag v5-asset-policy-ci:${{ github.sha }} .
+      - name: Smoke test actual candidate container startup patches
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,size=16m \
+            --entrypoint python v5-asset-policy-ci:${{ github.sha }} \
+            -c 'import main_ext; assert main_ext.core.VERSION == "0.5.14-runtime-secret-import"; print("candidate V5 runtime startup: OK")'
