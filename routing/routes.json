@@ -8,7 +8,7 @@
     "project_prefix": "p",
     "customer_prefix": "c",
     "width": 6,
-    "project_next": 7,
+    "project_next": 8,
     "customer_next": 1
   },
   "reserved_root_labels": [
@@ -154,6 +154,22 @@
       "network": "n8n-traefik_app_network",
       "cert_resolver": "le",
       "entrypoint": "websecure"
+    },
+    {
+      "id": "p000007-hml",
+      "project_id": "assessor-online",
+      "deployment_code": "p000007",
+      "environment": "homologation",
+      "hostname": "p000007.hml.vitrineiapro.com.br",
+      "friendly_aliases": [
+        "assessor-online.hml.vitrineiapro.com.br"
+      ],
+      "legacy_aliases": [],
+      "upstream": "assessor-online-assessor_demo-1:8080",
+      "health_path": "/health",
+      "ssl": true,
+      "status": "planned",
+      "legacy": false
     }
   ]
 }
