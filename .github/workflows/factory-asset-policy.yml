@@ -1,0 +1,46 @@
+name: Factory asset runner policy
+on:
+  pull_request:
+    paths:
+      - 'connector-v5/controlled_operations_patch.py'
+      - 'connector-v5/test_factory_asset_policy.py'
+      - 'connector-v5/main.py'
+      - 'connector-v5/marketing_live_patch.py'
+      - 'connector-v5/main_ext.py'
+      - '.github/workflows/factory-asset-policy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scoped-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile policy and regression tests
+        run: python -m py_compile connector-v5/controlled_operations_patch.py connector-v5/test_factory_asset_policy.py
+      - name: Verify allowed and denied operations without Docker
+        run: python -m unittest discover -s connector-v5 -p 'test_factory_asset_policy.py' -v
+      - name: Confirm complete V5 boot compatibility before any runtime update
+        run: |
+          PYTHONPATH=connector-v5 python - <<'PY'
+          from pathlib import Path
+          from marketing_live_patch import apply as marketing
+          from controlled_operations_patch import apply as operations
+          source = Path("connector-v5/main.py").read_text(encoding="utf-8")
+          upgraded = operations(marketing(source))
+          assert 'VERSION = "0.5.14-runtime-secret-import"' in upgraded
+          assert '"asset-host"' in upgraded
+          print("V5 startup patch chain and isolated asset-host policy: OK")
+          PY
+      - name: Build candidate V5 image without publishing
+        run: docker build --file connector-v5/Dockerfile --tag v5-asset-policy-ci:${{ github.sha }} .
+      - name: Smoke test actual candidate container startup patches
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,size=16m \
+            --entrypoint python v5-asset-policy-ci:${{ github.sha }} \
+            -c 'import main_ext; assert main_ext.core.VERSION == "0.5.14-runtime-secret-import"; print("candidate V5 runtime startup: OK")'
+      - name: Verify production-guard-preserving candidate overlay
+        run: |
+          PYTHONPATH=guard-stage-20261010 python -m unittest discover -s guard-stage-20261010 -p 'test_asset_host_policy_overlay.py' -v
+          python -m py_compile guard-stage-20261010/main_ext_asset_host.py

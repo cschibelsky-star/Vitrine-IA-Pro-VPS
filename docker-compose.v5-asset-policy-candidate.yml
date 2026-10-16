@@ -1,0 +1,14 @@
+services:
+  v5_asset_policy_probe:
+    image: vitrine-publication-guard-v5:20261015-asset-policy-candidate
+    build:
+      context: .
+      dockerfile: guard-stage-20261010/Dockerfile.asset-policy-overlay
+    command: ["python", "-c", "import main_ext; p=main_ext.core.CONTROLLED_COMPOSE_POLICY['factory-asset-intake-validation-20261015']; assert p['up']=={'asset-host'}; assert 'project_compose_service_execute' in main_ext._guarded_tools; print('asset-host policy and publication guard: PASS')"]
+    network_mode: "none"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=16m
+    restart: "no"
