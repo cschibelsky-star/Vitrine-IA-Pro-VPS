@@ -223,6 +223,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": {"core_app"},
         "up": {"core_db", "core_app", "core_web"},
     },
+    "factory-asset-intake-validation-20261015": {
+        "compose_files": {"docker-compose.asset-host.yml"},
+        "services": {"asset-host"},
+        "run_once": set(),
+        "build": {"asset-host"},
+        "up": {"asset-host"},
+    },
     "vitrine-ai-pro-factory": {
         "compose_files": {"docker-compose.hml.yml"},
         "services": {"vitrine_factory_hml_db", "vitrine_factory_hml_migrate", "vitrine_factory_hml_app", "vitrine_factory_hml_web", "vitrine_factory_hml_check", "vitrine_factory_hml_dryrun", "vitrine_factory_hml_intake_probe"},
