@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -105,11 +106,23 @@ def video_producer_validate(project_id: str) -> dict[str, Any]:
     return result
 
 
+def _personal_video_export(target: Path, personal: bool) -> dict[str, Any]:
+    # Return owner-authorized media through the connector, without a public URL.
+    if not personal:
+        return {}
+    if target.is_symlink() or target.stat().st_size > 16 * 1024 * 1024:
+        return {"media_export_error": "personal_video_export_limit"}
+    return {"media_base64": base64.b64encode(target.read_bytes()).decode("ascii"), "media_mime_type": "video/mp4"}
+
+
 def video_producer_download(project_id: str, request_id: str, version_id: str, video_url: str, confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
-    if project_id != "vitrine-marketing-agents-core-hml":
+    personal = project_id == "vitrine-personal-video"
+    if project_id != "vitrine-marketing-agents-core-hml" and not personal:
         return {"ok": False, "error": "project_not_allowed"}
+    if personal and (not request_id.startswith("PERSONAL-") or not version_id.startswith("SESSION-PERSONAL-")):
+        return {"ok": False, "error": "personal_video_identifier_required"}
     if not _SAFE_ID.fullmatch(str(request_id or "")) or not _SAFE_ID.fullmatch(str(version_id or "")):
         return {"ok": False, "error": "invalid_video_identifier"}
 
@@ -139,15 +152,16 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
     repository = main._repository(project).resolve()
     workspace = repository.parent
     folder_name = "reel-01-vitrine-social-midia" if request_id == "REEL-01-VITRINE-SOCIAL-MIDIA-20260911" else request_id.lower()
-    output_dir = (workspace / "storage" / "app" / "marketing" / "video-producer" / folder_name).resolve()
-    allowed_root = (workspace / "storage" / "app" / "marketing" / "video-producer").resolve()
+    area = "personal" if personal else "marketing"
+    allowed_root = (workspace / "storage" / "app" / area / "video-producer").resolve()
+    output_dir = (allowed_root / folder_name).resolve()
     try:
         output_dir.relative_to(allowed_root)
     except ValueError:
         return {"ok": False, "error": "output_path_not_allowed"}
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(output_dir, 0o755)
+    os.chmod(output_dir, 0o700 if personal else 0o755)
     target = output_dir / f"{version_id}.mp4"
     manifest = output_dir / f"{version_id}.json"
     checksum_file = output_dir / f"{version_id}.sha256"
@@ -166,6 +180,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
             "provider": provider,
             "auto_publish": False,
             "regeneration_executed": False,
+            **_personal_video_export(target, personal),
         }
 
     secret = ""
@@ -181,7 +196,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
         headers["x-goog-api-key"] = secret
 
     temporary = output_dir / f".{version_id}.mp4.part"
-    maximum_bytes = 250 * 1024 * 1024
+    maximum_bytes = (16 if personal else 250) * 1024 * 1024
     size = 0
     digest = hashlib.sha256()
     request = urllib.request.Request(video_url, headers=headers, method="GET")
@@ -242,7 +257,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
         return {"ok": False, "error": "ffprobe_validation_failed", "stderr": probe.get("stderr", "")[-1000:]}
 
     os.replace(temporary, target)
-    os.chmod(target, 0o644)
+    os.chmod(target, 0o600 if personal else 0o644)
     sha256 = digest.hexdigest()
     checksum_file.write_text(f"{sha256}  {target.name}\n", encoding="utf-8")
     os.chmod(checksum_file, 0o640)
@@ -261,7 +276,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
     manifest.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.chmod(manifest, 0o640)
 
-    result = {"ok": True, "status": "preserved", "project_id": project_id, **record}
+    result = {"ok": True, "status": "preserved", "project_id": project_id, **record, **_personal_video_export(target, personal)}
     main._audit(
         "php.video_producer_download",
         {"project_id": project_id, "request_id": request_id, "version_id": version_id, "provider": provider},
