@@ -112,7 +112,7 @@ def _personal_video_export(target: Path, personal: bool, chunk_index: int = 0) -
         return {}
     if target.is_symlink() or target.stat().st_size > 16 * 1024 * 1024:
         return {"media_export_error": "personal_video_export_limit"}
-    chunk_size = 48 * 1024
+    chunk_size = 192 * 1024
     with target.open("rb") as handle:
         handle.seek(chunk_index * chunk_size)
         data = handle.read(chunk_size)
@@ -124,7 +124,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
     personal = project_id == "vitrine-personal-video"
     chunk_index = 0
-    chunk_match = re.fullmatch(r"(.+)\\.chunk-([0-9]{3})", version_id) if personal else None
+    chunk_match = re.fullmatch(r"(.+)[.]chunk-([0-9]{3})", version_id) if personal else None
     if chunk_match:
         version_id = chunk_match.group(1)
         chunk_index = int(chunk_match.group(2))
