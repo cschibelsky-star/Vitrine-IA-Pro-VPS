@@ -12,7 +12,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from heygen_runtime_audit import inventory as heygen_inventory
+
 router = APIRouter(prefix="/tvsumare")
+
 
 TV_ROOT = Path(os.getenv("TVSUMARE_ROOT", "/srv/tvsumare")).resolve()
 TV_BACKUP_ROOT = Path(os.getenv("TVSUMARE_BACKUP_ROOT", "/srv/backups/tvsumare")).resolve()
@@ -65,6 +68,13 @@ def audit(action: str, payload: dict[str, Any], result: dict[str, Any]) -> None:
     }
     with AUDIT_LOG.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+@router.get('/heygen/runtime-inventory', dependencies=[Depends(auth)])
+def heygen_runtime_inventory(environment: str = 'production') -> dict[str, Any]:
+    result = heygen_inventory(environment)
+    audit('heygen_runtime_inventory', {'environment': environment}, result)
+    return result
 
 
 def resolve_allowed(path: str, root: Path = TV_ROOT) -> Path:
