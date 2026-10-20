@@ -18,7 +18,9 @@ def adapter(id,cap,healthy=True):
 
 class RoutingTests(unittest.TestCase):
     def test_unknown_mutation_fails(self):
-        self.assertEqual(module.plan("compose_build",project("city"),[adapter("super","docker_build")],confirm="EXECUTAR",verified={"isolated_target":True})["error"],"environment_unclassified")
+        p=project("city")
+        p["docker"]={"compose_file":"docker-compose.yml","project_name":"city"}
+        self.assertEqual(module.plan("compose_build",p,[adapter("super","docker_build")],confirm="EXECUTAR",verified={"isolated_target":True})["error"],"environment_unclassified")
     def test_no_confirmation_denied(self):
         self.assertEqual(module.plan("compose_build",project(),[adapter("super","docker_build")],verified={"isolated_target":True})["error"],"authorization_required")
     def test_capability_fallback_uses_alternative(self):
