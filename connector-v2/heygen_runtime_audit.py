@@ -6,6 +6,9 @@ import subprocess
 
 CONTAINERS = {"production": "tvsumare_web_prod", "homologation": "tvsumare_web"}
 PHP_SCAN = r'''
+// php -n disables shared extensions. Load only the standard tokenizer, never app ini.
+if (!function_exists('token_get_all')) { @dl('tokenizer.so'); }
+if (!function_exists('token_get_all')) { exit(2); }
 $paths = ['includes/heygen_helper.php', 'includes/video_ai_helper.php',
           'admin/reporter-ia.php', 'reporter-ia.php',
           'admin/heygen-diagnostico.php', 'admin/status.php', 'status.php'];
