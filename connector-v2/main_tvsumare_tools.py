@@ -60,6 +60,13 @@ def tvsumare_health() -> dict[str, Any]:
     return _request("GET", "/tvsumare/health", timeout=30)
 
 
+def tvsumare_heygen_runtime_inventory(environment: str = 'production') -> dict[str, Any]:
+    if environment not in {'production', 'homologation'}:
+        return {'ok': False, 'error': 'environment_not_allowed'}
+    return _request('GET', '/tvsumare/heygen/runtime-inventory?environment=' + environment,
+                    timeout=70)
+
+
 def tvsumare_workspace_create() -> dict[str, Any]:
     return _post("/tvsumare/workspace/create")
 
