@@ -106,19 +106,30 @@ def video_producer_validate(project_id: str) -> dict[str, Any]:
     return result
 
 
-def _personal_video_export(target: Path, personal: bool) -> dict[str, Any]:
+def _personal_video_export(target: Path, personal: bool, chunk_index: int = 0) -> dict[str, Any]:
     # Return owner-authorized media through the connector, without a public URL.
     if not personal:
         return {}
     if target.is_symlink() or target.stat().st_size > 16 * 1024 * 1024:
         return {"media_export_error": "personal_video_export_limit"}
-    return {"media_base64": base64.b64encode(target.read_bytes()).decode("ascii"), "media_mime_type": "video/mp4"}
+    chunk_size = 48 * 1024
+    with target.open("rb") as handle:
+        handle.seek(chunk_index * chunk_size)
+        data = handle.read(chunk_size)
+    return {"media_base64": base64.b64encode(data).decode("ascii"), "media_mime_type": "video/mp4", "media_chunk_index": chunk_index, "media_chunk_size": chunk_size, "media_total_bytes": target.stat().st_size}
 
 
 def video_producer_download(project_id: str, request_id: str, version_id: str, video_url: str, confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
     personal = project_id == "vitrine-personal-video"
+    chunk_index = 0
+    chunk_match = re.fullmatch(r"(.+)\\.chunk-([0-9]{3})", version_id) if personal else None
+    if chunk_match:
+        version_id = chunk_match.group(1)
+        chunk_index = int(chunk_match.group(2))
+        if chunk_index > 341:
+            return {"ok": False, "error": "media_chunk_out_of_range"}
     if project_id != "vitrine-marketing-agents-core-hml" and not personal:
         return {"ok": False, "error": "project_not_allowed"}
     if personal and (not request_id.startswith("PERSONAL-") or not version_id.startswith("SESSION-PERSONAL-")):
@@ -180,7 +191,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
             "provider": provider,
             "auto_publish": False,
             "regeneration_executed": False,
-            **_personal_video_export(target, personal),
+            **_personal_video_export(target, personal, chunk_index),
         }
 
     secret = ""
@@ -276,7 +287,7 @@ def video_producer_download(project_id: str, request_id: str, version_id: str, v
     manifest.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.chmod(manifest, 0o640)
 
-    result = {"ok": True, "status": "preserved", "project_id": project_id, **record, **_personal_video_export(target, personal)}
+    result = {"ok": True, "status": "preserved", "project_id": project_id, **record, **_personal_video_export(target, personal, chunk_index)}
     main._audit(
         "php.video_producer_download",
         {"project_id": project_id, "request_id": request_id, "version_id": version_id, "provider": provider},
