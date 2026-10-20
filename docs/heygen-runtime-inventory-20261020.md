@@ -23,3 +23,10 @@ Seis testes unitários com subprocess mock passaram em 20/10/2026: alvos fixos, 
 
 ## Rollback
 Restaurar módulos e registro preservados e recriar somente o conector. Não alterar imagem, volumes ou configuração da aplicação TV Sumaré.
+
+## Instalador incluído
+`connector-v2/install_heygen_runtime_inventory.py` prepara todos os patches antes de gravar. O padrão é dry-run. `--apply` preserva extensões, faz backup, registra o wrapper no main MCP único e inclui o scanner no Dockerfile. Não inicia serviços. Rejeita implementações existentes divergentes e layouts incompatíveis; rollback em falha de gravação.
+
+O scanner carrega somente a extensão padrão tokenizer quando ela estiver ausente sob php -n. Se indisponível, falha sem devolver conteúdo bruto. O CI executa os dois testes PHP com fixtures artificiais e os oito testes Python/instalador.
+
+A rota SSH HostGator foi confirmada, mas atende a hospedagem compartilhada. O catálogo MCP atual não expõe a execução do instalador na VPS nem a operação connector_update_release existente no código. Não interpretar conexão saudável como permissão de shell arbitrário. Instalação e ativação reais continuam pendentes.
