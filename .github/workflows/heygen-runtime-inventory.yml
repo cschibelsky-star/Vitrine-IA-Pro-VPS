@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'connector-v2/*heygen*'
+      - 'connector-v2/*inventory*'
       - 'connector-v2/tvsumare_operations.py'
       - 'connector-v2/main_tvsumare_tools.py'
       - '.github/workflows/heygen-runtime-inventory.yml'
@@ -16,6 +17,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m unittest -v test_heygen_runtime_audit.py
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - run: php -v
+      - run: python -m unittest -v test_heygen_runtime_audit.py test_inventory_install.py test_inventory_php.py
         working-directory: connector-v2
       - run: python -m py_compile connector-v2/heygen_runtime_audit.py connector-v2/tvsumare_operations.py connector-v2/main_tvsumare_tools.py
