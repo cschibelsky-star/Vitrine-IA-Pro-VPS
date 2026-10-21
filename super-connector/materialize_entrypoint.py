@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import main
+from foundation import dispatch_guard
 
 
 SELF_PROJECT_IDS = {"vitrine-super-centro-operacional-candidate", "vitrine-super-centro-operacional-candidate-https"}
@@ -199,6 +200,19 @@ def project_compose_service_execute(project_id: str, service: str, operation: st
         return response
 
     workspace = _workspace(project)
+    if op in {"build", "up", "restart"}:
+        decision = dispatch_guard.preflight(
+            op, project_id, project, confirm=confirm, run=main._run,
+            workspace=workspace, repository=repository, compose=compose_file,
+            project_name=project_name, service=service_name,
+            legacy_registry=main.LEGACY_V5_REGISTRY_ROOT,
+        )
+        main._audit("orchestrator.preflight", {"project_id": project_id,
+                    "service": service_name, "operation": op},
+                    {"ok": decision.get("ok"), "error": decision.get("error")})
+        if not decision.get("ok"):
+            return {**decision, "project_id": project_id, "service": service_name,
+                    "operation": op}
     env_file_value = str(project.get("runtime", {}).get("env_file", "") or "").strip().replace("\\", "/")
     base = ["docker", "compose", "-p", project_name]
     if env_file_value:
@@ -227,6 +241,10 @@ def project_compose_service_execute(project_id: str, service: str, operation: st
         timeout = 60
 
     result = main._run(command, repository, timeout=timeout)
+    if op == "build" and result.get("ok"):
+        if not dispatch_guard.remember_build(main._run, workspace, repository,
+                                              compose_file, project_name, service_name):
+            result = {**result, "ok": False, "error": "build_provenance_not_verified"}
     response = {**result, "project_id": project_id, "service": service_name, "operation": op, "compose_file": str(compose_file), "docker_project": project_name}
     main._audit("project.compose_service_execute", {"project_id": project_id, "service": service_name, "operation": op}, {"ok": response.get("ok"), "exit_code": response.get("exit_code")})
     return response
