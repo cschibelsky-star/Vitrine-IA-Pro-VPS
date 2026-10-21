@@ -19,10 +19,10 @@ class CanonicalSourceTests(unittest.TestCase):
     def setUp(self):
         self.source = ops.load_publication_sources()['conheca-sumare']
         self.sha = self.source.get('candidate_sha', self.source['baseline_sha'])
-        self.hml = {'id': 'conheca-sumare-origin-hml', 'environment': 'homologation',
+        self.hml = {'id': 'conheca-sumare-react-review', 'environment': 'homologation',
             'workspace_root': '/srv/projects/conheca-sumare-origin-hml',
             'repository': {'url': self.source['repository_url'], 'branch': 'moving-template'},
-            'docker': {'compose_file': 'docker-compose.origin-hml.yml'}}
+            'docker': {'compose_file': 'docker-compose.home-review.yml'}}
         self.prod = dict(self.hml, id='conheca-sumare', environment='production')
 
     def assert_blocked(self, manifest, sha, detail):
@@ -33,9 +33,9 @@ class CanonicalSourceTests(unittest.TestCase):
             run.assert_not_called()
             remote.assert_not_called()
 
-    def test_legacy_registry_repository_is_rejected(self):
+    def test_legacy_php_repository_is_rejected(self):
         manifest = copy.deepcopy(self.prod)
-        manifest['repository']['url'] = 'https://github.com/cschibelsky-star/visite-sumare.git'
+        manifest['repository']['url'] = 'https://github.com/cschibelsky-star/vitrine-ai-pro.git'
         self.assert_blocked(manifest, self.sha, 'canonical_repository_mismatch')
 
     def test_old_template_sha_is_rejected_even_with_cockpit_available(self):
@@ -76,7 +76,7 @@ class CanonicalSourceTests(unittest.TestCase):
             repo = Path(directory)
             (repo / '.git').mkdir()
             with patch.object(ops, 'run', side_effect=[{'ok': True, 'stdout': ''},
-                {'ok': True, 'stdout': 'https://github.com/cschibelsky-star/visite-sumare.git'}]) as run:
+                {'ok': True, 'stdout': 'https://github.com/cschibelsky-star/vitrine-ai-pro.git'}]) as run:
                 with self.assertRaises(ops.HTTPException) as error:
                     ops.publication_preflight(self.hml, repo, self.sha)
                 self.assertEqual(error.exception.detail, 'canonical_origin_mismatch')

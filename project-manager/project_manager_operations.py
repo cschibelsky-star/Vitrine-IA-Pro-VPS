@@ -294,7 +294,7 @@ def canonical_source_preflight(manifest: dict[str, Any], repository: Path, reque
             raise HTTPException(status_code=409, detail="canonical_homologation_environment_required")
         compose = manifest.get("docker", {}).get("compose_file", "")
         # Never execute a public-router compose as a homologation candidate.
-        if compose != "docker-compose.origin-hml.yml":
+        if compose != source.get("homologation_compose_file", "docker-compose.origin-hml.yml"):
             raise HTTPException(status_code=409, detail="canonical_isolated_compose_required")
     return source
 

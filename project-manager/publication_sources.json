@@ -1,7 +1,7 @@
 {
   "conheca-sumare": {
-    "repository_url": "https://github.com/cschibelsky-star/vitrine-ai-pro.git",
-    "baseline_sha": "429b304e97b5fe59d05bd656f93c8767a1de8a7c",
+    "repository_url": "https://github.com/cschibelsky-star/visite-sumare.git",
+    "baseline_sha": "62d780462572fdeb898887eef0defc2eaef647e4",
     "production_enabled": false,
     "production_project_ids": [
       "conheca-sumare",
@@ -12,12 +12,13 @@
       "www.conhecasumare.com.br"
     ],
     "homologation_project_ids": [
-      "conheca-sumare-origin-hml"
+      "conheca-sumare-react-review"
     ],
-    "candidate_sha": "a416a9480fd33e282c23158df204b80404eeb10d",
+    "candidate_sha": "ac840421d8a838105fe4dc975c4e36444bb542bc",
     "production_root_names": [
       "conheca-sumare",
       "conheca-sumare-prod"
-    ]
+    ],
+    "homologation_compose_file": "docker-compose.home-review.yml"
   }
 }
