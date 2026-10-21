@@ -7,6 +7,9 @@ on:
     paths:
       - 'super-connector/foundation/orchestration.py'
       - 'super-connector/foundation/test_orchestration.py'
+      - 'super-connector/foundation/dispatch_guard.py'
+      - 'super-connector/foundation/test_dispatch_guard.py'
+      - 'super-connector/materialize_entrypoint.py'
       - '.github/workflows/orchestrator-routing-tests.yml'
 jobs:
   policy-tests:
@@ -17,4 +20,4 @@ jobs:
         with:
           python-version: '3.12'
       - name: Test routing without external side effects
-        run: python -m unittest discover -s super-connector/foundation -p test_orchestration.py -v
+        run: python -m unittest discover -s super-connector/foundation -p 'test_*orchestration.py' -v && python -m unittest discover -s super-connector/foundation -p test_dispatch_guard.py -v
