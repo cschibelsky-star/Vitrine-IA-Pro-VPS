@@ -3,7 +3,11 @@
 Only an authorized internal broker token is used by this connector. The Core owns
 provider selection, capability discovery, cost telemetry and the Roteia API key.
 """
+import base64
+import hashlib
+import json
 import os
+import secrets
 import time
 from urllib.parse import urlparse
 import httpx
@@ -23,16 +27,46 @@ def register_roteia_image_test(mcp):
         parsed = urlparse(url)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment or parsed.query or not url.endswith("/api/internal/centro-ia/execute"):
             return {"ok": False, "error": "broker_url_not_configured"}
-        if not token or not project:
+        if not project:
+            return {"ok": False, "error": "broker_identity_not_configured"}
+        body = json.dumps(
+            {"project_id": project, "capability": "image_generation",
+             "input": {"user": prompt.strip(), "quality_profile": quality_profile}},
+            separators=(",", ":"), ensure_ascii=False,
+        ).encode("utf-8")
+        headers = {"X-Vitrine-Project": project, "Content-Type": "application/json"}
+        signing_key = os.getenv("CENTRO_IA_SERVICE_PRIVATE_KEY_B64", "").strip()
+        if signing_key:
+            try:
+                from nacl.signing import SigningKey
+                key_bytes = base64.b64decode(signing_key, validate=True)
+                if len(key_bytes) != 32:
+                    return {"ok": False, "error": "invalid_service_identity"}
+                timestamp = str(int(time.time()))
+                nonce = secrets.token_hex(16)
+                canonical = "\n".join(
+                    ("POST", urlparse(url).path, project, timestamp, nonce,
+                     hashlib.sha256(body).hexdigest())
+                ).encode("utf-8")
+                signature = SigningKey(key_bytes).sign(canonical).signature
+                headers.update({
+                    "X-Vitrine-Timestamp": timestamp, "X-Vitrine-Nonce": nonce,
+                    "X-Vitrine-Signature": base64.b64encode(signature).decode("ascii"),
+                    "X-Vitrine-Signature-Alg": "Ed25519",
+                })
+            except (ImportError, ValueError, TypeError):
+                return {"ok": False, "error": "invalid_service_identity"}
+        elif token:
+            headers["Authorization"] = "Bearer " + token
+        else:
             return {"ok": False, "error": "broker_identity_not_configured"}
         started = time.monotonic()
         try:
             with httpx.Client(timeout=135, follow_redirects=False, trust_env=False) as client:
                 response = client.post(
                     url,
-                    headers={"Authorization": "Bearer " + token, "X-Vitrine-Project": project},
-                    json={"project_id": project, "capability": "image_generation",
-                          "input": {"user": prompt.strip(), "quality_profile": quality_profile}},
+                    headers=headers,
+                    content=body,
                 )
             elapsed = round(time.monotonic() - started, 3)
             if response.status_code != 200:
