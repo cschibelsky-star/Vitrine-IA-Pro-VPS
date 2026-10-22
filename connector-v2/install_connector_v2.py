@@ -29,6 +29,7 @@ def main() -> None:
     mcp_module = ROOT / 'tvsumare_tools.py'
     shutil.copy2(SOURCE / 'tvsumare_operations.py', ops_module)
     shutil.copy2(SOURCE / 'main_tvsumare_tools.py', mcp_module)
+    shutil.copy2(SOURCE / 'roteia_image_test_tool.py', ROOT / 'roteia_image_test_tool.py')
 
     ops_broker = ROOT / 'ops_broker.py'
     backup(ops_broker)
@@ -121,6 +122,16 @@ def tvsumare_create_release_zip() -> dict[str, Any]:
     marker = '\nif __name__ == "__main__":\n'
     if 'def tvsumare_workspace_create()' not in text:
         text = replace_once(text, marker, block + marker, 'registro MCP TV Sumaré')
+    # Register the tool on the main MCP instance, not on a nested FastMCP server.
+    registration = (
+        '\\nfrom roteia_image_test_tool import register_roteia_image_test\\n'
+        'register_roteia_image_test(mcp)\\n'
+    )
+    if 'register_roteia_image_test(mcp)' not in text:
+        if '\\nif __name__ == "__main__":\\n' not in text:
+            raise RuntimeError('main.py registration marker missing')
+        text = text.replace('\\nif __name__ == "__main__":\\n',
+                            registration + '\\nif __name__ == "__main__":\\n', 1)
     main_py.write_text(text, encoding='utf-8')
 
     compose = ROOT / 'docker-compose.mcp.yml'
