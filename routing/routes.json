@@ -85,7 +85,9 @@
       "deployment_code": "p000002",
       "environment": "homologation",
       "hostname": "p000002.hml.vitrineiapro.com.br",
-      "friendly_aliases": ["conheca-sumare.hml.vitrineiapro.com.br"],
+      "friendly_aliases": [
+        "conheca-sumare.hml.vitrineiapro.com.br"
+      ],
       "legacy_aliases": [],
       "upstream": "http://conheca_sumare_web_hml:80",
       "health_path": "/",
@@ -102,7 +104,9 @@
       "deployment_code": "p000003",
       "environment": "homologation",
       "hostname": "p000003.hml.vitrineiapro.com.br",
-      "friendly_aliases": ["conheca-sumare-prod.hml.vitrineiapro.com.br"],
+      "friendly_aliases": [
+        "conheca-sumare-prod.hml.vitrineiapro.com.br"
+      ],
       "legacy_aliases": [],
       "upstream": "http://conheca_sumare_web_prod:80",
       "health_path": "/",
@@ -119,7 +123,9 @@
       "deployment_code": "p000004",
       "environment": "homologation",
       "hostname": "p000004.hml.vitrineiapro.com.br",
-      "friendly_aliases": ["lucas.hml.vitrineiapro.com.br"],
+      "friendly_aliases": [
+        "lucas.hml.vitrineiapro.com.br"
+      ],
       "legacy_aliases": [],
       "upstream": "http://projeto_lucas_hml_web:80",
       "health_path": "/health",
@@ -129,6 +135,28 @@
       "network": "n8n-traefik_app_network",
       "cert_resolver": "le",
       "entrypoint": "websecure"
+    },
+    {
+      "id": "conheca-prod",
+      "project_id": "conheca-sumare-prod",
+      "deployment_code": null,
+      "environment": "production",
+      "hostname": "www.conhecasumare.com.br",
+      "friendly_aliases": [
+        "conhecasumare.com.br"
+      ],
+      "legacy_aliases": [],
+      "upstream": "http://conheca_sumare_web_prod:80",
+      "health_path": "/",
+      "ssl": true,
+      "status": "active",
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure",
+      "carrier_container": "vitrine_route_conheca_prod",
+      "http_redirect": true,
+      "notes": "Rota manual observada em 2026-10-22; HTTP 200 apenas na Home confirmado. Registrar declarativamente sem recriar contêiner. Prévia e testes de imagens ainda pendentes."
     }
   ]
 }
