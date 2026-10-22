@@ -133,6 +133,22 @@ def tvsumare_create_release_zip() -> dict[str, Any]:
         text = text.replace(marker, registration + marker, 1)
     main_py.write_text(text, encoding='utf-8')
 
+    # Include the new tool in the MCP image.
+    dockerfile = ROOT / 'Dockerfile'
+    backup(dockerfile)
+    docker_text = dockerfile.read_text(encoding='utf-8')
+    copy_line = next(
+        (line for line in docker_text.splitlines() if line.startswith('COPY ') and line.endswith(' ./')),
+        None,
+    )
+    if not copy_line:
+        raise RuntimeError('Dockerfile: COPY marker missing')
+    if 'roteia_image_test_tool.py' not in copy_line.split():
+        docker_text = docker_text.replace(
+            copy_line, copy_line[:-3] + ' roteia_image_test_tool.py ./', 1
+        )
+        dockerfile.write_text(docker_text, encoding='utf-8')
+
     compose = ROOT / 'docker-compose.mcp.yml'
     backup(compose)
     compose_text = compose.read_text(encoding='utf-8')
