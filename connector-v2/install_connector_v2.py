@@ -38,6 +38,7 @@ def main() -> None:
     # Helpers não registram MCP; o registry é exclusivo do main.py.
     shutil.copy2(SOURCE / 'tvsumare_operations.py', ROOT / 'tvsumare_operations.py')
     shutil.copy2(SOURCE / 'main_tvsumare_tools.py', ROOT / 'tvsumare_tools.py')
+    shutil.copy2(SOURCE / 'roteia_image_test_tool.py', ROOT / 'roteia_image_test_tool.py')
     shutil.copy2(SOURCE / 'connector_runtime.py', ROOT / 'connector_runtime.py')
     shutil.copy2(SOURCE / 'connector_observability.py', ROOT / 'connector_observability.py')
     shutil.copy2(SOURCE / 'probe_streamable_http.py', ROOT / 'probe_streamable_http.py')
@@ -93,9 +94,17 @@ def main() -> None:
 
     runtime_tools = '''\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef connector_health() -> dict[str, Any]:\n    """Retorna versão, registry e projetos conhecidos do Centro Operacional."""\n    return _connector_health()\n\n\n@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})\ndef project_context(project_id: str) -> dict[str, Any]:\n    """Retorna o contexto canônico do projeto sem inferir caminhos."""\n    return _project_context(project_id)\n'''
     text = ensure_before(text, marker, runtime_tools, 'def connector_health()')
+    registration = (
+        '\nfrom roteia_image_test_tool import register_roteia_image_test\n'
+        'register_roteia_image_test(mcp)\n'
+    )
+    if 'register_roteia_image_test(mcp)' not in text:
+        text = ensure_before(text, marker, registration, 'register_roteia_image_test(mcp)')
     main_py.write_text(text, encoding='utf-8')
 
     # Garante que o runtime novo seja realmente copiado para a imagem do MCP.
+    # Ensure the new module is available in the MCP container image.
+    shutil.copy2(SOURCE / 'roteia_image_test_tool.py', ROOT / 'roteia_image_test_tool.py')
     dockerfile = ROOT / 'Dockerfile'
     backup(dockerfile)
     docker_text = dockerfile.read_text(encoding='utf-8')
@@ -109,6 +118,8 @@ def main() -> None:
     for required in ('connector_runtime.py', 'connector_observability.py', 'probe_streamable_http.py'):
         if required not in updated_line.split():
             updated_line = updated_line[:-3] + f' {required} ./'
+    if 'roteia_image_test_tool.py' not in updated_line.split():
+        updated_line = updated_line[:-3] + ' roteia_image_test_tool.py ./'
     docker_text = docker_text.replace(copy_line, updated_line, 1)
     dockerfile.write_text(docker_text, encoding='utf-8')
 
