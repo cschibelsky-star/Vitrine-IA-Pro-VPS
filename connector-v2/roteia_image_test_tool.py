@@ -1,45 +1,53 @@
-"""Isolated Roteia image test tool. Register with the existing FastMCP instance.
+"""Isolated image test via the Centro IA broker; Roteia credentials remain in Core.
 
-Requires ROTEIA_API_KEY in the connector runtime (server-side injection only).
-No credential values are returned. No Core routing or production changes.
+Only an authorized internal broker token is used by this connector. The Core owns
+provider selection, capability discovery, cost telemetry and the Roteia API key.
 """
 import os
 import time
+from urllib.parse import urlparse
 import httpx
 
-ALLOWED_MODELS = tuple(x.strip() for x in os.getenv("ROTEIA_TEST_MODELS", "").split(",") if x.strip())
-BASE_URL = os.getenv("ROTEIA_API_BASE_URL", "").rstrip("/")
 
 def register_roteia_image_test(mcp):
     @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
-    def roteia_image_test(model: str, prompt: str, size: str = "1024x1024") -> dict:
-        """Generate one image using an allowlisted Roteia model, returning safe metrics."""
-        if not BASE_URL or not BASE_URL.startswith("https://"):
-            return {"ok": False, "error": "roteia_base_url_not_configured"}
-        if not ALLOWED_MODELS or model not in ALLOWED_MODELS:
-            return {"ok": False, "error": "model_not_allowlisted"}
-        if size not in ("1024x1024", "1536x1024", "1024x1536"):
-            return {"ok": False, "error": "invalid_size"}
-        if not prompt or len(prompt) > 2000:
+    def roteia_image_test(prompt: str, quality_profile: str = "balanced") -> dict:
+        """Request one image from Centro IA using its existing authenticated broker."""
+        if not isinstance(prompt, str) or not 5 <= len(prompt.strip()) <= 2000:
             return {"ok": False, "error": "invalid_prompt"}
-        key = os.getenv("ROTEIA_API_KEY")
-        if not key:
-            return {"ok": False, "error": "credential_not_configured"}
+        if quality_profile not in ("balanced", "quality", "economy", "fast"):
+            return {"ok": False, "error": "invalid_quality_profile"}
+        url = os.getenv("CENTRO_IA_BROKER_URL", "").strip()
+        token = os.getenv("CENTRO_IA_INTERNAL_TOKEN", "").strip()
+        project = os.getenv("CENTRO_IA_PROJECT_ID", "vitrine-ia-pro-vps").strip()
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment or parsed.query or not url.endswith("/api/internal/centro-ia/execute"):
+            return {"ok": False, "error": "broker_url_not_configured"}
+        if not token or not project:
+            return {"ok": False, "error": "broker_identity_not_configured"}
         started = time.monotonic()
         try:
-            with httpx.Client(timeout=120, follow_redirects=False) as client:
+            with httpx.Client(timeout=135, follow_redirects=False, trust_env=False) as client:
                 response = client.post(
-                    BASE_URL + "/images/generations",
-                    headers={"Authorization": "Bearer " + key},
-                    json={"model": model, "prompt": prompt, "size": size, "n": 1},
+                    url,
+                    headers={"Authorization": "Bearer " + token, "X-Vitrine-Project": project},
+                    json={"project_id": project, "capability": "image_generation",
+                          "input": {"user": prompt.strip(), "quality_profile": quality_profile}},
                 )
             elapsed = round(time.monotonic() - started, 3)
             if response.status_code != 200:
-                return {"ok": False, "status_code": response.status_code, "elapsed_seconds": elapsed}
+                return {"ok": False, "error": "broker_request_rejected",
+                        "status_code": response.status_code, "elapsed_seconds": elapsed}
             payload = response.json()
-            item = (payload.get("data") or [{}])[0]
-            return {"ok": True, "model": model, "elapsed_seconds": elapsed,
-                    "image_url": item.get("url"), "has_base64_image": bool(item.get("b64_json")),
-                    "usage": payload.get("usage"), "revised_prompt": item.get("revised_prompt")}
-        except (httpx.HTTPError, ValueError, IndexError, TypeError):
-            return {"ok": False, "error": "request_failed", "elapsed_seconds": round(time.monotonic()-started, 3)}
+            if not isinstance(payload, dict) or payload.get("ok") is not True:
+                return {"ok": False, "error": "broker_generation_failed", "elapsed_seconds": elapsed}
+            asset_url = payload.get("asset_url")
+            has_image = bool(payload.get("asset_base64"))
+            if not asset_url and not has_image:
+                return {"ok": False, "error": "no_image_returned", "elapsed_seconds": elapsed}
+            return {"ok": True, "model": payload.get("model"),
+                    "image_url": asset_url, "has_base64_image": has_image,
+                    "elapsed_seconds": elapsed}
+        except (httpx.HTTPError, ValueError, TypeError):
+            return {"ok": False, "error": "broker_request_failed",
+                    "elapsed_seconds": round(time.monotonic() - started, 3)}
