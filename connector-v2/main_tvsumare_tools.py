@@ -97,8 +97,3 @@ def tvsumare_create_homologation_vhost(
 def tvsumare_create_release_zip() -> dict[str, Any]:
     """Gera um ZIP versionado sem segredos, uploads, dados, logs ou dependências locais."""
     return _post("/tvsumare/release/zip")
-
-
-# Register isolated Roteia image generation test capability.
-from roteia_image_test_tool import register_roteia_image_test
-register_roteia_image_test(mcp)
