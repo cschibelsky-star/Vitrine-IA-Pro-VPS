@@ -16,6 +16,9 @@ with tempfile.TemporaryDirectory() as tmp:
         assert module.snapshot("test-1", root)["error"] == "backup_mount_marker_missing"
         assert module.snapshot("test-1", root / "missing")["error"] == "backup_root_not_mounted"
     (root / ".assessor-backup-mount").touch()
+    with patch.object(module.subprocess, "run", side_effect=AssertionError("Docker called")):
+        assert module.snapshot("../escape", root)["error"] == "invalid_backup_id"
+        assert module.snapshot("", root)["error"] == "invalid_backup_id"
     class MissingVolume:
         returncode = 1
         stdout = ""
