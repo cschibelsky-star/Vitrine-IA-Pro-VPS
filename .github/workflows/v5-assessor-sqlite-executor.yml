@@ -18,6 +18,8 @@ jobs:
       - name: Python version
         run: python3 --version
       - name: Test backup, recovery, corruption rejection
-        run: python3 connector-v5/test_assessor_sqlite_backup.py
+        run: |
+          python3 connector-v5/test_assessor_sqlite_backup.py
+          python3 connector-v5/test_assessor_sqlite_volume_helper.py
       - name: Compile executor modules
         run: python3 -m py_compile connector-v5/assessor_sqlite_backup.py connector-v5/assessor_sqlite_executor_patch.py connector-v5/assessor_sqlite_volume_helper.py
