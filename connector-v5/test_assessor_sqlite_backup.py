@@ -41,4 +41,14 @@ with tempfile.TemporaryDirectory(prefix="v5-assessor-sqlite-") as tmp:
         assert str(error).startswith("checksum_mismatch:")
     else:
         raise AssertionError("Corrupt archive was accepted")
+    empty_db = base / "empty.sqlite"
+    with sqlite3.connect(empty_db):
+        pass
+    try:
+        module.create_backup(empty_db, storage, base / "empty-bundle")
+    except ValueError as error:
+        assert str(error) == "sqlite_has_no_tables"
+    else:
+        raise AssertionError("Empty SQLite database was accepted")
+    assert not (base / "empty-bundle").exists()
     print("V5_ASSESSOR_SQLITE_BACKUP_RESTORE=PASS")
