@@ -5,6 +5,7 @@ on:
       - fix/v5-assessor-sqlite-backup-executor-20261023
     paths:
       - 'connector-v5/assessor_sqlite_*.py'
+      - 'connector-v5/test_assessor_sqlite_backup.py'
       - 'connector-v5/main_ext.py'
       - 'connector-v5/Dockerfile'
       - '.github/workflows/v5-assessor-sqlite-executor.yml'
