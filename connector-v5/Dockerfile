@@ -7,5 +7,8 @@ COPY connector-v5/main.py /app/main.py
 COPY connector-v5/main_ext.py /app/main_ext.py
 COPY connector-v5/marketing_live_patch.py /app/marketing_live_patch.py
 COPY connector-v5/controlled_operations_patch.py /app/controlled_operations_patch.py
+COPY connector-v5/assessor_sqlite_backup.py /app/assessor_sqlite_backup.py
+COPY connector-v5/assessor_sqlite_executor_patch.py /app/assessor_sqlite_executor_patch.py
+COPY connector-v5/assessor_sqlite_volume_helper.py /app/assessor_sqlite_volume_helper.py
 EXPOSE 8000
 CMD ["python","/app/main_ext.py"]
