@@ -6,7 +6,8 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from assessor_sqlite_backup import create_backup, restore_isolated, verify
+from assessor_sqlite_backup import restore_isolated, verify
+from assessor_sqlite_volume_helper import snapshot
 
 PROJECT = "assessor-online-trial-hml"
 CONTAINER = "assessor-online-trial-hml-assessor_app-1"
@@ -35,7 +36,11 @@ def register(mcp: Any) -> None:
             target = BACKUP_ROOT / name
             if target.exists():
                 return {"ok": False, "error": "destination_exists"}
-            return {"ok": False, "error": "backup_requires_isolated_volume_helper", "project_id": project_id}
+            result = snapshot(name, BACKUP_ROOT)
+            if not result.get("ok"):
+                return result
+            return {"ok": True, "project_id": project_id, "backup_id": name,
+                    "verification": verify(target)}
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
 
