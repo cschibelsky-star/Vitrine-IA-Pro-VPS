@@ -1,7 +1,7 @@
 """Restricted Assessor SQLite backup tools for V5, no generic command execution."""
 from __future__ import annotations
 
-import os
+import json
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -35,13 +35,7 @@ def register(mcp: Any) -> None:
             target = BACKUP_ROOT / name
             if target.exists():
                 return {"ok": False, "error": "destination_exists"}
-            # Volume access is deliberately performed by a fixed helper image.
-            # Never mount the host docker socket into the helper or execute a user command.
-            # The connector must run in a Docker-capable environment with this fixed image available.
-            helper = os.environ.get("ASSESSOR_SQLITE_BACKUP_HELPER_IMAGE", "")
-            if not helper:
-                return {"ok": False, "error": "backup_helper_not_configured"}
-            return {"ok": False, "error": "backup_helper_integration_pending", "project_id": project_id}
+            return {"ok": False, "error": "backup_requires_isolated_volume_helper", "project_id": project_id}
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
 
