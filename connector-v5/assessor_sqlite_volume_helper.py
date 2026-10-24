@@ -16,6 +16,11 @@ def snapshot(backup_id: str, root: Path) -> dict:
         return {"ok": False, "error": "backup_root_not_mounted"}
     if not (root / ".assessor-backup-mount").is_file():
         return {"ok": False, "error": "backup_mount_marker_missing"}
+    for volume in (DB_VOLUME, STORAGE_VOLUME):
+        probe = subprocess.run(["docker", "volume", "inspect", "--format", "{{.Name}}", volume],
+                               capture_output=True, text=True, timeout=15, check=False)
+        if probe.returncode != 0 or probe.stdout.strip() != volume:
+            return {"ok": False, "error": "source_volume_missing"}
     script = Path(__file__).with_name("assessor_sqlite_backup.py").read_text()
     script += (
         "\nif __name__ == '__main__':\n"
