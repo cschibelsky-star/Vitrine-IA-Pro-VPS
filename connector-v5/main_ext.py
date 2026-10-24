@@ -6,6 +6,7 @@ from pathlib import Path
 
 from marketing_live_patch import apply as apply_marketing_live_patch
 from controlled_operations_patch import apply as apply_controlled_operations_patch
+from assessor_sqlite_executor_patch import register as register_assessor_sqlite_tools
 
 main_path = Path('/app/main.py')
 if not main_path.is_file():
@@ -23,6 +24,7 @@ exec(compile(source, str(main_path), 'exec'), core.__dict__)
 # main.py remains the single registry for V5 tools. The source is patched only
 # in memory so the container filesystem can stay read-only.
 mcp = core.mcp
+register_assessor_sqlite_tools(mcp)
 
 
 if __name__ == '__main__':
