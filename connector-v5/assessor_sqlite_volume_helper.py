@@ -11,7 +11,11 @@ IMAGE = "python:3.12-alpine"
 
 
 def snapshot(backup_id: str, root: Path) -> dict:
-    root.mkdir(parents=True, exist_ok=True)
+    root = root.resolve()
+    if not root.is_dir():
+        return {"ok": False, "error": "backup_root_not_mounted"}
+    if not (root / ".assessor-backup-mount").is_file():
+        return {"ok": False, "error": "backup_mount_marker_missing"}
     script = Path(__file__).with_name("assessor_sqlite_backup.py").read_text()
     script += (
         "\nif __name__ == '__main__':\n"
@@ -28,6 +32,7 @@ def snapshot(backup_id: str, root: Path) -> dict:
         "--mount", f"type=volume,source={DB_VOLUME},target=/source-db,readonly,volume-nocopy",
         "--mount", f"type=volume,source={STORAGE_VOLUME},target=/source-storage,readonly,volume-nocopy",
         "--mount", f"type=bind,source={root},target=/backups",
+        "--workdir", "/tmp", "--tmpfs", "/tmp:rw,nosuid,nodev,size=32m",
         IMAGE, "python", "-"
     ]
     proc = subprocess.run(cmd, input=script, text=True, capture_output=True, timeout=240)
