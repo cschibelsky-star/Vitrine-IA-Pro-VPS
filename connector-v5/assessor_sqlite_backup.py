@@ -36,6 +36,8 @@ def verify(bundle: Path) -> dict:
         tables = db.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
     if integrity != "ok":
         raise ValueError("sqlite_integrity_failed")
+    if tables < 1:
+        raise ValueError("sqlite_has_no_tables")
     with tarfile.open(bundle / "storage.tar.gz", "r:gz") as archive:
         for item in archive.getmembers():
             p = PurePosixPath(item.name)
