@@ -8,7 +8,7 @@
     "project_prefix": "p",
     "customer_prefix": "c",
     "width": 6,
-    "project_next": 8,
+    "project_next": 9,
     "customer_next": 1
   },
   "reserved_root_labels": [
@@ -167,6 +167,22 @@
       "legacy_aliases": [],
       "upstream": "assessor-online-assessor_demo-1:8080",
       "health_path": "/health",
+      "ssl": true,
+      "status": "planned",
+      "legacy": false
+    },
+    {
+      "id": "p000008-hml",
+      "project_id": "conheca-sumare",
+      "deployment_code": "p000008",
+      "environment": "homologation",
+      "hostname": "p000008.hml.vitrineiapro.com.br",
+      "friendly_aliases": [
+        "conhe-a-sumar-hml.hml.vitrineiapro.com.br"
+      ],
+      "legacy_aliases": [],
+      "upstream": "conheca_sumare_hml_web:80",
+      "health_path": "/",
       "ssl": true,
       "status": "planned",
       "legacy": false
