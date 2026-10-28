@@ -25,3 +25,14 @@ GitHub Actions run https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS/action
 The integration test uses a real in-process FastMCP client: the new tool is listed once, its required schema fields are present, and a call without confirmation returns confirmation_required before any operational access. Manifest paths, audit and command helpers are replaced with rejecting guards in that test. This confirms registration and the confirmation guard, not a production metadata update or an HTTP deployment test.
 
 The code is ready for review. Activation remains a separate controlled connector operation. After activation, verify the tool is exposed, apply the project-scoped metadata correction, and read back the official registries. No live Marketing test, connector deployment or application deployment was performed; this PR has not updated the operational project registry.
+
+
+## Compose runtime validation correction
+
+The operational error runtime_keys_not_configured was reproduced on a read-only service-status call. _controlled_compose_base incorrectly called _runtime_config, which authorizes secret editing as well as resolving a path. An empty editing allowlist therefore blocked status, build and up.
+
+The controlled Compose path now resolves and validates the existing runtime env file independently. The file contents are never read by this resolver. The original secret-editing helper is unchanged and still rejects an empty allowed_keys list. Existing project, Compose-file, service and operation allowlists are unchanged; no production service or connector self-update permission was added.
+
+Eight regression tests cover empty-allowlist status, continued rejection of secret editing, missing runtime file, invalid paths, symlink escape, unchanged allowlists, required confirmation and single-service execution. All 24 tests passed in https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS/actions/runs/40752796556 against code commit 3242c918c77d3ed29b31ab06df4de8f8327b2809.
+
+This source fix is not yet active in the installed connector. Activation must preserve the installed publication-guard layer. The current executor rejects the connector service with controlled_service_not_allowed; no self-update allowance was added to evade that boundary. A reviewed, project-scoped connector updater or an administrative bootstrap is required once to install the fix. After activation, verify service status through the connector before declaring the recurring SSH dependency resolved.
