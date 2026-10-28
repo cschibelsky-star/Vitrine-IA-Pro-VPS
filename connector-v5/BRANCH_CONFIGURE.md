@@ -18,6 +18,10 @@ The startup patch now explicitly accepts both known baselines (the generic 0.5.1
 
 Validation: the composed runtime compiles; all 15 standard-library tests pass. The stale controlled-operations assertion was replaced with an AST check of the exact existing project/source mapping and its exclusivity for the HeyGen key. The mapping is present in base commit 5007237198c392fbbabb3d78b19c24100e2f1d97. No credential-policy implementation changed and no credential import was executed.
 
-Before activation, verify actual FastMCP registration and behavior in an isolated environment with the declared dependencies. Dependency installation was unavailable in the preparation environment, so actual FastMCP registration was not tested. Do not treat source composition checks as an end-to-end runtime pass.
+## Real MCP validation completed
 
-No live Marketing test, connector deployment or application deployment was performed. The official project registry has not been updated by this PR.
+GitHub Actions run https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS/actions/runs/40746660574 passed all 16 tests against code commit e46c7081305502b88946763a437a0ea5d542d452 with Python 3.12 and FastMCP 2.14.7.
+
+The integration test uses a real in-process FastMCP client: the new tool is listed once, its required schema fields are present, and a call without confirmation returns confirmation_required before any operational access. Manifest paths, audit and command helpers are replaced with rejecting guards in that test. This confirms registration and the confirmation guard, not a production metadata update or an HTTP deployment test.
+
+The code is ready for review. Activation remains a separate controlled connector operation. After activation, verify the tool is exposed, apply the project-scoped metadata correction, and read back the official registries. No live Marketing test, connector deployment or application deployment was performed; this PR has not updated the operational project registry.
