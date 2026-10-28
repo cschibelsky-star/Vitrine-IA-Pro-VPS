@@ -308,6 +308,85 @@ def project_manifest_create(project_id: str, name: str, workspace_root: str, rep
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def project_manifest_branch_configure(project_id: str, branch: str, expected_current_branch: str, expected_remote_commit: str, confirm: str = "") -> dict[str, Any]:
+    """Change only the registered branch; never checkout, deploy, or restart."""
+    import fcntl
+    import re
+    import tempfile
+    import uuid
+
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
+    if not isinstance(branch, str) or not branch or branch != branch.strip() or branch.startswith("-"):
+        return {"ok": False, "error": "invalid_branch"}
+    if not re.fullmatch(r"[0-9a-f]{40}", expected_remote_commit or ""):
+        return {"ok": False, "error": "invalid_expected_remote_commit"}
+    if not expected_current_branch:
+        return {"ok": False, "error": "expected_current_branch_required"}
+    project_id = _safe_project_id(project_id)
+    manifest_path = _manifest_path(project_id)
+    # The lock serializes this operation. Existing unrelated manifest writers do
+    # not share it; the byte comparison below also detects intervening writes.
+    with manifest_path.with_suffix(".branch.lock").open("a", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        manifest, _, repository = _project_paths(project_id)
+        original = manifest_path.read_bytes()
+        if json.loads(original) != manifest:
+            return {"ok": False, "error": "manifest_changed_during_read"}
+        previous = manifest.get("repository", {}).get("branch")
+        if previous != expected_current_branch:
+            return {"ok": False, "error": "official_branch_conflict", "current_branch": previous}
+        if not (repository / ".git").is_dir():
+            return {"ok": False, "error": "repository_not_git"}
+        checked = subprocess.run(["git", "check-ref-format", "--branch", branch], cwd=repository, capture_output=True, text=True, timeout=15, check=False)
+        if checked.returncode != 0:
+            return {"ok": False, "error": "invalid_branch"}
+        # Use the registered URL, not a potentially different local origin.
+        remote_url = _validated_repository_url(manifest["repository"]["url"])
+        remote = subprocess.run(["git", "ls-remote", "--exit-code", "--heads", remote_url, "refs/heads/" + branch], cwd=repository, capture_output=True, text=True, timeout=30, check=False)
+        expected_line = expected_remote_commit + "\trefs/heads/" + branch
+        if remote.returncode != 0 or remote.stdout.strip() != expected_line:
+            # Do not return stderr: authentication diagnostics may be sensitive.
+            return {"ok": False, "error": "remote_branch_commit_not_verified"}
+        if previous == branch:
+            return {"ok": True, "status": "unchanged", "project_id": project_id, "branch": branch, "verified_remote_commit": expected_remote_commit}
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        backup = manifest_path.with_name(manifest_path.name + ".bak-branch-" + stamp + "-" + uuid.uuid4().hex)
+        # Exclusive backup creation precedes any write to the official record.
+        with backup.open("xb") as handle:
+            os.chmod(backup, 0o600)
+            handle.write(original)
+            handle.flush()
+            os.fsync(handle.fileno())
+        payload = {"project_id": project_id, "previous_branch": previous, "branch": branch, "verified_remote_commit": expected_remote_commit, "backup_name": backup.name}
+        _audit("project_manifest_branch_configure", payload, {"ok": True, "status": "prepared"})
+        manifest["repository"]["branch"] = branch
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=manifest_path.parent, prefix=".branch-", delete=False) as handle:
+                temporary = Path(handle.name)
+                os.chmod(temporary, manifest_path.stat().st_mode & 0o777)
+                json.dump(manifest, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            if manifest_path.read_bytes() != original:
+                return {"ok": False, "error": "manifest_changed_before_write", "backup_name": backup.name}
+            os.replace(temporary, manifest_path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        result = {"ok": True, "status": "configured", **payload}
+        try:
+            _audit("project_manifest_branch_configure", payload, {"ok": True, "status": "configured"})
+        except OSError:
+            # The write already committed: report that fact, do not invite retry.
+            result["audit_completion_failed"] = True
+        return result
+
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 def project_manifest_docker_configure(project_id: str, compose_file: str, docker_project: str = "", confirm: str = "") -> dict[str, Any]:
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required", "required": "EXECUTAR"}
@@ -1472,3 +1551,4 @@ def dns_record_upsert(hostname: str, address: str, ttl: int = 300, confirm: str 
 
 if __name__ == "__main__":
     mcp.run(transport="http", host="0.0.0.0", port=8000)
+

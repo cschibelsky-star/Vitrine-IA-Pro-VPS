@@ -17,9 +17,19 @@ def _replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def apply(source: str) -> str:
+    # Both known baselines share the runner anchors checked below. Keep the
+    # accepted versions explicit and reject ambiguous or unknown input.
+    versions = (
+        'VERSION = "0.5.11-generic-laravel-test-runner"',
+        'VERSION = "0.5.12-vps-filesystem-backup"',
+    )
+    matches = sum(source.count(version) for version in versions)
+    if matches != 1:
+        raise RuntimeError(f"marketing_live_patch_version_match_count:{matches}")
+    baseline_version = next(version for version in versions if version in source)
     source = _replace_once(
         source,
-        'VERSION = "0.5.11-generic-laravel-test-runner"',
+        baseline_version,
         'VERSION = "0.5.11-marketing-live-homologation"',
         "version",
     )
@@ -141,3 +151,4 @@ def apply(source: str) -> str:
     )
 
     return source
+
