@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 from marketing_live_patch import apply as apply_marketing_live_patch
@@ -29,6 +30,13 @@ def test_recovered_controlled_operations_layer():
     assert '("vitrine-ai-social-enterprise", "CENTRO_IA_INTERNAL_TOKEN")' in source
     assert '("vitrine-marketing-agents-core-hml", "CENTRO_IA_INTERNAL_TOKEN")' in source
     assert '("tvsumare-enterprise", "CENTRO_IA_INTERNAL_TOKEN")' in source
-    assert '("tvsumare-enterprise", "HEYGEN_API_KEY")' not in source
+    # This exact, project-scoped source is already present in the base. Verify
+    # its boundary instead of asserting that the existing mapping is absent.
+    runtime_setter = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == '_project_runtime_secret_set_impl')
+    mapping = next(node.value for node in ast.walk(runtime_setter) if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'migration_sources' for target in node.targets))
+    sources = ast.literal_eval(mapping)
+    assert sources[('tvsumare-enterprise', 'HEYGEN_API_KEY')] == ('tvsumare_web', 'HEYGEN_API_KEY')
+    assert [key for key in sources if key[1] == 'HEYGEN_API_KEY'] == [('tvsumare-enterprise', 'HEYGEN_API_KEY')]
     assert 'source_value is None or not str(source_value).strip()' in source
     assert '__MIGRATE_EXISTING__' in source
+
