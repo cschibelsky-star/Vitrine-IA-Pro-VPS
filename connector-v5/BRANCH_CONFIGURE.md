@@ -16,8 +16,8 @@ Run `python -m unittest discover -s connector-v5 -p test_manifest_branch_configu
 
 The startup patch now explicitly accepts both known baselines (the generic 0.5.11 runner and the 0.5.12 filesystem-backup baseline). Unknown or ambiguous versions and missing runner anchors still fail closed. This adjustment was explicitly authorized for publication in this draft PR, without running the existing live Marketing test.
 
-Validation: the composed runtime compiles; 14 of 15 standard-library tests pass. The existing controlled-operations regression fails because it expects the HeyGen import mapping to be absent, while that mapping is already present in the base. This PR does not change that credential policy or waive its failing test.
+Validation: the composed runtime compiles; all 15 standard-library tests pass. The stale controlled-operations assertion was replaced with an AST check of the exact existing project/source mapping and its exclusivity for the HeyGen key. The mapping is present in base commit 5007237198c392fbbabb3d78b19c24100e2f1d97. No credential-policy implementation changed and no credential import was executed.
 
-Before activation, resolve the legacy policy/test mismatch and verify actual FastMCP registration and behavior in an isolated environment with the declared dependencies. Dependency installation was unavailable in the preparation environment, so actual FastMCP registration was not tested. Do not treat source composition checks as an end-to-end runtime pass.
+Before activation, verify actual FastMCP registration and behavior in an isolated environment with the declared dependencies. Dependency installation was unavailable in the preparation environment, so actual FastMCP registration was not tested. Do not treat source composition checks as an end-to-end runtime pass.
 
 No live Marketing test, connector deployment or application deployment was performed. The official project registry has not been updated by this PR.
