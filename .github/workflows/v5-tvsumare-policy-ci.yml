@@ -41,7 +41,13 @@ jobs:
           policy_text = next(s for s in blocks if 'CONTROLLED_COMPOSE_POLICY = {' in s)
           module = ast.parse(policy_text)
           assignment = next(n for n in module.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "CONTROLLED_COMPOSE_POLICY" for t in n.targets))
-          policy = ast.literal_eval(assignment.value)["tvsumare"]
+          class EmptySetAsLiteral(ast.NodeTransformer):
+            def visit_Call(self, node):
+              if isinstance(node.func, ast.Name) and node.func.id == "set" and not node.args and not node.keywords:
+                return ast.Set(elts=[])
+              raise AssertionError("Unexpected call in policy")
+          policy_node = EmptySetAsLiteral().visit(assignment.value)
+          policy = ast.literal_eval(policy_node)["tvsumare"]
           assert policy["compose_files"] == {"docker-compose.vps.yml"}
           assert policy["services"] == {"web", "web_prod"}
           assert policy["up"] == {"web"}
