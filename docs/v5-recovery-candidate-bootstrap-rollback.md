@@ -47,3 +47,12 @@ A signed HML report must show the exact Git SHA, executor authorization, isolate
 - The controlled Compose helper additionally restricts `compose_files` and expects an existing runtime env file. Thus an allowlist change alone would not make HML operational.
 - Recommended separation: keep the current V5 connector policy unchanged; introduce a separately approved bootstrap pathway for the isolated candidate. Evaluate a candidate-only manifest with an intentionally non-secret runtime env file, or an explicit read-only `config` implementation that does not demand an unrelated runtime file. Any change requires unit tests, CI and review before VPS execution.
 - CI #41318749839 passed actual Compose startup with local fixtures, but does not validate host policy, VPS mounts or executor authorization.
+
+## Existing allowlisted validation contexts — live read-only evidence (2026-11-01)
+
+Source review found that `CONTROLLED_COMPOSE_POLICY` **already** allows `connector_v5_recovery_candidate` for project IDs `v5-0-5-13-recovery-validation` and `v5-global-inventory-validation`; the original denial concerned `vitrine-ia-pro-vps`, not a global absence of policy.
+
+- `v5-0-5-13-recovery-validation`: manifest targets historical branch `recovery/v5-0.5.13-from-snapshot-20260906`; all five allowed runtime configuration keys report configured. Git checkout is **dirty** (`connector-v5/controlled_operations_patch.py` modified). Service status succeeds and shows a stopped candidate (`Exited (0)`).
+- `v5-global-inventory-validation`: manifest targets historical branch `recovery/v5-global-inventory-20260907`; all five runtime configuration keys report configured. Git checkout is **dirty** (`docker-compose.v5-recovery-candidate.yml` modified). Service status succeeds and shows a stopped candidate (`Exited (0)`).
+- These existing manifests, branches and containers are **not** the approved PR #39 candidate. Their stopped state and dirty worktrees must be preserved; no restart, checkout, cleanup, build, or deployment through these project IDs.
+- Recommendation: provision a **new** independently approved validation context with a clean checkout of the reviewed PR SHA and its own Compose project/container identity. A new context requires explicit policy approval; do not repurpose the historical validation projects or overwrite their existing containers. Confirm uniqueness of container name and host port before bootstrap.
