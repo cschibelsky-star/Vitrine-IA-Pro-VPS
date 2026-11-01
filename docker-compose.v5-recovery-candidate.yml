@@ -19,7 +19,14 @@ services:
     ports:
       - "127.0.0.1:18867:8000"
     networks:
-      - vitrine_net
+      - v5_recovery_isolated
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),3); s.close()"]
       interval: 10s
@@ -29,6 +36,5 @@ services:
     restart: "no"
 
 networks:
-  vitrine_net:
-    external: true
-    name: vitrine_net
+  v5_recovery_isolated:
+    internal: true
