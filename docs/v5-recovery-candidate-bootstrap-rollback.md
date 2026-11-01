@@ -39,3 +39,11 @@ Status: **runbook only**. No VPS deployment is authorized by this document. GitH
 ## Acceptance
 
 A signed HML report must show the exact Git SHA, executor authorization, isolated checkout, policy change approval if required, Compose configuration, health/MCP test outputs, negative mutation tests, monitoring, and successful rollback drill. Otherwise keep PR #39 draft and production unchanged.
+
+## Source-level diagnosis after CI #41318749839 (2026-11-01)
+
+- `connector-v5/main.py::project_compose_explicit` resolves the manifest runtime configuration **before** dispatching even the read-only `config` action. If the configured runtime file does not exist, it returns `runtime_env_not_configured`. This explains the observed error independently of whether the candidate Compose actually needs Roteia keys. Do not import secrets as a workaround.
+- `connector-v5/controlled_operations_patch.py::project_compose_service_status` checks the service against `CONTROLLED_COMPOSE_POLICY[project_id]["services"]` **before** resolving Compose or runtime configuration. The candidate service is not currently permitted, so `controlled_service_not_allowed` is expected. Adding it to the live allowlist without approved policy review is not authorized.
+- The controlled Compose helper additionally restricts `compose_files` and expects an existing runtime env file. Thus an allowlist change alone would not make HML operational.
+- Recommended separation: keep the current V5 connector policy unchanged; introduce a separately approved bootstrap pathway for the isolated candidate. Evaluate a candidate-only manifest with an intentionally non-secret runtime env file, or an explicit read-only `config` implementation that does not demand an unrelated runtime file. Any change requires unit tests, CI and review before VPS execution.
+- CI #41318749839 passed actual Compose startup with local fixtures, but does not validate host policy, VPS mounts or executor authorization.
