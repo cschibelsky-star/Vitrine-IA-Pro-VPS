@@ -49,7 +49,7 @@ jobs:
         run: |
           set -eu
           # Use CI-local fixtures, never production host paths or credentials.
-          mkdir -p /srv/connectors/vitrine-vps-mcp/project-manifests /srv/projects /srv/tvsumare /var/log/vitrine-ops-v5-recovery
+          sudo mkdir -p /srv/connectors/vitrine-vps-mcp/project-manifests /srv/projects /srv/tvsumare /var/log/vitrine-ops-v5-recovery
           docker compose -f docker-compose.v5-recovery-candidate.yml -p v5-recovery-ci config --quiet
           docker compose -f docker-compose.v5-recovery-candidate.yml -p v5-recovery-ci up -d --build --no-deps connector_v5_recovery_candidate
           trap 'docker compose -f docker-compose.v5-recovery-candidate.yml -p v5-recovery-ci down --remove-orphans || true' EXIT
