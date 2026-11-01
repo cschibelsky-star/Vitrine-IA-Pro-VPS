@@ -20,6 +20,8 @@ def test_recovered_controlled_operations_layer():
     assert '"tvsumare"' in source
     assert '"docker-compose.vps.yml"' in source
     assert '"web"' in source
+    assert '"services": {"web", "web_prod"}' in source
+    assert '"up": {"web"}' in source
     assert 'broad_compose_mutation_disabled' in source
     assert 'project_compose_service_execute' in source
     assert 'def project_manifest_docker_configure(' in source
