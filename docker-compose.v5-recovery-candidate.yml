@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: connector-v5/Dockerfile
-    container_name: vitrine_mcp_v5_recovery_candidate
     command: ["python", "/app/main_ext.py"]
     environment:
       PROJECT_MANIFEST_ROOT: /app/project-manifests
