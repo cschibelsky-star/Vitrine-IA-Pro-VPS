@@ -38,3 +38,5 @@ jobs:
           assert len(ports) == 1 and ports[0].get('host_ip') == '127.0.0.1' and ports[0].get('published') == '18867', ports
           print('Static candidate isolation checks passed; no container started')
           PY
+      - name: Build recovery candidate image without starting it
+        run: docker build -f connector-v5/Dockerfile -t v5-recovery-candidate:ci .
