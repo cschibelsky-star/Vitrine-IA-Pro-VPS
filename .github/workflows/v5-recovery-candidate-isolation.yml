@@ -45,6 +45,28 @@ jobs:
           assert len(ports) == 1 and ports[0].get('host_ip') == '127.0.0.1' and ports[0].get('published') == '18867', ports
           print('Static candidate isolation checks passed; no container started')
           PY
+      - name: Validate actual Compose runtime hardening on CI runner
+        run: |
+          set -eu
+          # Use CI-local fixtures, never production host paths or credentials.
+          mkdir -p /srv/connectors/vitrine-vps-mcp/project-manifests /srv/projects /srv/tvsumare /var/log/vitrine-ops-v5-recovery
+          docker compose -f docker-compose.v5-recovery-candidate.yml -p v5-recovery-ci config --quiet
+          docker compose -f docker-compose.v5-recovery-candidate.yml -p v5-recovery-ci up -d --build --no-deps connector_v5_recovery_candidate
+          trap 'docker compose -f docker-compose.v5-recovery-candidate.yml -p v5-recovery-ci down --remove-orphans || true' EXIT
+          cid="$(docker compose -f docker-compose.v5-recovery-candidate.yml -p v5-recovery-ci ps -q connector_v5_recovery_candidate)"
+          test -n "$cid"
+          docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$cid" | grep -Fx true
+          docker inspect -f '{{.HostConfig.SecurityOpt}}' "$cid" | grep -F no-new-privileges
+          docker inspect -f '{{.HostConfig.CapDrop}}' "$cid" | grep -F ALL
+          docker inspect -f '{{.HostConfig.NetworkMode}}' "$cid" | grep -F v5-recovery-ci
+          if docker exec "$cid" test -S /var/run/docker.sock; then echo 'Unexpected Docker socket'; exit 1; fi
+          for i in $(seq 1 30); do
+            if docker exec "$cid" python -c "import socket; s=socket.create_connection(('127.0.0.1',8000),2); s.close()" >/dev/null 2>&1; then break; fi
+            if test "$i" -eq 30; then docker logs "$cid"; exit 1; fi
+            sleep 2
+          done
+          echo 'Real Compose runtime hardening and MCP readiness passed on isolated CI fixtures'
+
       - name: Build recovery candidate image without starting it
         run: docker build -f connector-v5/Dockerfile -t v5-recovery-candidate:ci .
       - name: Smoke test MCP startup without host Docker access
