@@ -16,9 +16,17 @@ def _replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def apply(source: str) -> str:
+    # Both known predecessor builds are supported; unknown versions still fail closed.
+    known_versions = (
+        'VERSION = "0.5.10-project-phpunit-runner-hardened"',
+        'VERSION = "0.5.11-generic-laravel-test-runner"',
+    )
+    matches = [version for version in known_versions if source.count(version) == 1]
+    if len(matches) != 1:
+        raise RuntimeError(f"marketing_live_patch_version_match_count:{len(matches)}")
     source = _replace_once(
         source,
-        'VERSION = "0.5.10-project-phpunit-runner-hardened"',
+        matches[0],
         'VERSION = "0.5.11-marketing-live-homologation"',
         "version",
     )
