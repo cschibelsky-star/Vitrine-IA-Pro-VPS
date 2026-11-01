@@ -68,3 +68,23 @@ jobs:
           echo 'Negative test passed: candidate cannot reach Docker daemon'
           # Verify network namespace is isolated from the runner.
           docker inspect -f '{{.HostConfig.NetworkMode}}' v5-candidate-ci | grep -Fx none
+
+      - name: Verify MCP protocol and read-only health tool
+        run: |
+          docker run -d --name v5-mcp-protocol-ci --network none --restart no v5-recovery-candidate:ci
+          trap 'docker logs v5-mcp-protocol-ci || true; docker rm -f v5-mcp-protocol-ci >/dev/null 2>&1 || true' EXIT
+          docker exec -i v5-mcp-protocol-ci python - <<'PY'
+          import asyncio
+          from fastmcp import Client
+
+          async def verify():
+              async with Client('http://127.0.0.1:8000/mcp', timeout=30) as client:
+                  tools = await client.list_tools()
+                  names = {tool.name for tool in tools}
+                  assert 'connector_health' in names, 'connector_health missing from MCP registry'
+                  result = await client.call_tool('connector_health', {})
+                  assert not result.is_error, f'MCP health tool returned error: {result}'
+                  print('MCP protocol connected; connector_health tool succeeded')
+
+          asyncio.run(verify())
+          PY
