@@ -31,6 +31,7 @@ jobs:
           assert set(services) == {'connector_v5_recovery_candidate'}, services.keys()
           candidate = services['connector_v5_recovery_candidate']
           assert candidate.get('restart') == 'no', candidate.get('restart')
+          assert not candidate.get('container_name'), 'Candidate container name must be Compose project-scoped'
           assert candidate.get('read_only') is True, 'Root filesystem must be read-only'
           assert 'ALL' in candidate.get('cap_drop', []), 'Capabilities must be dropped'
           assert any('no-new-privileges' in str(opt) for opt in candidate.get('security_opt', [])), 'No-new-privileges required'
