@@ -73,6 +73,21 @@ jobs:
         run: |
           docker run -d --name v5-mcp-protocol-ci --network none --restart no v5-recovery-candidate:ci
           trap 'docker logs v5-mcp-protocol-ci || true; docker rm -f v5-mcp-protocol-ci >/dev/null 2>&1 || true' EXIT
+          # Wait for the HTTP listener; process creation is not readiness.
+          for i in $(seq 1 30); do
+            if ! test "$(docker inspect -f '{{.State.Running}}' v5-mcp-protocol-ci)" = true; then
+              echo 'MCP candidate exited before readiness'
+              exit 1
+            fi
+            if docker exec v5-mcp-protocol-ci python -c "import socket; s=socket.create_connection(('127.0.0.1',8000),2); s.close()" >/dev/null 2>&1; then
+              break
+            fi
+            if test "$i" -eq 30; then
+              echo 'MCP candidate did not become ready'
+              exit 1
+            fi
+            sleep 2
+          done
           docker exec -i v5-mcp-protocol-ci python - <<'PY'
           import asyncio
           from fastmcp import Client
