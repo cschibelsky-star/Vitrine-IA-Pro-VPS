@@ -31,6 +31,13 @@ jobs:
           assert set(services) == {'connector_v5_recovery_candidate'}, services.keys()
           candidate = services['connector_v5_recovery_candidate']
           assert candidate.get('restart') == 'no', candidate.get('restart')
+          assert candidate.get('read_only') is True, 'Root filesystem must be read-only'
+          assert 'ALL' in candidate.get('cap_drop', []), 'Capabilities must be dropped'
+          assert any('no-new-privileges' in str(opt) for opt in candidate.get('security_opt', [])), 'No-new-privileges required'
+          assert len(candidate.get('networks', {})) == 1, 'Candidate must have a dedicated network'
+          network_name = next(iter(candidate['networks']))
+          assert config['networks'][network_name].get('internal') is True, 'Network must be internal'
+          assert not config['networks'][network_name].get('external'), 'External network forbidden'
           for mount in candidate.get('volumes', []):
               assert mount.get('read_only') or mount.get('target') == '/var/log/vitrine-ops-v5-recovery', mount
               assert mount.get('source') != '/var/run/docker.sock', mount
