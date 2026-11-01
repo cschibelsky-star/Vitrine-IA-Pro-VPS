@@ -55,12 +55,19 @@ jobs:
           from pathlib import Path
           source = Path('connector-v5/controlled_operations_patch.py').read_text()
           tree = ast.parse(source)
+          compose_block = None
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'compose_block' for target in node.targets):
+                  compose_block = ast.literal_eval(node.value)
+                  break
+          assert compose_block, 'Controlled Compose patch block missing'
+          patched = ast.parse(compose_block)
           policy = None
-          for node in tree.body:
+          for node in patched.body:
               if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == 'CONTROLLED_COMPOSE_POLICY':
                   policy = ast.literal_eval(node.value)
                   break
-          assert policy is not None, 'Controlled Compose policy missing'
+          assert policy is not None, 'Controlled Compose policy missing from patch block'
           item = policy['v5-pr39-isolated-hml']
           assert item['compose_files'] == {'docker-compose.v5-recovery-candidate.yml'}
           assert item['services'] == {'connector_v5_recovery_candidate'}
