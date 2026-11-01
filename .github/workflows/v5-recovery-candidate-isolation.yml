@@ -1,0 +1,40 @@
+name: V5 recovery candidate isolation
+
+on:
+  pull_request:
+    paths:
+      - 'docker-compose.v5-recovery-candidate.yml'
+      - '.github/workflows/v5-recovery-candidate-isolation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate candidate Compose and isolation invariants
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import json
+          path = Path('docker-compose.v5-recovery-candidate.yml')
+          text = path.read_text()
+          assert '/var/run/docker.sock' not in text, 'Host Docker socket is forbidden'
+          result = subprocess.run(['docker', 'compose', '-f', str(path), 'config', '--format', 'json'], capture_output=True, text=True)
+          assert result.returncode == 0, result.stderr
+          config = json.loads(result.stdout)
+          services = config['services']
+          assert set(services) == {'connector_v5_recovery_candidate'}, services.keys()
+          candidate = services['connector_v5_recovery_candidate']
+          assert candidate.get('restart') == 'no', candidate.get('restart')
+          for mount in candidate.get('volumes', []):
+              assert mount.get('read_only') or mount.get('target') == '/var/log/vitrine-ops-v5-recovery', mount
+              assert mount.get('source') != '/var/run/docker.sock', mount
+          ports = candidate.get('ports', [])
+          assert len(ports) == 1 and ports[0].get('host_ip') == '127.0.0.1' and ports[0].get('published') == '18867', ports
+          print('Static candidate isolation checks passed; no container started')
+          PY
