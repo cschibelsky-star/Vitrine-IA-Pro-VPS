@@ -68,6 +68,31 @@ jobs:
           done
           echo 'Real Compose runtime hardening and MCP readiness passed on isolated CI fixtures'
 
+      - name: Validate proposed independent HML manifest without provisioning
+        run: |
+          python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          proposal = Path('docs/v5-pr39-independent-hml-context-proposal.md').read_text()
+          match = re.search(r'```json\\s*(\\{.*?\\})\\s*```', proposal, re.S)
+          assert match, 'Missing JSON manifest proposal'
+          manifest = json.loads(match.group(1))
+          assert manifest['id'] == 'v5-pr39-isolated-hml'
+          assert manifest['workspace_root'] == '/srv/projects/v5-pr39-isolated-hml'
+          assert manifest['repository']['branch'] == 'fix/v5-candidate-no-docker-socket-20261101'
+          assert manifest['docker']['compose_file'] == 'docker-compose.v5-recovery-candidate.yml'
+          assert manifest['docker']['project_name'] == manifest['id']
+          assert manifest['runtime']['env_file'] == '.env.runtime'
+          keys = set(manifest['runtime']['allowed_keys'])
+          expected = {'PROJECT_MANIFEST_ROOT', 'PROJECT_WORKSPACE_ROOTS', 'PROJECT_MAX_READ_BYTES', 'PROJECT_PHP_RUNNER_IMAGE', 'OPS_AUDIT_LOG'}
+          assert keys == expected, 'Candidate runtime keys differ from non-secret allowlist'
+          assert not (keys & {'ROTEIA_API_KEY', 'OPENAI_API_KEY', 'CENTRO_IA_INTERNAL_TOKEN'}), 'Secret key forbidden in candidate proposal'
+          assert manifest['domains'] == {'homologation': [], 'production': []}
+          print('Independent HML proposal validated; no manifest provisioned')
+          PY
+
       - name: Build recovery candidate image without starting it
         run: docker build -f connector-v5/Dockerfile -t v5-recovery-candidate:ci .
       - name: Smoke test MCP startup without host Docker access
