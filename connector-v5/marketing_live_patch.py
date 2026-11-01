@@ -16,9 +16,17 @@ def _replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def apply(source: str) -> str:
+    # Both known predecessor builds are supported; unknown versions still fail closed.
+    known_versions = (
+        'VERSION = "0.5.10-project-phpunit-runner-hardened"',
+        'VERSION = "0.5.11-generic-laravel-test-runner"',
+    )
+    matches = [version for version in known_versions if source.count(version) == 1]
+    if len(matches) != 1:
+        raise RuntimeError(f"marketing_live_patch_version_match_count:{len(matches)}")
     source = _replace_once(
         source,
-        'VERSION = "0.5.10-project-phpunit-runner-hardened"',
+        matches[0],
         'VERSION = "0.5.11-marketing-live-homologation"',
         "version",
     )
@@ -27,10 +35,12 @@ def apply(source: str) -> str:
         source,
         '''    commands = {
         "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
+        "tests_laravel": "php artisan test --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
     }''',
         '''    commands = {
         "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
+        "tests_laravel": "php artisan test --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
         "marketing_gemini_live": "php vendor/bin/phpunit tests/Unit/Marketing/MarketingGeminiLiveHomologationTest.php --colors=never",
     }''',
@@ -48,9 +58,9 @@ def apply(source: str) -> str:
 
     source = _replace_once(
         source,
-        '''    if operation == "tests_marketing":
+        '''    if operation in {"tests_marketing", "tests_laravel"}:
         composer_lock = repository / "composer.lock"''',
-        '''    if operation in {"tests_marketing", "marketing_gemini_live"}:
+        '''    if operation in {"tests_marketing", "tests_laravel", "marketing_gemini_live"}:
         if operation == "marketing_gemini_live" and project_id != "vitrine-marketing-agents-core-hml":
             return {"ok": False, "error": "marketing_live_validation_not_allowed_for_project", "project_id": project_id}
         composer_lock = repository / "composer.lock"''',

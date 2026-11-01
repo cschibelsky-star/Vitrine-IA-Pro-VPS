@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: connector-v5/Dockerfile
-    container_name: vitrine_mcp_v5_recovery_candidate
     command: ["python", "/app/main_ext.py"]
     environment:
       PROJECT_MANIFEST_ROOT: /app/project-manifests
@@ -16,11 +15,17 @@ services:
       - /srv/projects:/srv/projects:ro
       - /srv/tvsumare:/srv/tvsumare:ro
       - /var/log/vitrine-ops-v5-recovery:/var/log/vitrine-ops-v5-recovery:rw
-      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:18867:8000"
     networks:
-      - vitrine_net
+      - v5_recovery_isolated
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),3); s.close()"]
       interval: 10s
@@ -30,6 +35,5 @@ services:
     restart: "no"
 
 networks:
-  vitrine_net:
-    external: true
-    name: vitrine_net
+  v5_recovery_isolated:
+    internal: true
