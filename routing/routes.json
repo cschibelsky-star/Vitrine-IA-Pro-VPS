@@ -8,7 +8,7 @@
     "project_prefix": "p",
     "customer_prefix": "c",
     "width": 6,
-    "project_next": 9,
+    "project_next": 10,
     "customer_next": 1
   },
   "reserved_root_labels": [
@@ -183,6 +183,22 @@
       "legacy_aliases": [],
       "upstream": "conheca_sumare_hml_web:80",
       "health_path": "/",
+      "ssl": true,
+      "status": "planned",
+      "legacy": false
+    },
+    {
+      "id": "p000009-hml",
+      "project_id": "assessor-online-pr137-current-hml",
+      "deployment_code": "p000009",
+      "environment": "homologation",
+      "hostname": "p000009.hml.vitrineiapro.com.br",
+      "friendly_aliases": [
+        "assessor-online-pr137-current.hml.vitrineiapro.com.br"
+      ],
+      "legacy_aliases": [],
+      "upstream": "assessor_laravel:8080",
+      "health_path": "/assessor/login",
       "ssl": true,
       "status": "planned",
       "legacy": false
