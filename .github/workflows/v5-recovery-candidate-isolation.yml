@@ -60,3 +60,11 @@ jobs:
             sleep 2
           done
           docker exec v5-candidate-ci python -c "from pathlib import Path; assert not Path('/var/run/docker.sock').exists(), 'Unexpected Docker socket'; print('MCP listening; Docker socket absent')"
+          # Negative test: Docker CLI is installed but cannot control the host daemon.
+          if docker exec v5-candidate-ci docker info >/dev/null 2>&1; then
+            echo 'SECURITY FAILURE: candidate unexpectedly reached Docker daemon'
+            exit 1
+          fi
+          echo 'Negative test passed: candidate cannot reach Docker daemon'
+          # Verify network namespace is isolated from the runner.
+          docker inspect -f '{{.HostConfig.NetworkMode}}' v5-candidate-ci | grep -Fx none
