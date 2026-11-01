@@ -40,3 +40,23 @@ jobs:
           PY
       - name: Build recovery candidate image without starting it
         run: docker build -f connector-v5/Dockerfile -t v5-recovery-candidate:ci .
+      - name: Smoke test MCP startup without host Docker access
+        run: |
+          set -eu
+          docker run -d --name v5-candidate-ci --network none --restart no v5-recovery-candidate:ci
+          trap 'docker logs v5-candidate-ci || true; docker rm -f v5-candidate-ci >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if ! test "$(docker inspect -f '{{.State.Running}}' v5-candidate-ci)" = true; then
+              echo 'Candidate exited before MCP startup'
+              exit 1
+            fi
+            if docker exec v5-candidate-ci python -c "import socket; s=socket.create_connection(('127.0.0.1',8000),2); s.close()"; then
+              break
+            fi
+            if test "$i" -eq 30; then
+              echo 'MCP did not listen on port 8000'
+              exit 1
+            fi
+            sleep 2
+          done
+          docker exec v5-candidate-ci python -c "from pathlib import Path; assert not Path('/var/run/docker.sock').exists(), 'Unexpected Docker socket'; print('MCP listening; Docker socket absent')"
