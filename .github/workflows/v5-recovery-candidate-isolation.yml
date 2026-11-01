@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'docker-compose.v5-recovery-candidate.yml'
+      - 'connector-v5/controlled_operations_patch.py'
+      - 'docs/v5-pr39-independent-hml-context-proposal.md'
       - '.github/workflows/v5-recovery-candidate-isolation.yml'
   workflow_dispatch:
 
@@ -45,6 +47,28 @@ jobs:
           ports = candidate.get('ports', [])
           assert len(ports) == 1 and ports[0].get('host_ip') == '127.0.0.1' and ports[0].get('published') == '18867', ports
           print('Static candidate isolation checks passed; no container started')
+          PY
+      - name: Verify candidate policy is read-only and project-scoped
+        run: |
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          source = Path('connector-v5/controlled_operations_patch.py').read_text()
+          tree = ast.parse(source)
+          policy = None
+          for node in tree.body:
+              if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == 'CONTROLLED_COMPOSE_POLICY':
+                  policy = ast.literal_eval(node.value)
+                  break
+          assert policy is not None, 'Controlled Compose policy missing'
+          item = policy['v5-pr39-isolated-hml']
+          assert item['compose_files'] == {'docker-compose.v5-recovery-candidate.yml'}
+          assert item['services'] == {'connector_v5_recovery_candidate'}
+          assert item['run_once'] == set()
+          assert item['build'] == set(), 'Build must remain denied'
+          assert item['up'] == set(), 'Up must remain denied'
+          assert policy['tvsumare']['build'] == set(), 'TV Sumare build policy changed'
+          print('Candidate policy is project-scoped and read-only; no runtime policy loaded')
           PY
       - name: Validate actual Compose runtime hardening on CI runner
         run: |
