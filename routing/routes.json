@@ -197,11 +197,14 @@
         "assessor-online-pr137-current.hml.vitrineiapro.com.br"
       ],
       "legacy_aliases": [],
-      "upstream": "assessor_laravel:8080",
+      "upstream": "http://assessor-pr137-current-hml-assessor_laravel-1:8080",
       "health_path": "/assessor/login",
       "ssl": true,
-      "status": "planned",
-      "legacy": false
+      "status": "pending_dns_proxy",
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
     }
   ]
 }
