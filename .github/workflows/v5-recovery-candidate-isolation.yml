@@ -76,7 +76,7 @@ jobs:
           from pathlib import Path
 
           proposal = Path('docs/v5-pr39-independent-hml-context-proposal.md').read_text()
-          match = re.search(r'```json\\s*(\\{.*?\\})\\s*```', proposal, re.S)
+          match = re.search(r'```json\s*(\{.*?\})\s*```', proposal, re.S)
           assert match, 'Missing JSON manifest proposal'
           manifest = json.loads(match.group(1))
           assert manifest['id'] == 'v5-pr39-isolated-hml'
