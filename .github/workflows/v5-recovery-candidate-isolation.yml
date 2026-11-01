@@ -103,3 +103,51 @@ jobs:
 
           asyncio.run(verify())
           PY
+
+      - name: Verify read-only missing manifest and mutation confirmation gate
+        run: |
+          set -eu
+          docker run -d --name v5-policy-ci --network none --restart no v5-recovery-candidate:ci
+          trap 'docker logs v5-policy-ci || true; docker rm -f v5-policy-ci >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if docker exec v5-policy-ci python -c "import socket; s=socket.create_connection(('127.0.0.1',8000),2); s.close()" >/dev/null 2>&1; then break; fi
+            if test "$i" -eq 30; then echo 'MCP readiness timed out'; exit 1; fi
+            sleep 2
+          done
+          docker exec -i v5-policy-ci python - <<'PY'
+          import asyncio
+          import json
+          from fastmcp import Client
+
+          def payload(result):
+              data = getattr(result, 'data', None)
+              if isinstance(data, dict):
+                  return data
+              for item in result.content:
+                  if getattr(item, 'type', None) == 'text':
+                      try:
+                          value = json.loads(item.text)
+                          if isinstance(value, dict):
+                              return value
+                      except ValueError:
+                          pass
+              raise AssertionError(f'No dictionary response: {result}')
+
+          async def verify():
+              async with Client('http://127.0.0.1:8000/mcp', timeout=30) as client:
+                  missing = payload(await client.call_tool('project_manifest', {'project_id': 'nonexistent-ci-fixture'}))
+                  assert missing.get('ok') is False and missing.get('error') == 'manifest_not_found', missing
+                  denied = payload(await client.call_tool('project_manifest_create', {
+                      'project_id': 'nonexistent-ci-fixture',
+                      'name': 'CI denied mutation',
+                      'workspace_root': '/srv/projects/ci-fixture',
+                      'repository_url': 'https://github.com/example/ci-fixture.git',
+                      'confirm': '',
+                  }))
+                  assert denied.get('ok') is False and denied.get('error') == 'confirmation_required', denied
+                  again = payload(await client.call_tool('project_manifest', {'project_id': 'nonexistent-ci-fixture'}))
+                  assert again.get('error') == 'manifest_not_found', again
+                  print('MCP read-only missing manifest and unauthorized mutation rejection verified')
+
+          asyncio.run(verify())
+          PY
