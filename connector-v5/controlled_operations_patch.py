@@ -244,6 +244,14 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": {"connector_v5_recovery_candidate"},
         "up": {"connector_v5_recovery_candidate"},
     },
+    "v5-pr39-isolated-hml": {
+        "compose_files": {"docker-compose.v5-recovery-candidate.yml"},
+        "services": {"connector_v5_recovery_candidate"},
+        "run_once": set(),
+        # Read-only visibility first; build/up need a separate, reviewed gate.
+        "build": set(),
+        "up": set(),
+    },
     "v5-global-inventory-validation": {
         "compose_files": {"docker-compose.v5-recovery-candidate.yml"},
         "services": {"connector_v5_recovery_candidate"},
