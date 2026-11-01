@@ -1,0 +1,58 @@
+name: V5 TV Sumare policy CI
+
+on:
+  pull_request:
+    paths:
+      - 'connector-v5/controlled_operations_patch.py'
+      - 'connector-v5/test_controlled_operations_patch.py'
+      - '.github/workflows/v5-tvsumare-policy-ci.yml'
+  push:
+    branches:
+      - 'fix/v5-tvsumare-prod-readonly-20261101'
+    paths:
+      - 'connector-v5/controlled_operations_patch.py'
+      - 'connector-v5/test_controlled_operations_patch.py'
+      - '.github/workflows/v5-tvsumare-policy-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile V5 patch and tests
+        run: python -m py_compile connector-v5/controlled_operations_patch.py connector-v5/test_controlled_operations_patch.py
+      - name: Verify production inspection does not grant deployment
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          source = Path("connector-v5/controlled_operations_patch.py").read_text()
+          tree = ast.parse(source)
+          patch = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "apply")
+          blocks = [n.value for n in ast.walk(patch) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+          policy_text = next(s for s in blocks if 'CONTROLLED_COMPOSE_POLICY: dict[' in s)
+          module = ast.parse(policy_text)
+          assignment = next(n for n in module.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == "CONTROLLED_COMPOSE_POLICY")
+          class EmptySetAsLiteral(ast.NodeTransformer):
+            def visit_Call(self, node):
+              if isinstance(node.func, ast.Name) and node.func.id == "set" and not node.args and not node.keywords:
+                return ast.Set(elts=[])
+              raise AssertionError("Unexpected call in policy")
+          policy_node = EmptySetAsLiteral().visit(assignment.value)
+          policy = ast.literal_eval(policy_node)["tvsumare"]
+          assert policy["compose_files"] == {"docker-compose.vps.yml"}
+          assert policy["services"] == {"web", "web_prod"}
+          assert policy["up"] == {"web"}
+          assert policy["build"] == set()
+          assert policy["run_once"] == set()
+          assert "web_prod" not in (policy["up"] | policy["build"] | policy["run_once"])
+          print("TV Sumare production read-only policy: PASS")
+          PY

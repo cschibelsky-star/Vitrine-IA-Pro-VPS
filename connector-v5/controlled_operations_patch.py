@@ -260,7 +260,8 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
     },
     "tvsumare": {
         "compose_files": {"docker-compose.vps.yml"},
-        "services": {"web"},
+        # Production is observable, but not mutable through generic Compose tools.
+        "services": {"web", "web_prod"},
         "run_once": set(),
         "build": set(),
         "up": {"web"},
