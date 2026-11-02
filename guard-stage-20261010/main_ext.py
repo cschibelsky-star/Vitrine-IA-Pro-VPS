@@ -25,6 +25,8 @@ exec(compile(source, str(main_path), 'exec'), core.__dict__)
 # main.py remains the single registry for V5 tools. The source is patched only
 # in memory so the container filesystem can stay read-only.
 mcp = core.mcp
+from redis_probe import install as install_redis_probe
+install_redis_probe(mcp)
 
 
 if __name__ == '__main__':
