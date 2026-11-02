@@ -89,6 +89,27 @@ class ComposeRuntimeTests(unittest.TestCase):
         self.assertEqual(self.status(compose_file="other.yml")["error"], "controlled_compose_file_not_allowed")
         self.run.assert_not_called()
 
+    def test_no_secret_social_hub_sandbox_accepts_missing_env_only_for_its_compose(self):
+        self.runtime.unlink()
+        self.manifest["runtime"] = {
+            "env_file": ".env.contract", "allowed_keys": [],
+        }
+        project = "vitrine-marketing-social-hub-contract-hml"
+        compose = "docker-compose.social-hub-status-contract.yml"
+        base, relative, repository = self.ns["_controlled_compose_base"](project, compose)
+        self.assertEqual(relative, compose)
+        self.assertEqual(repository, self.repo)
+        self.assertEqual(base[-4:], ["-p", "tvsumare", "-f", str(self.repo / compose)])
+        self.assertNotIn("--env-file", base)
+
+        self.assertEqual(
+            self.ns["_controlled_compose_base"]("tvsumare", "docker-compose.vps.yml")[0], []
+        )
+        self.manifest["runtime"]["allowed_keys"] = ["MARKETING_ENGINE_TOKEN"]
+        self.assertEqual(
+            self.ns["_controlled_compose_base"](project, compose)[0], []
+        )
+
     def test_execution_requires_confirmation(self):
         result = self.ns["project_compose_service_execute"](
             "tvsumare", "docker-compose.vps.yml", "web", "up")
