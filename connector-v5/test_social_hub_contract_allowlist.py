@@ -49,11 +49,11 @@ class SocialHubContractAllowlistTests(unittest.TestCase):
         self.assertEqual(
             keys.count("vitrine-marketing-social-hub-contract-hml"), 1
         )
-        self.assertIn("vitrine-marketing-agents-core-hml", keys)
+        self.assertIn("vitrine-ia-pro-core", keys)
         self.assertIn("vitrine-ai-social-enterprise", keys)
         self.assertNotEqual(
             ast.unparse(self.policy_entry("vitrine-marketing-social-hub-contract-hml")),
-            ast.unparse(self.policy_entry("vitrine-marketing-agents-core-hml")),
+            ast.unparse(self.policy_entry("vitrine-ia-pro-core")),
         )
 
 
