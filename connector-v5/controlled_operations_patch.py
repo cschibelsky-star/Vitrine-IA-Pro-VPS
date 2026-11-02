@@ -216,6 +216,15 @@ def project_mariadb_backup(project_id: str, confirm: str = "") -> dict[str, Any]
     activate_start = '@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef activate_hml_route('
     compose_block = r'''
 CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
+    # Scope is deliberately one project, one inert service, and one Compose.
+    # The sandbox has no network, database, Meta credentials or public port.
+    "vitrine-marketing-social-hub-contract-hml": {
+        "compose_files": {"docker-compose.social-hub-status-contract.yml"},
+        "services": {"status_contract"},
+        "run_once": set(),
+        "build": {"status_contract"},
+        "up": {"status_contract"},
+    },
     "vitrine-ia-pro-core": {
         "compose_files": {"docker-compose.core-hml.yml"},
         "services": {"core_db", "core_migrate", "core_seed_providers", "core_seed_agents", "core_app", "core_web"},
@@ -322,7 +331,16 @@ def _controlled_compose_base(project_id: str, compose_file: str) -> tuple[list[s
     base = ["docker", "compose"]
     runtime_target = _controlled_runtime_env_path(manifest)
     if not runtime_target.is_file():
-        return [], relative, repository
+        # This networkless test sandbox contains no application credentials.
+        # Do not relax the runtime-file rule for any other project or Compose.
+        runtime = manifest.get("runtime", {}) or {}
+        if (project_id != "vitrine-marketing-social-hub-contract-hml"
+            or relative != "docker-compose.social-hub-status-contract.yml"
+            or runtime.get("env_file") != ".env.contract"
+            or runtime.get("allowed_keys", []) != []):
+            return [], relative, repository
+        base += ["-p", project_name, "-f", str(target)]
+        return base, relative, repository
     base += ["--env-file", str(runtime_target), "-p", project_name, "-f", str(target)]
     return base, relative, repository
 
