@@ -128,7 +128,10 @@ def project_docker_status(project_id: str) -> dict[str, Any]:
             target, relative = _safe_file(project_id, compose_file, True)
         except (ValueError, PermissionError, FileNotFoundError) as exc:
             return {"ok": False, "error": str(exc), "project_id": project_id, "compose_file": compose_file}
-        result = _run(["docker", "compose", "-p", docker_project, "-f", str(target), "ps"], repository, timeout=60)
+        runtime_target, _ = _runtime_config(manifest)
+        if not runtime_target.is_file():
+            return {"ok": False, "error": "runtime_env_not_configured", "project_id": project_id}
+        result = _run(["docker", "compose", "--env-file", str(runtime_target), "-p", docker_project, "-f", str(target), "ps"], repository, timeout=60)
         result.update({"project_id": project_id, "compose_file": relative, "docker_project": docker_project})
         return result
     result = _run(["docker", "ps", "-a", "--filter", f"label=com.docker.compose.project={docker_project}", "--format", "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"], repository, timeout=60)
