@@ -296,6 +296,20 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
 }
 
 
+def _controlled_runtime_env_path(manifest: dict[str, Any]) -> Path:
+    # Compose consumes an existing file; allowed_keys authorizes secret editing,
+    # not status/build/up. Never read or expose the file contents here.
+    runtime = manifest.get("runtime", {}) or {}
+    relative = str(runtime.get("env_file", ".env.runtime")).strip().replace(chr(92), "/")
+    if not relative or relative.startswith("/") or ".." in relative.split("/"):
+        raise ValueError("invalid_runtime_env_file")
+    workspace = _validated_workspace_root(str(manifest["workspace_root"]))
+    target = (workspace / relative).resolve()
+    if not _within(target, workspace):
+        raise PermissionError("runtime_env_outside_workspace")
+    return target
+
+
 def _controlled_compose_base(project_id: str, compose_file: str) -> tuple[list[str], str, Path]:
     policy = CONTROLLED_COMPOSE_POLICY.get(project_id)
     if policy is None:
@@ -306,7 +320,7 @@ def _controlled_compose_base(project_id: str, compose_file: str) -> tuple[list[s
     manifest, _, repository = _project_paths(project_id)
     project_name = str(manifest.get("docker", {}).get("project_name", project_id) or project_id).strip()
     base = ["docker", "compose"]
-    runtime_target, _ = _runtime_config(manifest)
+    runtime_target = _controlled_runtime_env_path(manifest)
     if not runtime_target.is_file():
         return [], relative, repository
     base += ["--env-file", str(runtime_target), "-p", project_name, "-f", str(target)]

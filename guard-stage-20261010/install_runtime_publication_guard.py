@@ -7,6 +7,7 @@ from pathlib import Path
 GUARDED = {
     "project_clone", "project_git_reconcile_to_origin", "git_reconcile", "git_checkout",
     "project_materialize", "project_bootstrap_from_git", "project_compose_service_execute",
+    "project_manifest_branch_configure",
 }
 BROKER_HELPERS = {
     "PublicationProjectRequest", "load_publication_sources", "canonical_source_preflight",

@@ -14,6 +14,8 @@ if not main_path.is_file():
 source = main_path.read_text(encoding='utf-8')
 source = apply_marketing_live_patch(source)
 source = apply_controlled_operations_patch(source)
+from registry_runtime_overlay import apply as apply_registry_runtime_overlay
+source = apply_registry_runtime_overlay(source)
 from install_runtime_publication_guard import independent_overlay
 source, _guarded_tools = independent_overlay(source, "_load_manifest")
 
