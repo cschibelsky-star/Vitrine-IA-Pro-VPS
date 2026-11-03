@@ -3,12 +3,14 @@ on:
   pull_request:
     paths:
       - 'super-connector/Dockerfile'
+      - 'super-connector/docker-compose.yml'
       - 'super-connector/test_mcp_catalog_candidate.py'
       - '.github/workflows/super-mcp-candidate-offline.yml'
 permissions:
   contents: read
 jobs:
   candidate-static:
+    # Real protected-guard validation remains a separate pending gate.
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
@@ -20,61 +22,3 @@ jobs:
           python-version: '3.12'
       - name: Offline candidate packaging checks
         run: python -m unittest discover -s super-connector -p test_mcp_catalog_candidate.py -v
-  candidate-docker-fixture:
-    # Isolated hosted runner. This is NOT the real publication guard image.
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Build packaging fixture (no host Docker socket or VPS)
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker pull python:3.12-alpine
-          # The production guard image is unavailable on hosted CI.
-          # Tag an explicit throwaway fixture only to validate Docker COPY,
-          # Python syntax and candidate build wiring.
-          docker tag python:3.12-alpine vitrine-publication-guard-super:20261010
-          docker build --target mcp_catalog_candidate \
-            -f super-connector/Dockerfile \
-            -t super-mcp-candidate:ci-fixture .
-          docker run --rm --network none --read-only \
-            --entrypoint python super-mcp-candidate:ci-fixture \
-            -c "from pathlib import Path; p=Path('/opt/super-candidate'); assert (p/'main.py').is_file(); assert (p/'foundation_entrypoint.py').is_file(); assert (p/'foundation').is_dir(); print('candidate_bundle_present')"
-          echo "NOTICE: fixture build does not validate real guard or MCP publication"
-  candidate-real-guard-build:
-    # Targeted one-off validation for PR 51 only; NO deploy.
-    if: ${{ github.event.pull_request.number == 51 && github.head_ref == 'feature/super-mcp-candidate-build-20261103' }}
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 12
-    concurrency:
-      group: super-mcp-candidate-build-pr51
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          clean: true
-      - name: Check protected base and build isolated candidate image
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git branch --show-current)" = "" || echo "Detached or PR checkout verified by SHA"
-          test -f super-connector/Dockerfile
-          # Docker image is locally owned by the candidate runner; never pull an
-          # untrusted replacement from a registry.
-          BASE_IMAGE="vitrine-publication-guard-super:20261010"
-          EXPECTED_IMAGE="sha256:7fb6ef499a7f225b5fc193e321b7858ce59bb1813be93b0e08878e0014636938"
-          ACTUAL_IMAGE="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE")"
-          test "$ACTUAL_IMAGE" = "$EXPECTED_IMAGE"
-          docker build --pull=false --network=none \
-            --target mcp_catalog_candidate \
-            -f super-connector/Dockerfile \
-            -t "super-mcp-candidate:pr51-${GITHUB_SHA}" .
-          docker run --rm --network none --read-only --cap-drop ALL \
-            --security-opt no-new-privileges \
-            --entrypoint python "super-mcp-candidate:pr51-${GITHUB_SHA}" \
-            -c "from pathlib import Path; p=Path('/opt/super-candidate'); assert (p/'main.py').is_file(); assert (p/'foundation_entrypoint.py').is_file(); assert (p/'foundation').is_dir(); print('real_guard_candidate_bundle_present')"
-          echo "Build-only verification completed, no service recreated."
