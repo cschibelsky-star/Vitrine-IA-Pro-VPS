@@ -22,7 +22,7 @@ VALID_CODE = re.compile(r"^[a-zA-Z0-9_-]{3,128}$")
 
 
 def execute_once(*, project_id: str, experiment_id: str, confirm: str,
-                 resolve_project, runner=subprocess.run, audit=None) -> dict[str, Any]:
+                 resolve_project, runner=subprocess.run, audit=None,\n                 expected_workspace=Path("/srv/projects/roteia-ai-lab")) -> dict[str, Any]:
     """Narrow executor: inputs select no paths, arguments or credentials."""
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required"}
@@ -32,7 +32,7 @@ def execute_once(*, project_id: str, experiment_id: str, confirm: str,
         manifest, workspace, repository = resolve_project(PROJECT_ID)
         workspace = Path(workspace).resolve()
         repository = Path(repository).resolve()
-        if workspace != Path("/srv/projects/roteia-ai-lab"):
+        if workspace != Path(expected_workspace).resolve():
             return {"ok": False, "error": "workspace_mismatch"}
         if repository != workspace / "repository":
             return {"ok": False, "error": "repository_mismatch"}
