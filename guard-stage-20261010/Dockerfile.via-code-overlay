@@ -1,0 +1,6 @@
+# Candidate only: preserve all behaviors from the currently running V5 image.
+# Do NOT substitute the older 2026-10-10 baseline in a production cutover.
+FROM vitrine-v5-factory-via-hml:fix2
+COPY connector-v5/via_code_pilot_tool.py /app/via_code_pilot_tool.py
+COPY guard-stage-20261010/via_code_overlay_entrypoint.py /app/via_code_overlay_entrypoint.py
+CMD ["python", "/app/via_code_overlay_entrypoint.py"]
