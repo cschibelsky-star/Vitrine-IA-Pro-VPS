@@ -1,0 +1,22 @@
+name: Super MCP candidate offline safety
+on:
+  pull_request:
+    paths:
+      - 'super-connector/Dockerfile'
+      - 'super-connector/test_mcp_catalog_candidate.py'
+      - '.github/workflows/super-mcp-candidate-offline.yml'
+permissions:
+  contents: read
+jobs:
+  candidate-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Offline candidate packaging checks
+        run: python -m unittest discover -s super-connector -p test_mcp_catalog_candidate.py -v
