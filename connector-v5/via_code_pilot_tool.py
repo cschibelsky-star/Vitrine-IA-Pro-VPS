@@ -22,7 +22,8 @@ VALID_CODE = re.compile(r"^[a-zA-Z0-9_-]{3,128}$")
 
 
 def execute_once(*, project_id: str, experiment_id: str, confirm: str,
-                 resolve_project, runner=subprocess.run, audit=None,\n                 expected_workspace=Path("/srv/projects/roteia-ai-lab")) -> dict[str, Any]:
+                 resolve_project, runner=subprocess.run, audit=None,
+                 expected_workspace=Path("/srv/projects/roteia-ai-lab")) -> dict[str, Any]:
     """Narrow executor: inputs select no paths, arguments or credentials."""
     if confirm != "EXECUTAR":
         return {"ok": False, "error": "confirmation_required"}
@@ -99,7 +100,7 @@ def execute_once(*, project_id: str, experiment_id: str, confirm: str,
                 "requestId": request_id,
                 "status": "response_received" if result.returncode == 0 and raw.get("ok") and answer else "charge_unknown",
                 "reportedCostBRL": raw.get("reportedCostBRL") if isinstance(raw.get("reportedCostBRL"), str) and
-                   re.fullmatch(r"(0|[1-9][0-9]{0,7})(\\.[0-9]{1,24})?", raw["reportedCostBRL"]) else None,
+                   re.fullmatch(r"(0|[1-9][0-9]{0,7})(\.[0-9]{1,24})?", raw["reportedCostBRL"]) else None,
                 "inputTokens": raw.get("inputTokens") if type(raw.get("inputTokens")) is int else None,
                 "outputTokens": raw.get("outputTokens") if type(raw.get("outputTokens")) is int else None,
                 "finishReason": str(raw.get("finishReason") or "")[:40],
