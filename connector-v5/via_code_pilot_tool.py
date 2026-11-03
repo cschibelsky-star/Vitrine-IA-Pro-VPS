@@ -21,6 +21,96 @@ MAX_OUTPUT_CHARS = 16000
 VALID_CODE = re.compile(r"^[a-zA-Z0-9_-]{3,128}$")
 
 
+# A fixed read-only Node script run inside the already-running HML container.
+# No docker inspect, log scraping, generic shell, network, credentials or mutation.
+READONLY_DIAGNOSTIC_JS = r"""
+import { DatabaseSync } from 'node:sqlite';
+import { existsSync, accessSync, constants } from 'node:fs';
+const dbPath = '/lab/data/finance.sqlite';
+let writable = false;
+try { accessSync('/lab/data', constants.W_OK); accessSync(dbPath, constants.W_OK); writable = true; } catch {}
+const result = {
+  experiment: 'VIA-CODE-01',
+  databaseExists: existsSync(dbPath),
+  sqliteWriteAccess: writable,
+  credentialPresent: Boolean(process.env.ROTEIA_API_KEY),
+  scriptPresent: existsSync('/lab/scripts/via-code-pilot.js'),
+  tableExists: false,
+  attemptRecorded: false,
+  record: null,
+};
+if (result.databaseExists) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const table = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='via_code_pilot'"
+    ).get();
+    result.tableExists = Boolean(table);
+    if (table) {
+      const row = db.prepare(
+        "SELECT experiment, run_id, status, request_id, http_status, " +
+        "reported_cost_brl, error_code, started_at, finished_at " +
+        "FROM via_code_pilot WHERE experiment=?"
+      ).get('VIA-CODE-01');
+      result.attemptRecorded = Boolean(row);
+      result.record = row || null;
+    }
+  } finally { db.close(); }
+}
+process.stdout.write(JSON.stringify(result));
+"""
+
+
+def diagnose_readonly(*, project_id: str, experiment_id: str,
+                      resolve_project, runner=subprocess.run,
+                      expected_workspace=Path("/srv/projects/roteia-ai-lab")) -> dict[str, Any]:
+    """Fixed HML SQLite metadata probe: no provider requests or DB writes."""
+    if project_id != PROJECT_ID or experiment_id != EXPERIMENT:
+        return {"ok": False, "error": "experiment_or_project_not_allowed"}
+    try:
+        manifest, workspace, repository = resolve_project(PROJECT_ID)
+        workspace = Path(workspace).resolve()
+        repository = Path(repository).resolve()
+        if (workspace != Path(expected_workspace).resolve()
+                or repository != workspace / "repository"
+                or manifest.get("id") != PROJECT_ID
+                or manifest.get("docker", {}).get("compose_file") != COMPOSE
+                or manifest.get("docker", {}).get("project_name") != PROJECT_ID
+                or manifest.get("domains", {}).get("production")):
+            return {"ok": False, "error": "readonly_scope_mismatch"}
+        argv = ["docker", "exec", "-u", "node", "roteia_ai_lab_hml",
+                "node", "--input-type=module", "-e", READONLY_DIAGNOSTIC_JS]
+        completed = runner(argv, cwd=str(repository), capture_output=True,
+                           text=True, timeout=15, check=False)
+        if completed.returncode != 0:
+            return {"ok": False, "error": "readonly_probe_unavailable"}
+        data = json.loads(completed.stdout.strip())
+        if not isinstance(data, dict) or data.get("experiment") != EXPERIMENT:
+            return {"ok": False, "error": "readonly_probe_invalid_response"}
+        record = data.get("record") if isinstance(data.get("record"), dict) else None
+        safe_record = None
+        if record:
+            safe_record = {k: record.get(k) for k in (
+                "experiment", "run_id", "status", "request_id", "http_status",
+                "reported_cost_brl", "error_code", "started_at", "finished_at")}
+        return {
+            "ok": True,
+            "experiment": EXPERIMENT,
+            "databaseExists": data.get("databaseExists") is True,
+            "sqliteWriteAccess": data.get("sqliteWriteAccess") is True,
+            "credentialPresent": data.get("credentialPresent") is True,
+            "scriptPresent": data.get("scriptPresent") is True,
+            "tableExists": data.get("tableExists") is True,
+            "attemptRecorded": data.get("attemptRecorded") is True,
+            "record": safe_record,
+            "readOnly": True,
+            "upstreamCalled": False,
+        }
+    except (OSError, ValueError, TypeError, KeyError, subprocess.TimeoutExpired):
+        return {"ok": False, "error": "readonly_probe_failed"}
+
+
+
 def execute_once(*, project_id: str, experiment_id: str, confirm: str,
                  resolve_project, runner=subprocess.run, audit=None,
                  expected_workspace=Path("/srv/projects/roteia-ai-lab")) -> dict[str, Any]:
@@ -126,4 +216,12 @@ def register(mcp, core):
     ) -> dict[str, Any]:
         return execute_once(project_id=project_id, experiment_id=experiment_id, confirm=confirm,
                             resolve_project=core._project_paths, audit=core._audit)
+    @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+    def project_roteia_via_code_pilot_diagnose(
+        project_id: str, experiment_id: str
+    ) -> dict[str, Any]:
+        return diagnose_readonly(
+            project_id=project_id, experiment_id=experiment_id,
+            resolve_project=core._project_paths,
+        )
     return project_roteia_via_code_pilot_execute
