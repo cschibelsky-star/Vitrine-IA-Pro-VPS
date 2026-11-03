@@ -3,4 +3,5 @@
 FROM vitrine-v5-factory-via-hml:fix2
 COPY connector-v5/via_code_pilot_tool.py /app/via_code_pilot_tool.py
 COPY guard-stage-20261010/via_code_overlay_entrypoint.py /app/via_code_overlay_entrypoint.py
+COPY guard-stage-20261010/via_code_mcp_probe.py /app/via_code_mcp_probe.py
 CMD ["python", "/app/via_code_overlay_entrypoint.py"]
