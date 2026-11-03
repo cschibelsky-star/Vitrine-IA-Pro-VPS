@@ -46,8 +46,8 @@ services:
 YAML
 compose_up=(docker compose -p "$PROJ" -f "$LIVE_COMPOSE" -f "$STATE_DIR/upgrade.yml")
 compose_back=(docker compose -p "$PROJ" -f "$LIVE_COMPOSE" -f "$STATE_DIR/rollback.yml")
-"\${compose_up[@]}" config -q >/dev/null
-"\${compose_back[@]}" config -q >/dev/null
+"${compose_up[@]}" config -q >/dev/null
+"${compose_back[@]}" config -q >/dev/null
 catalog() { timeout 25s docker exec "$CAN_NAME" python /app/via_code_mcp_catalog.py "$1"; }
 catalog http://vitrine_mcp_v5:8000/mcp > "$STATE_DIR/tools.before.json"
 catalog http://127.0.0.1:8000/mcp > "$STATE_DIR/tools.candidate.json"
@@ -61,7 +61,7 @@ assert b.count('project_roteia_via_code_pilot_execute') == 1
 assert set(a).issubset(b), 'old MCP tools missing in candidate'
 print('PREFLIGHT OK: current MCP tools preserved by candidate')
 PY
-if [[ \${1:-} != EXECUTAR_V5_VIA_CODE ]]; then
+if [[ ${1:-} != EXECUTAR_V5_VIA_CODE ]]; then
   echo "PREFLIGHT ONLY; no deployment; artifacts=$STATE_DIR"
   exit 0
 fi
@@ -71,7 +71,7 @@ on_exit() {
   trap - EXIT
   if [[ $switched == 1 && $result != 0 ]]; then
     echo 'VALIDATION FAILED; starting automatic rollback'
-    if "\${compose_back[@]}" up -d --no-build --no-deps connector_v5; then
+    if "${compose_back[@]}" up -d --no-build --no-deps connector_v5; then
       for i in $(seq 1 25); do
         if [[ $(docker inspect "$LIVE_NAME" --format '{{.Image}}' 2>/dev/null || :) == "$OLD_IMAGE" && $(docker inspect "$LIVE_NAME" --format '{{.State.Health.Status}}' 2>/dev/null || :) == healthy ]]; then
           echo 'ROLLBACK HEALTHY'; exit "$result"
@@ -87,7 +87,7 @@ trap on_exit EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 switched=1
-"\${compose_up[@]}" up -d --no-build --no-deps connector_v5
+"${compose_up[@]}" up -d --no-build --no-deps connector_v5
 healthy=0
 for i in $(seq 1 25); do
   if [[ $(docker inspect "$LIVE_NAME" --format '{{.Image}}' 2>/dev/null || :) == "$NEW_IMAGE" && $(docker inspect "$LIVE_NAME" --format '{{.State.Health.Status}}' 2>/dev/null || :) == healthy ]]; then
