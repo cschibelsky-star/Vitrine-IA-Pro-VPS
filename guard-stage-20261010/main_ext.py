@@ -28,6 +28,10 @@ exec(compile(source, str(main_path), 'exec'), core.__dict__)
 # in memory so the container filesystem can stay read-only.
 mcp = core.mcp
 
+# A single experimental action, isolated from generic Compose and shell execution.
+from via_code_pilot_tool import register as register_via_code_pilot
+register_via_code_pilot(mcp, core)
+
 
 if __name__ == '__main__':
     mcp.run(
