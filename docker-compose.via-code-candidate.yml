@@ -27,9 +27,9 @@ services:
     ports:
       - "127.0.0.1:18869:8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),3); s.close()"]
+      test: ["CMD", "python", "/app/via_code_mcp_probe.py"]
       interval: 10s
-      timeout: 5s
+      timeout: 12s
       retries: 4
       start_period: 10s
     networks:
