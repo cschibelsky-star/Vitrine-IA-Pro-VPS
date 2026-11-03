@@ -20,3 +20,27 @@ jobs:
           python-version: '3.12'
       - name: Offline candidate packaging checks
         run: python -m unittest discover -s super-connector -p test_mcp_catalog_candidate.py -v
+  candidate-docker-fixture:
+    # Isolated hosted runner. This is NOT the real publication guard image.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build packaging fixture (no host Docker socket or VPS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull python:3.12-alpine
+          # The production guard image is unavailable on hosted CI.
+          # Tag an explicit throwaway fixture only to validate Docker COPY,
+          # Python syntax and candidate build wiring.
+          docker tag python:3.12-alpine vitrine-publication-guard-super:20261010
+          docker build --target mcp_catalog_candidate \
+            -f super-connector/Dockerfile \
+            -t super-mcp-candidate:ci-fixture .
+          docker run --rm --network none --read-only \
+            --entrypoint python super-mcp-candidate:ci-fixture \
+            -c "from pathlib import Path; p=Path('/opt/super-candidate'); assert (p/'main.py').is_file(); assert (p/'foundation_entrypoint.py').is_file(); assert (p/'foundation').is_dir(); print('candidate_bundle_present')"
+          echo "NOTICE: fixture build does not validate real guard or MCP publication"
