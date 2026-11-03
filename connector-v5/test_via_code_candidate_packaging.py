@@ -10,6 +10,7 @@ class ViaCodeCandidatePackagingTests(unittest.TestCase):
         self.assertIn("FROM vitrine-v5-factory-via-hml:fix2",docker)
         self.assertNotIn("FROM vitrine-publication-guard-baseline-v5",docker)
         self.assertIn("COPY connector-v5/via_code_pilot_tool.py",docker)
+        self.assertIn("COPY guard-stage-20261010/via_code_mcp_probe.py",docker)
     def test_cannot_start_existing_main_ext_as_main(self):
         entry=(ROOT/"guard-stage-20261010/via_code_overlay_entrypoint.py").read_text()
         self.assertIn('run_name="v5_existing_runtime"',entry)
@@ -23,6 +24,7 @@ class ViaCodeCandidatePackagingTests(unittest.TestCase):
         self.assertNotIn("env_file:",compose)
         self.assertIn('127.0.0.1:18869:8000',compose)
         self.assertIn("read_only: true",compose)
+        self.assertIn('["CMD", "python", "/app/via_code_mcp_probe.py"]',compose)
         self.assertIn("no-new-privileges:true",compose)
 
 if __name__=="__main__":
