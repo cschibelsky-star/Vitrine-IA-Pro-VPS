@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from via_code_pilot_tool import execute_once, PROJECT_ID, EXPERIMENT
+from via_code_pilot_tool import execute_once, diagnose_readonly, PROJECT_ID, EXPERIMENT
 
 
 class Runner:
@@ -95,6 +95,76 @@ class ViaCodePilotToolTests(unittest.TestCase):
         self.assertFalse(out["ok"])
         self.assertEqual(out["status"], "charge_unknown")
         self.assertEqual(sum(c[:2] == ["docker", "compose"] for c in self.runner.calls), 1)
+
+
+
+class DiagnosticToolTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.workspace = Path(self.tmp.name) / "roteia-ai-lab"
+        self.repo = self.workspace / "repository"
+        self.repo.mkdir(parents=True)
+        self.manifest = {
+            "id": PROJECT_ID,
+            "docker": {"compose_file": "compose.hml.yml", "project_name": PROJECT_ID},
+            "domains": {"production": []},
+        }
+        self.calls = []
+
+    def diagnose(self, project_id=PROJECT_ID, experiment_id=EXPERIMENT, response=None):
+        if response is None:
+            response = {
+                "experiment": EXPERIMENT, "databaseExists": True, "sqliteWriteAccess": True,
+                "credentialPresent": True, "scriptPresent": True, "tableExists": False,
+                "attemptRecorded": False, "record": None, "secret": "never-return-this",
+            }
+        def runner(argv, **kwargs):
+            self.calls.append(argv)
+            return SimpleNamespace(returncode=0, stdout=json.dumps(response), stderr="")
+        return diagnose_readonly(
+            project_id=project_id, experiment_id=experiment_id,
+            resolve_project=lambda _: (self.manifest, self.workspace, self.repo),
+            runner=runner, expected_workspace=self.workspace,
+        )
+
+    def test_fixed_readonly_probe_and_sanitization(self):
+        result = self.diagnose()
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["readOnly"])
+        self.assertFalse(result["upstreamCalled"])
+        self.assertFalse(result["attemptRecorded"])
+        self.assertNotIn("secret", result)
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(self.calls[0][:8], [
+            "docker", "exec", "-u", "node", "roteia_ai_lab_hml",
+            "node", "--input-type=module", "-e",
+        ])
+        self.assertNotIn("compose", self.calls[0])
+        self.assertNotIn("via-code-pilot.js", self.calls[0][:8])
+
+    def test_rejects_other_project_or_experiment_and_production(self):
+        self.assertEqual(self.diagnose(project_id="via")["error"],
+                         "experiment_or_project_not_allowed")
+        self.assertEqual(self.diagnose(experiment_id="OTHER")["error"],
+                         "experiment_or_project_not_allowed")
+        self.manifest["domains"]["production"] = ["real-service"]
+        self.assertEqual(self.diagnose()["error"], "readonly_scope_mismatch")
+        self.assertEqual(self.calls, [])
+
+    def test_returns_only_allowlisted_record_fields(self):
+        response = {
+            "experiment": EXPERIMENT, "databaseExists": True, "tableExists": True,
+            "attemptRecorded": True, "record": {"experiment": EXPERIMENT,
+                "status": "charge_unknown", "run_id": "run_1",
+                "error_code": "transport_error_charge_possible",
+                "api_token": "never-return-this"},
+        }
+        result = self.diagnose(response=response)
+        self.assertTrue(result["attemptRecorded"])
+        self.assertEqual(result["record"]["status"], "charge_unknown")
+        self.assertNotIn("api_token", result["record"])
+        self.assertNotIn("never-return-this", str(result))
 
 
 if __name__ == "__main__":
