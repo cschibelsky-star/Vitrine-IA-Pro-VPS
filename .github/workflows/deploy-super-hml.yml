@@ -36,11 +36,13 @@ jobs:
 
       - name: Validate checked-out source
         shell: bash
+        env:
+          EXPECTED_SHA_INPUT: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
           DEPLOY_SHA="$(git rev-parse HEAD)"
           echo "Deploy SHA: $DEPLOY_SHA"
-          EXPECTED="${{ inputs.expected_sha }}"
+          EXPECTED="$EXPECTED_SHA_INPUT"
           if [ -n "$EXPECTED" ] && [ "$DEPLOY_SHA" != "$EXPECTED" ]; then
             echo "ERROR: checked-out SHA $DEPLOY_SHA does not match expected SHA $EXPECTED."
             exit 13

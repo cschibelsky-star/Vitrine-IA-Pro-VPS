@@ -1,0 +1,22 @@
+name: Super HML input guard test
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/deploy-super-hml.yml
+      - .github/workflows/test-super-hml-input-guard.yml
+      - tests/test_deploy_super_hml_workflow.py
+
+permissions:
+  contents: read
+
+jobs:
+  static-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run offline unittest
+        run: python -m unittest discover -s tests -p test_deploy_super_hml_workflow.py
