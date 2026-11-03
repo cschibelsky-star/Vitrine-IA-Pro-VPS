@@ -32,4 +32,9 @@ services:
       timeout: 5s
       retries: 4
       start_period: 10s
-networks: {}
+    networks:
+      - vitrine_net
+networks:
+  vitrine_net:
+    external: true
+    name: vitrine_net
