@@ -21,13 +21,11 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 15
     env:
-      OPS_REPO_DIR: /srv/projects/vitrine-super-centro-operacional-candidate/repository
       DEPLOY_BRANCH: feature/super-centro-operacional-v0.1
       COMPOSE_FILE: super-connector/docker-compose.yml
       DOCKER_PROJECT: vitrine-super-centro-operacional-candidate
       SERVICE: super_connector
       CONTAINER: vitrine_super_connector_candidate
-      IMAGE_TAG: vitrine-super-centro-operacional-candidate-super_connector:latest
     steps:
       - name: Checkout canonical Super branch
         uses: actions/checkout@v4
@@ -38,16 +36,21 @@ jobs:
 
       - name: Validate checked-out source
         shell: bash
+        env:
+          EXPECTED_SHA_INPUT: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
           DEPLOY_SHA="$(git rev-parse HEAD)"
           echo "Deploy SHA: $DEPLOY_SHA"
-          EXPECTED="${{ inputs.expected_sha }}"
+          EXPECTED="$EXPECTED_SHA_INPUT"
           if [ -n "$EXPECTED" ] && [ "$DEPLOY_SHA" != "$EXPECTED" ]; then
             echo "ERROR: checked-out SHA $DEPLOY_SHA does not match expected SHA $EXPECTED."
             exit 13
           fi
           test -f "$COMPOSE_FILE"
+          DEPLOY_IMAGE_TAG="$(docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["super_connector"]["image"])')"
+          test -n "$DEPLOY_IMAGE_TAG"
+          echo "DEPLOY_IMAGE_TAG=$DEPLOY_IMAGE_TAG" >> "$GITHUB_ENV"
           echo "DEPLOY_SHA=$DEPLOY_SHA" >> "$GITHUB_ENV"
 
       - name: Capture known-good image
@@ -72,8 +75,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f "$OPS_REPO_DIR/$COMPOSE_FILE"
-          cd "$OPS_REPO_DIR"
+          # Build and up MUST use the exact same checked-out source and Compose file.
           docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
 
       - name: Wait for healthy
@@ -104,8 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Rolling back to $OLD_IMAGE_ID"
-          docker image tag "$KNOWN_GOOD_TAG" "$IMAGE_TAG"
-          cd "$OPS_REPO_DIR"
+          docker image tag "$KNOWN_GOOD_TAG" "$DEPLOY_IMAGE_TAG"
           docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
 
           for i in $(seq 1 24); do
@@ -128,5 +129,5 @@ jobs:
           echo "Old image: ${OLD_IMAGE_ID:-not-captured}"
           echo "New image: ${NEW_IMAGE_ID:-not-healthy}"
           echo "Container state: $(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER" 2>/dev/null || echo unavailable)"
-          echo "Operational Git worktree was not modified."
+          echo "Both build and up used the isolated Actions checkout."
           echo "V5 was not targeted by this workflow."
