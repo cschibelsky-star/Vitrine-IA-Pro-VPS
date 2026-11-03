@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'connector-v5/**'
+      - 'guard-stage-20261010/via_code*'
+      - 'guard-stage-20261010/Dockerfile.via-code-overlay'
+      - 'ops/v5_via_code_bootstrap.sh'
       - '.github/workflows/registry-branch-ci.yml'
   workflow_dispatch:
 
@@ -30,3 +33,5 @@ jobs:
           export OPS_AUDIT_LOG="$RUNNER_TEMP/registry-audit.jsonl"
           export PROJECT_WORKSPACE_ROOTS="$RUNNER_TEMP/registry-workspaces"
           python -m unittest discover -s connector-v5 -p 'test_*.py' -v
+      - name: Validate one-time bootstrap shell syntax (no execution)
+        run: bash -n ops/v5_via_code_bootstrap.sh

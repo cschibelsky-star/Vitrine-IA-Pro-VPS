@@ -1,0 +1,40 @@
+# Isolated registration-only homologation. Does not deploy or replace V5.
+# No Docker socket and no provider credentials: paid inference is impossible here.
+services:
+  connector_via_code_candidate:
+    build:
+      context: .
+      dockerfile: guard-stage-20261010/Dockerfile.via-code-overlay
+    image: vitrine-v5-via-code-candidate:20261102
+    container_name: vitrine_v5_via_code_candidate
+    command: ["python", "/app/via_code_overlay_entrypoint.py"]
+    restart: "no"
+    environment:
+      PROJECT_MANIFEST_ROOT: /app/project-manifests
+      PROJECT_WORKSPACE_ROOTS: /srv/projects,/srv/tvsumare
+      OPS_AUDIT_LOG: /tmp/via-code-candidate-audit.jsonl
+    volumes:
+      - /srv/connectors/vitrine-vps-mcp/project-manifests:/app/project-manifests:ro
+      - /srv/projects:/srv/projects:ro
+      - /srv/tvsumare:/srv/tvsumare:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "127.0.0.1:18869:8000"
+    healthcheck:
+      test: ["CMD", "python", "/app/via_code_mcp_probe.py"]
+      interval: 10s
+      timeout: 12s
+      retries: 4
+      start_period: 10s
+    networks:
+      - vitrine_net
+networks:
+  vitrine_net:
+    external: true
+    name: vitrine_net
