@@ -17,10 +17,31 @@ class CandidateImageSafetyTests(unittest.TestCase):
         self.assertIn("FROM vitrine-publication-guard-super:20261010 AS hml_binding", DOCKERFILE)
 
     def test_candidate_inherits_guard_but_is_not_live_runtime(self):
-        self.assertIn("FROM hml_binding AS mcp_catalog_candidate", DOCKERFILE)
-        candidate = DOCKERFILE.split("FROM hml_binding AS mcp_catalog_candidate", 1)[1]
-        self.assertNotIn("\\nCMD ", candidate)
-        self.assertNotIn("\\nENTRYPOINT ", candidate)
+        candidate = DOCKERFILE[
+            DOCKERFILE.index("FROM hml_binding AS mcp_catalog_candidate") :
+        ]
+        instructions = [
+            line.strip()
+            for line in candidate.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertEqual(instructions[0], "FROM hml_binding AS mcp_catalog_candidate")
+        self.assertEqual(sum(line.startswith("FROM ") for line in instructions), 1)
+        for instruction in instructions[1:]:
+            if instruction.startswith("COPY "):
+                _, _, destination = instruction.split(maxsplit=2)
+                self.assertTrue(
+                    destination.startswith("/opt/super-candidate/"),
+                    f"candidate content must stay outside the live app: {instruction}",
+                )
+            elif instruction.startswith("RUN "):
+                self.assertEqual(
+                    instruction,
+                    "RUN python -m compileall -q /opt/super-candidate",
+                    "the candidate must not run arbitrary shell or runtime commands",
+                )
+            else:
+                self.fail(f"unexpected candidate runtime directive: {instruction}")
         self.assertNotIn("/app/branding_entrypoint.py", candidate)
         self.assertNotIn("ROTEIA_API_KEY", candidate)
 
