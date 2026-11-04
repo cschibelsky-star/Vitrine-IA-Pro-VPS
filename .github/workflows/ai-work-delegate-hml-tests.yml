@@ -1,0 +1,41 @@
+name: ai-work-delegate-hml-tests
+on:
+  pull_request:
+    paths:
+      - 'connector-v2/ai_work_delegate*.py'
+      - 'connector-v2/test_ai_work_delegate*.py'
+      - 'connector-v2/roteia_*.py'
+      - 'connector-v2/acceptance_ai_work_delegate.py'
+      - 'connector-v2/install_ai_work_delegate.py'
+      - 'connector-v2/probe_streamable_http.py'
+      - 'bootstrap/install_connector_release.py'
+      - 'bootstrap/test_install_connector_release.py'
+      - '.github/workflows/ai-work-delegate-hml-tests.yml'
+  workflow_dispatch:
+jobs:
+  safety-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile
+        run: >
+          python -m py_compile
+          connector-v2/ai_work_delegate.py
+          connector-v2/roteia_delegate_adapter.py
+          connector-v2/roteia_transport.py
+          connector-v2/ai_work_delegate_tool.py
+          connector-v2/acceptance_ai_work_delegate.py
+          connector-v2/install_ai_work_delegate.py
+          connector-v2/probe_streamable_http.py
+          bootstrap/install_connector_release.py
+      - name: Offline safety, transport, tool and installer tests (no network, no paid call)
+        run: python -m unittest discover -s connector-v2 -p 'test_ai_work_delegate*.py' -v
+      - name: Release gate requires ai_work_delegate and a persistent ledger
+        run: python bootstrap/test_install_connector_release.py
+      - name: Connector stabilization installer still idempotent
+        run: python connector-v2/test_connector_stabilization.py
