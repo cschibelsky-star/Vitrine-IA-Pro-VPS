@@ -186,6 +186,14 @@ def main() -> int:
             run([sys.executable, str(checkout / 'bootstrap' / 'test_install_connector_release.py')], checkout, 'source_release_gate_test')
             run([sys.executable, str(checkout / 'project-manager' / 'test_install_project_manager.py')], checkout, 'source_project_manager_test')
             run([sys.executable, str(checkout / 'project-manager' / 'test_project_file_operations.py')], checkout, 'source_project_file_operations_test')
+            run([sys.executable, '-m', 'unittest', 'discover', '-s', str(checkout / 'connector-v2'), '-p', 'test_ai_work_delegate*.py'], checkout, 'source_ai_work_delegate_test')
+            run([sys.executable, '-m', 'py_compile',
+                 str(checkout / 'connector-v2' / 'ai_work_delegate.py'),
+                 str(checkout / 'connector-v2' / 'roteia_delegate_adapter.py'),
+                 str(checkout / 'connector-v2' / 'roteia_transport.py'),
+                 str(checkout / 'connector-v2' / 'ai_work_delegate_tool.py'),
+                 str(checkout / 'connector-v2' / 'acceptance_ai_work_delegate.py'),
+                 str(checkout / 'connector-v2' / 'install_ai_work_delegate.py')], label='source_ai_work_delegate_py_compile')
             run([sys.executable, '-m', 'py_compile',
                  str(checkout / 'connector-v2' / 'main_tvsumare_tools.py'),
                  str(checkout / 'connector-v2' / 'connector_runtime.py'),
@@ -199,6 +207,7 @@ def main() -> int:
 
             run([sys.executable, str(checkout / 'connector-v2' / 'install_connector_v2.py')], label='install_connector_v2')
             run([sys.executable, str(checkout / 'project-manager' / 'install_project_manager.py')], label='install_project_manager')
+            run([sys.executable, str(checkout / 'connector-v2' / 'install_ai_work_delegate.py')], label='install_ai_work_delegate')
 
             run([
                 sys.executable, '-m', 'py_compile',
@@ -211,6 +220,10 @@ def main() -> int:
                 str(CONNECTOR_ROOT / 'project_manager_operations.py'),
                 str(CONNECTOR_ROOT / 'project_manager_tools.py'),
                 str(CONNECTOR_ROOT / 'project_deployment_engine.py'),
+                str(CONNECTOR_ROOT / 'ai_work_delegate.py'),
+                str(CONNECTOR_ROOT / 'roteia_delegate_adapter.py'),
+                str(CONNECTOR_ROOT / 'roteia_transport.py'),
+                str(CONNECTOR_ROOT / 'ai_work_delegate_tool.py'),
             ], label='installed_py_compile')
 
             run(compose_command('config', '--quiet'), CONNECTOR_ROOT, 'compose_config')
@@ -249,6 +262,9 @@ def main() -> int:
                 '--require-tool', 'project_context',
                 '--require-tool', 'project_write_file',
                 '--require-tool', 'project_php_lint',
+                '--require-tool', 'ai_work_delegate',
+                '--require-tool', 'ai_work_delegate_status',
+                '--assert-tool-true', 'ai_work_delegate_status:ledger.ready',
             ], label='mcp_protocol_registry')
             print('MCP_PROTOCOL_REGISTRY_PASS', flush=True)
 

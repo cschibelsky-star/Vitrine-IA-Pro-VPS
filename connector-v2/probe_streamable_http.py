@@ -35,6 +35,31 @@ def _result_summary(result: Any) -> dict[str, Any]:
     }
 
 
+def tool_payload(result: Any) -> dict[str, Any]:
+    """Structured payload of a tool result (falls back to JSON in the first text block)."""
+    structured = getattr(result, "structuredContent", None)
+    if isinstance(structured, dict):
+        inner = structured.get("result")
+        return inner if set(structured) == {"result"} and isinstance(inner, dict) else structured
+    for item in getattr(result, "content", []):
+        text = getattr(item, "text", None)
+        if isinstance(text, str):
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+    return {}
+
+
+def _dig(payload: dict[str, Any], dotted: str) -> Any:
+    value: Any = payload
+    for part in dotted.split("."):
+        value = value.get(part) if isinstance(value, dict) else None
+    return value
+
+
 async def probe(
     url: str,
     token: str | None,
@@ -42,6 +67,7 @@ async def probe(
     label: str,
     required_tools: set[str],
     catalog_only: bool,
+    assertions: tuple[tuple[str, str], ...] = (),
 ) -> str | None:
     headers = {"Authorization": f"Bearer {token}"} if token else None
     async with httpx.AsyncClient(headers=headers, timeout=30) as http_client:
@@ -90,6 +116,15 @@ async def probe(
                         + ";output="
                         + ",".join(invalid_output)
                     )
+                # Read-only status tools only: each assertion calls TOOL with no arguments and
+                # requires the dotted path in its payload to be exactly True. Only the boolean
+                # outcome is printed, never the payload.
+                for tool_name, dotted in assertions:
+                    payload = tool_payload(await session.call_tool(tool_name))
+                    passed = _dig(payload, dotted) is True
+                    print(f"{label}_ASSERT_{tool_name}_{dotted}={passed}")
+                    if not passed:
+                        raise RuntimeError(f"tool_assertion_failed:{tool_name}:{dotted}")
                 if catalog_only:
                     print(f"{label}_CATALOG_VALID=True")
                     return get_session_id()
@@ -112,6 +147,7 @@ async def run_probes(
     sessions: int,
     required_tools: set[str],
     catalog_only: bool,
+    assertions: tuple[tuple[str, str], ...] = (),
 ) -> None:
     ids = await asyncio.gather(
         *(
@@ -122,6 +158,7 @@ async def run_probes(
                 f"SESSION_{index + 1}",
                 required_tools,
                 catalog_only,
+                assertions,
             )
             for index in range(sessions)
         )
@@ -138,7 +175,20 @@ def main() -> None:
     parser.add_argument("--sessions", type=int, default=1)
     parser.add_argument("--require-tool", action="append", default=[])
     parser.add_argument("--catalog-only", action="store_true")
+    parser.add_argument(
+        "--assert-tool-true",
+        action="append",
+        default=[],
+        metavar="TOOL:dotted.path",
+        help="call TOOL (no arguments) and require the dotted path of its payload to be true",
+    )
     args = parser.parse_args()
+    assertions: list[tuple[str, str]] = []
+    for spec in args.assert_tool_true:
+        tool_name, separator, dotted = spec.partition(":")
+        if not separator or not tool_name or not dotted:
+            parser.error(f"invalid --assert-tool-true value: {spec!r}")
+        assertions.append((tool_name, dotted))
     token = _load_bearer(args.token_file) if args.token_file else None
     asyncio.run(
         run_probes(
@@ -148,6 +198,7 @@ def main() -> None:
             args.sessions,
             set(args.require_tool),
             args.catalog_only,
+            tuple(assertions),
         )
     )
 

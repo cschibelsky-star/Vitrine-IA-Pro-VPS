@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Any
@@ -63,7 +64,7 @@ class DelegateLedger:
         fingerprint = hashlib.sha256(
             json.dumps([req.model, req.prompt, req.max_charge_cents], ensure_ascii=False).encode()
         ).hexdigest()
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             existing = db.execute(
                 "SELECT request_hash FROM delegate_calls WHERE experiment_id=?",
@@ -85,7 +86,7 @@ class DelegateLedger:
             db.commit()
 
     def mark_uncertain(self, experiment_id: str) -> None:
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.execute(
                 "UPDATE delegate_calls SET status='charge_uncertain' "
                 "WHERE experiment_id=? AND status='reserved'",
@@ -93,7 +94,7 @@ class DelegateLedger:
             )
 
     def status(self) -> dict[str, Any]:
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             rows = db.execute(
                 "SELECT status, COUNT(*), SUM(reserved_cents) FROM delegate_calls "
                 "GROUP BY status"
@@ -118,6 +119,11 @@ def ai_work_delegate(
     _validate(request)
     if transport is None:
         raise DelegateBlocked("roteia_transport_not_configured")
+    # Pre-flight refusals (e.g. worst-case cost above the reservation) must happen
+    # BEFORE reserving, otherwise a call that never left the machine would burn budget.
+    preflight = getattr(transport, "check", None)
+    if callable(preflight):
+        preflight(request)
     ledger.reserve(request)
     try:
         result = transport(request)
