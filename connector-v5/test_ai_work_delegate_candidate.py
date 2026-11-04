@@ -52,5 +52,27 @@ class AiWorkDelegateCandidateTests(unittest.TestCase):
         self.assertEqual(result["status"], "invalid_request")
 
 
+
+class AiWorkDelegateFastMcpTests(unittest.IsolatedAsyncioTestCase):
+    async def test_tools_list_and_fail_closed_without_provider_call(self):
+        import json
+        from fastmcp import FastMCP, Client
+        server = FastMCP("delegation-offline-hml")
+        register(server)
+        async with Client(server) as client:
+            tools = await client.list_tools()
+            self.assertEqual([t.name for t in tools].count("ai_work_delegate"), 1)
+            result = await client.call_tool("ai_work_delegate", {
+                "task_id": "viaaudit_20261104",
+                "project": "via",
+                "environment": "hml",
+                "scope": "code_review",
+                "instruction": "Read-only audit of VIA Android",
+            })
+            payload = json.loads("".join(part.text for part in result.content if hasattr(part, "text")))
+            self.assertFalse(payload["ok"])
+            self.assertEqual(payload["status"], "operational_broker_not_configured")
+
+
 if __name__ == "__main__":
     unittest.main()
