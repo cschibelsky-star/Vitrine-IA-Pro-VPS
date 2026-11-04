@@ -1,0 +1,22 @@
+name: ai-work-delegate-hml-tests
+on:
+  pull_request:
+    paths:
+      - 'connector-v2/ai_work_delegate.py'
+      - 'connector-v2/test_ai_work_delegate.py'
+      - '.github/workflows/ai-work-delegate-hml-tests.yml'
+  workflow_dispatch:
+jobs:
+  safety-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile
+        run: python -m py_compile connector-v2/ai_work_delegate.py connector-v2/test_ai_work_delegate.py
+      - name: Offline safety tests
+        run: python -m unittest discover -s connector-v2 -p test_ai_work_delegate.py -v
