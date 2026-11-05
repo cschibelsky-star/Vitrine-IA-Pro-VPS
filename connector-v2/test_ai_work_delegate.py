@@ -36,6 +36,13 @@ class DelegateSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(mod.DelegateBlocked, "model_not_approved"):
             self.ledger.reserve(self.req(model="other"))
 
+    def test_boolean_charge_cap_is_rejected_without_reservation(self):
+        for value in (True, False):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(mod.DelegateBlocked, "invalid_request_cap"):
+                    self.ledger.reserve(self.req(cents=value))
+        self.assertEqual(self.ledger.status()["reserved_cents"], 0)
+
     def test_duplicate_is_not_retried(self):
         self.ledger.reserve(self.req())
         with self.assertRaisesRegex(mod.DelegateBlocked, "duplicate"):
