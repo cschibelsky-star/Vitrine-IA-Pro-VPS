@@ -1,0 +1,38 @@
+name: Avello V5 policy offline checks
+on:
+  pull_request:
+    paths:
+      - connector-v5/controlled_operations_patch.py
+      - connector-v5/test_controlled_operations_patch.py
+      - .github/workflows/avello-v5-policy-offline.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  policy-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install offline test runner
+        run: python -m pip install pytest
+      - name: Run V5 patch regression tests
+        run: python -m pytest -q connector-v5/test_controlled_operations_patch.py
+      - name: Check narrow Avello policy without executing V5
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path("connector-v5/controlled_operations_patch.py").read_text()
+          start = source.index('    "vitrine-avello-private": {', source.index("CONTROLLED_COMPOSE_POLICY"))
+          end = source.index("    },", start) + len("    },")
+          block = source[start:end]
+          assert '"services": {"avello_private_mcp"}' in block
+          assert '"compose_files": {"integrations/avello-private-mcp/compose.hml.yml"}' in block
+          assert '"run_once": set()' in block
+          assert '"build": {"avello_private_mcp"}' in block
+          assert '"up": {"avello_private_mcp"}' in block
+          print("Fail-closed Avello-only scope verified")
+          PY
