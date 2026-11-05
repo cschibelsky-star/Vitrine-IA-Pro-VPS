@@ -34,10 +34,10 @@ def register(mcp: Any) -> Any:
             return {"ok": False, "status": "invalid_request"}
         if not isinstance(context_ref, str) or len(context_ref) > 200:
             return {"ok": False, "status": "invalid_context"}
-        if model != "mock" or budget_brl != 0 or type(budget_brl) is bool:
-            return {"ok": False, "status": "paid_calls_disabled"}
         if os.environ.get("AI_DELEGATE_MODE") != "mock_hml":
             return {"ok": False, "status": "operational_broker_not_configured"}
+        if model != "mock" or budget_brl != 0 or type(budget_brl) is bool:
+            return {"ok": False, "status": "paid_calls_disabled"}
         from ai_delegate_v05_offline_broker import OfflineBroker
         database = os.environ.get("AI_DELEGATE_DB", "")
         if not database:
