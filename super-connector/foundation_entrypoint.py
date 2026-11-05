@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import subprocess
 import shutil
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -11,6 +13,53 @@ import materialize_entrypoint  # noqa: F401 - registers v0.1.2-compatible tools
 from foundation import capabilities, docker_ops, files_ops, git_ops, laravel_ops, php_ops, policy, recovery_ops, runtime_ops
 
 main.VERSION = "0.3.10-secret-broker"
+
+
+@main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+def project_node_validate(project_id: str, operation: str = "test") -> dict[str, Any]:
+    """Run an allowlisted Node validation without arbitrary shell execution."""
+    allowed = {"test": ["npm", "test"], "build": ["npm", "run", "build"]}
+    selected = str(operation or "").strip().lower()
+    if selected not in allowed:
+        result = {"ok": False, "error": "node_validation_operation_not_allowed", "allowed": sorted(allowed)}
+        main._audit("project.node_validate", {"project_id": project_id, "operation": selected}, result)
+        return result
+    try:
+        project = main._load_project(project_id)
+        repository = main._repository(project)
+        package_file = repository / "package.json"
+        if not package_file.is_file():
+            result = {"ok": False, "error": "node_package_not_found", "project_id": project_id}
+        else:
+            package = json.loads(package_file.read_text(encoding="utf-8"))
+            scripts = package.get("scripts", {}) if isinstance(package, dict) else {}
+            script_name = "test" if selected == "test" else "build"
+            if not isinstance(scripts, dict) or not str(scripts.get(script_name, "")).strip():
+                result = {"ok": False, "error": "node_script_not_defined", "operation": selected, "project_id": project_id}
+            else:
+                completed = subprocess.run(
+                    allowed[selected],
+                    cwd=str(repository),
+                    text=True,
+                    capture_output=True,
+                    timeout=180,
+                    check=False,
+                    env={**main.os.environ, "CI": "1"},
+                )
+                result = {
+                    "ok": completed.returncode == 0,
+                    "project_id": project_id,
+                    "operation": selected,
+                    "exit_code": completed.returncode,
+                    "stdout": completed.stdout[-12000:],
+                    "stderr": completed.stderr[-12000:],
+                }
+    except subprocess.TimeoutExpired:
+        result = {"ok": False, "error": "node_validation_timeout", "operation": selected, "project_id": project_id}
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as exc:
+        result = {"ok": False, "error": str(exc), "operation": selected, "project_id": project_id}
+    main._audit("project.node_validate", {"project_id": project_id, "operation": selected}, {"ok": result.get("ok"), "exit_code": result.get("exit_code")})
+    return result
 
 
 @main.mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})

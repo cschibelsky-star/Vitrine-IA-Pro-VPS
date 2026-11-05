@@ -15,4 +15,6 @@ CMD ["python", "/app/branding_entrypoint.py"]
 
 # Preserve the deployed publication guard while correcting the HML registry binding.
 FROM vitrine-publication-guard-super:20261010 AS hml_binding
-COPY super-connector/foundation/recovery_ops.py /app/foundation/recovery_ops.py
+COPY super-connector/foundation_entrypoint.py /app/foundation_entrypoint.py
+COPY super-connector/foundation /app/foundation
+COPY super-connector/capability-manifest.json /app/capability-manifest.json
