@@ -1,0 +1,24 @@
+services:
+  avello_private_mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PORT: "8765"
+      AVELLO_CALLS_ENABLED: "${AVELLO_CALLS_ENABLED:-false}"
+      AVELLO_GPT_API_KEY: "${AVELLO_GPT_API_KEY:-}"
+      AVELLO_CLAUDE_API_KEY: "${AVELLO_CLAUDE_API_KEY:-}"
+      AVELLO_CLAUDE_MODEL: "${AVELLO_CLAUDE_MODEL:-}"
+      MCP_BEARER_TOKEN: "${MCP_BEARER_TOKEN:-}"
+    ports:
+      - "127.0.0.1:18765:8765"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    pids_limit: 128
+    mem_limit: 256m
