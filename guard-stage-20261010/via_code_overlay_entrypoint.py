@@ -24,5 +24,9 @@ if not hasattr(core,"_project_paths") or not hasattr(core,"_audit"):
 from via_code_pilot_tool import register
 register(mcp,core)
 
+# Candidate-only: register the reusable tool with paid execution disabled.
+from ai_work_delegate_candidate import register as register_delegate_candidate
+register_delegate_candidate(mcp)
+
 if __name__=="__main__":
     mcp.run(transport="http",host="0.0.0.0",port=8000)

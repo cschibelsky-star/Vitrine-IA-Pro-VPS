@@ -8,7 +8,7 @@ async def check() -> int:
     async with Client("http://127.0.0.1:8000/mcp") as client:
         listed = await client.list_tools()
         names = [tool.name for tool in listed]
-        return 0 if names.count("project_roteia_via_code_pilot_execute") == 1 else 2
+        return 0 if (names.count("project_roteia_via_code_pilot_execute") == 1 and names.count("ai_work_delegate") == 1) else 2
 
 if __name__ == "__main__":
     try:
