@@ -216,6 +216,13 @@ def project_mariadb_backup(project_id: str, confirm: str = "") -> dict[str, Any]
     activate_start = '@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})\ndef activate_hml_route('
     compose_block = r'''
 CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
+    "vitrine-avello-private": {
+        "compose_files": {"integrations/avello-private-mcp/compose.hml.yml"},
+        "services": {"avello_private_mcp"},
+        "run_once": set(),
+        "build": {"avello_private_mcp"},
+        "up": {"avello_private_mcp"},
+    },
     "vitrine-ia-pro-core": {
         "compose_files": {"docker-compose.core-hml.yml"},
         "services": {"core_db", "core_migrate", "core_seed_providers", "core_seed_agents", "core_app", "core_web"},
