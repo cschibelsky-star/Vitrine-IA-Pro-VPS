@@ -1,10 +1,11 @@
-"""Fail-closed registration of the reusable Claude delegation tool in isolated HML.
+"""Isolated HML FastMCP adapter. Provider inference is disabled.
 
-No network, shell, provider credential or paid inference is reachable from this
-adapter. A reviewed operational broker will replace the disabled handler later.
+Set AI_DELEGATE_MODE=mock_hml to enable only local offline simulation. The
+default deliberately refuses all tasks. No shell, API key or provider calls.
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -13,7 +14,6 @@ ALLOWED_SCOPES = frozenset({"code_generate", "code_review", "analysis"})
 
 
 def register(mcp: Any) -> Any:
-    """Expose a real, discoverable FastMCP tool while keeping execution off."""
     @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
     def ai_work_delegate(
         task_id: str,
@@ -25,18 +25,30 @@ def register(mcp: Any) -> Any:
         budget_brl: float = 0.0,
         context_ref: str = "",
     ) -> dict[str, Any]:
-        """Delegate an authorized programming task (disabled in candidate HML)."""
-        if not TASK_ID.fullmatch(task_id):
+        """Delegate programming work; only isolated mock HML is enabled."""
+        if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
             return {"ok": False, "status": "invalid_task_id"}
-        if environment != "hml" or scope not in ALLOWED_SCOPES:
+        if environment != "hml" or scope not in ALLOWED_SCOPES or project != "via":
             return {"ok": False, "status": "forbidden"}
-        if not instruction.strip() or len(instruction) > 40000:
+        if not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 40000:
             return {"ok": False, "status": "invalid_request"}
-        return {
-            "ok": False,
-            "status": "operational_broker_not_configured",
-            "task_id": task_id,
-            "project": project,
-            "detail": "No provider call made; identity, atomic budget and broker integration pending.",
-        }
+        if not isinstance(context_ref, str) or len(context_ref) > 200:
+            return {"ok": False, "status": "invalid_context"}
+        if model != "mock" or budget_brl != 0 or type(budget_brl) is bool:
+            return {"ok": False, "status": "paid_calls_disabled"}
+        if os.environ.get("AI_DELEGATE_MODE") != "mock_hml":
+            return {"ok": False, "status": "operational_broker_not_configured"}
+        from ai_delegate_v05_offline_broker import OfflineBroker
+        database = os.environ.get("AI_DELEGATE_DB", "")
+        if not database:
+            return {"ok": False, "status": "delegate_storage_not_configured"}
+        try:
+            broker = OfflineBroker(database)
+            return broker.submit({
+                "task_id": task_id, "project": project, "environment": environment,
+                "scope": scope, "instruction": instruction, "model": model,
+                "budget_brl": budget_brl, "context_ref": context_ref,
+            })
+        except (OSError, ValueError, RuntimeError):
+            return {"ok": False, "status": "delegate_storage_unavailable"}
     return ai_work_delegate
