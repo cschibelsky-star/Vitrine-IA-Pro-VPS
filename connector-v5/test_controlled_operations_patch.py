@@ -11,14 +11,6 @@ def test_recovered_controlled_operations_layer():
 
     assert 'VERSION = "0.5.14-runtime-secret-import"' in source
     assert 'CONTROLLED_COMPOSE_POLICY' in source
-    # Avello HML can build/start only its own private MCP service.
-    assert '"vitrine-avello-private": {' in source
-    assert '"compose_files": {"integrations/avello-private-mcp/compose.hml.yml"}' in source
-    assert '"services": {"avello_private_mcp"}' in source
-    assert '"build": {"avello_private_mcp"}' in source
-    assert '"up": {"avello_private_mcp"}' in source
-    assert '"run_once": set()' in source
-    assert 'broad_compose_mutation_disabled' in source
     assert '"vitrine-ia-pro-core"' in source
     assert '"vitrine-ai-pro-factory"' in source
     assert '"vps-ops-full-catalog-candidate"' in source
@@ -42,3 +34,19 @@ def test_recovered_controlled_operations_layer():
     assert '("tvsumare-enterprise", "HEYGEN_API_KEY"): ("tvsumare_web", "HEYGEN_API_KEY")' in source
     assert 'source_value is None or not str(source_value).strip()' in source
     assert '__MIGRATE_EXISTING__' in source
+
+def test_avello_policy_allowlist_isolated():
+    # Inspect the literal policy in the versioned patch without applying
+    # legacy migration steps that require a historical main.py baseline.
+    source = Path(__file__).with_name("controlled_operations_patch.py").read_text(encoding="utf-8")
+    marker = 'CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {'
+    assert source.count(marker) == 1
+    block_start = source.index('    "vitrine-avello-private": {', source.index(marker))
+    block_end = source.index('    },', block_start) + len('    },')
+    avello = source[block_start:block_end]
+    assert '"compose_files": {"integrations/avello-private-mcp/compose.hml.yml"}' in avello
+    assert '"services": {"avello_private_mcp"}' in avello
+    assert '"run_once": set()' in avello
+    assert '"build": {"avello_private_mcp"}' in avello
+    assert '"up": {"avello_private_mcp"}' in avello
+    assert 'broad_compose_mutation_disabled' in source
