@@ -11,6 +11,14 @@ def test_recovered_controlled_operations_layer():
 
     assert 'VERSION = "0.5.14-runtime-secret-import"' in source
     assert 'CONTROLLED_COMPOSE_POLICY' in source
+    # Avello HML can build/start only its own private MCP service.
+    assert '"vitrine-avello-private": {' in source
+    assert '"compose_files": {"integrations/avello-private-mcp/compose.hml.yml"}' in source
+    assert '"services": {"avello_private_mcp"}' in source
+    assert '"build": {"avello_private_mcp"}' in source
+    assert '"up": {"avello_private_mcp"}' in source
+    assert '"run_once": set()' in source
+    assert 'broad_compose_mutation_disabled' in source
     assert '"vitrine-ia-pro-core"' in source
     assert '"vitrine-ai-pro-factory"' in source
     assert '"vps-ops-full-catalog-candidate"' in source
