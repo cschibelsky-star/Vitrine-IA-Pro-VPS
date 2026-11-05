@@ -15,3 +15,10 @@ Inspecionar os diffs dos PRs #57/#58/#59, confirmar branches e dependencias, rec
 
 ## Restrições
 Nao realizar merge, deploy, migrations reais, chamadas pagas ou alteracoes de producao sem autorizacao especifica. Nao confundir arquivo criado com ferramenta MCP registrada.
+
+## Validacao adicional - 2026-11-05
+- PR #64 criado para corrigir rejeicao de bool em max_charge_cents no candidato do PR #59.
+- GitHub Actions run 42130872353 no commit 5e17841a8f2745f9812ac7232dcad08bb68434f7: conclusion=success.
+- Job safety-tests: Compile, offline safety/transport/tool/installer, release gate e teste de idempotencia do instalador concluidos com success.
+- Evidencia: https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS/actions/runs/42130872353
+- Nao equivale a registro real do MCP, homologacao ponta a ponta ou autorizacao de chamadas pagas.
