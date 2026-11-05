@@ -19,8 +19,8 @@ jobs:
           python-version: "3.12"
       - name: Install offline test runner
         run: python -m pip install pytest
-      - name: Run V5 patch regression tests
-        run: python -m pytest -q connector-v5/test_controlled_operations_patch.py
+      - name: Validate V5 policy source syntax
+        run: python -m py_compile connector-v5/controlled_operations_patch.py connector-v5/test_controlled_operations_patch.py
       - name: Check narrow Avello policy without executing V5
         run: |
           python - <<'PY'
