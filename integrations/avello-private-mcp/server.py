@@ -4,7 +4,7 @@ import os
 from mcp.server.fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import PlainTextResponse
-from bridge import ask, GPT_MODELS, GPT_DEFAULT_MODEL, list_models
+from bridge import ask, GPT_MODELS, GPT_DEFAULT_MODEL, list_models, smoke_probe
 
 mcp = FastMCP("Vitrine Avello Private", host="0.0.0.0",
               port=int(os.getenv("PORT", "8765")),
@@ -33,6 +33,11 @@ def avello_ask(prompt: str, provider: str = "gpt", model: str = "") -> dict:
 def avello_models(provider: str = "gpt") -> dict:
     """Read the provider model catalog without inference; cached per process."""
     return list_models(provider)
+
+@mcp.tool()
+def avello_smoke(provider: str = "gpt") -> dict:
+    """Run or retrieve an authorized one-shot connectivity probe; no automatic retries."""
+    return smoke_probe(provider)
 
 class BearerGuard(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
