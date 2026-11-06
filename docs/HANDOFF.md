@@ -22,3 +22,12 @@ Entregar um servidor MCP privado por HTTPS que permita a ChatGPT e Claude chamar
 
 ## Proibições e observações
 Não assumir que CI aprovado significa deploy; não usar deploy genérico de Laravel/produção; não fazer merge, migrações, reiniciar V5 vivo ou editar Core/VIA/TV Sumaré sem autorização específica. O plugin privado do ChatGPT hoje é uma Skill, e não um endpoint MCP remoto ativo.
+
+## Atualização — preflight completo de inicialização do V5 (2026-11-05, noite)
+- Workflow `Avello V5 runtime preflight` #42141525212 construiu imagem Docker isolada com sucesso, mas falhou no import de `main_ext.py`: `marketing_live_patch_version_match_count:0`. Isto revela incompatibilidade do `connector-v5/main.py` canônico (VERSION `0.5.11-generic-laravel-test-runner`) com `marketing_live_patch.py` (exige `0.5.10-project-phpunit-runner-hardened`).
+- Foi testada compatibilidade estrita para as duas strings da versão no commit `84646a1`, mas o preflight #42141638431 continuou falhando com `marketing_live_patch_commands_match_count:0`: a divergência envolve a implementação, não apenas a string da versão.
+- A tentativa de alteração da versão foi **revertida** no commit `fc2c5e5` para manter fail-closed e não mascarar incompatibilidade estrutural.
+- CI de política Avello e CI TV Sumaré passaram para o commit `84646a1`, mas o preflight integral de boot está **vermelho**. Portanto, PR #61 **não apto a deploy**.
+- O checkout `v5-reviewed-homologation-hml` permanece com alterações locais não commitadas; não fazer reset ou checkout forçado.
+- Próxima correção de engenharia: identificar a revisão canônica completa de `main.py` compatível com ambos os patches já usados no V5 ativo (sem ler secrets); reconstruir e testar imagem inteira em CI isolado antes de atualizar qualquer runtime. Evitar editar `marketing_live_patch.py` para ignorar validações de código.
+- Não houve deploy, reinício de V5, merge, provisionamento de credenciais nem chamada Avello paga.
