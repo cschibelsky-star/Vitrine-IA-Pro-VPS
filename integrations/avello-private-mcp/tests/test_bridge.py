@@ -44,6 +44,23 @@ class BridgeTests(unittest.TestCase):
                 self.assertNotIn("secret-test-value",str(result))
 
 
+class DefaultModelTests(unittest.TestCase):
+    def test_default_gpt_uses_selected_model_and_excludes_astra(self):
+        env={"AVELLO_CALLS_ENABLED":"true","AVELLO_GPT_API_KEY":"fake"}
+        with patch.dict(os.environ,env,clear=True):
+            with patch.object(bridge,"_call",return_value={"output":[]}) as call:
+                result=bridge.ask("test")
+        self.assertEqual(result["requested_model"],"gpt-6.1-sol")
+        self.assertEqual(call.call_args.args[2]["model"],"gpt-6.1-sol")
+        self.assertFalse(any("astra" in m for m in bridge.GPT_MODELS))
+    def test_default_claude_uses_runtime_model(self):
+        env={"AVELLO_CALLS_ENABLED":"true","AVELLO_CLAUDE_API_KEY":"fake","AVELLO_CLAUDE_MODEL":"claude-opus-5"}
+        with patch.dict(os.environ,env,clear=True):
+            with patch.object(bridge,"_call",return_value={"content":[]}) as call:
+                result=bridge.ask("test","claude")
+        self.assertEqual(result["requested_model"],"claude-opus-5")
+        self.assertEqual(call.call_args.args[2]["model"],"claude-opus-5")
+
 class CatalogTests(unittest.TestCase):
     def setUp(self):
         bridge._CATALOG_CACHE.clear()
