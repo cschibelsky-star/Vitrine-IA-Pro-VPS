@@ -41,7 +41,7 @@ def normalize_mock_request(payload: dict[str, Any]) -> dict[str, Any]:
             raise ContractRejected("paid_calls_disabled")
     if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
         raise ContractRejected("invalid_task_id")
-    if project != "via" or environment != "hml" or scope not in SCOPES:
+    if project != "via" or environment != "hml" or not isinstance(scope, str) or scope not in SCOPES:
         raise ContractRejected("forbidden")
     if not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 20000:
         raise ContractRejected("invalid_instruction")
