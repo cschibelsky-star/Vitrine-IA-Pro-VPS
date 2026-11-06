@@ -5,7 +5,8 @@ import threading
 import urllib.error
 import urllib.request
 
-GPT_MODELS = ("gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna")
+GPT_MODELS = ("gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna")
+GPT_DEFAULT_MODEL = "gpt-6.1-sol"
 GPT_URL = "https://avellogateway.online/v1/responses"
 # Tentative Anthropic-compatible endpoint; confirm exact vendor contract before enabling calls.
 CLAUDE_URL = "https://avellogateway.online/v1/messages"
@@ -34,7 +35,7 @@ def ask(prompt, provider="gpt", model=None):
     if os.getenv("AVELLO_CALLS_ENABLED", "false").lower() != "true":
         return {"status": "blocked", "reason": "calls_disabled"}
     if provider == "gpt":
-        model = model or "gpt-5.6-terra"
+        model = model or GPT_DEFAULT_MODEL
         if model not in GPT_MODELS:
             return {"status": "rejected", "reason": "unsupported_model"}
         key = os.getenv("AVELLO_GPT_API_KEY", "")
