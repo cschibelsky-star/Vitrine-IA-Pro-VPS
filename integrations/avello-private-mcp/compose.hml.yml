@@ -1,7 +1,7 @@
 services:
   avello_private_mcp:
     build:
-      context: .
+      context: "${AVELLO_BUILD_CONTEXT:-.}"
       dockerfile: Dockerfile
     restart: unless-stopped
     read_only: true
