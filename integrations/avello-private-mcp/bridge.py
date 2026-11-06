@@ -24,7 +24,25 @@ def _call(url, headers, body):
         with opener.open(req, timeout=65) as resp:
             result = json.loads(resp.read(MAX_RESPONSE_BYTES + 1))
     except urllib.error.HTTPError as exc:
-        return {"status": "provider_error", "http_status": exc.code}
+        result = {"status": "provider_error", "http_status": exc.code}
+        try:
+            import re
+            payload = json.loads(exc.read(4096))
+            error = payload.get("error", {}) if isinstance(payload, dict) else {}
+            if isinstance(error, dict):
+                message = str(error.get("message", ""))[:1000]
+                for header in headers.values():
+                    candidate = str(header).removeprefix("Bearer ")
+                    if len(candidate)>16:
+                        message = message.replace(candidate, "[redacted]")
+                message = re.sub(r"sk-[A-Za-z0-9_-]+", "[redacted]", message)
+                result["provider_message"] = "".join(c for c in message if c.isprintable())[:300]
+                code = error.get("code") or error.get("type")
+                if isinstance(code,str):
+                    result["provider_code"] = re.sub(r"[^A-Za-z0-9_.-]","",code)[:80]
+        except (ValueError, TypeError, OSError):
+            pass
+        return result
     except (urllib.error.URLError, TimeoutError):
         return {"status": "network_error"}
     except (ValueError, TypeError):
@@ -140,7 +158,7 @@ def _smoke_database():
 
 def _perform_smoke(run_id, provider):
     import logging
-    model = GPT_DEFAULT_MODEL if provider == "gpt" else os.getenv("AVELLO_CLAUDE_MODEL", "")
+    model = os.getenv("AVELLO_SMOKE_GPT_MODEL", GPT_DEFAULT_MODEL) if provider == "gpt" else os.getenv("AVELLO_CLAUDE_MODEL", "")
     result = {"provider":provider, "requested_model":model, "run_id":run_id,
               "prompt_sha256":hashlib.sha256(_SMOKE_PROMPT.encode()).hexdigest(),
               "max_output_tokens":64}
@@ -157,7 +175,7 @@ def _perform_smoke(run_id, provider):
             url = CLAUDE_URL
         response = _call(url,headers,body)
         if response.get("status") in ("provider_error","network_error","invalid_provider_response"):
-            result.update({k:response[k] for k in ("status","http_status") if k in response})
+            result.update({k:response[k] for k in ("status","http_status","provider_code","provider_message") if k in response})
         else:
             records = response.get("output",[]) if provider == "gpt" else []
             parts = [p for row in records if isinstance(row,dict) for p in row.get("content",[]) if isinstance(p,dict)] if provider=="gpt" else response.get("content",[])
@@ -183,7 +201,9 @@ def smoke_probe(provider="gpt"):
         return {"status":"blocked","reason":"run_id_required"}
     if provider not in ("gpt","claude"):
         return {"status":"rejected","reason":"unsupported_provider"}
-    model = GPT_DEFAULT_MODEL if provider=="gpt" else os.getenv("AVELLO_CLAUDE_MODEL","")
+    if provider not in os.getenv("AVELLO_SMOKE_PROVIDERS","gpt,claude").split(","):
+        return {"status":"blocked","reason":"probe_provider_not_authorized"}
+    model = os.getenv("AVELLO_SMOKE_GPT_MODEL", GPT_DEFAULT_MODEL) if provider=="gpt" else os.getenv("AVELLO_CLAUDE_MODEL","")
     if (provider=="gpt" and model not in GPT_MODELS) or (provider=="claude" and model!="claude-opus-5"):
         return {"status":"blocked","reason":"probe_model_not_authorized"}
     key_name = "AVELLO_GPT_API_KEY" if provider=="gpt" else "AVELLO_CLAUDE_API_KEY"
