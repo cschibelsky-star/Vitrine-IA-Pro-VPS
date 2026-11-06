@@ -20,10 +20,15 @@ services:
       AVELLO_SMOKE_ENABLED: "${AVELLO_SMOKE_ENABLED:-false}"
       AVELLO_SMOKE_RUN_ID: "${AVELLO_SMOKE_RUN_ID:-}"
       MCP_BEARER_TOKEN: "${MCP_BEARER_TOKEN:-}"
+      AVELLO_GOOGLE_CLIENT_ID: "${AVELLO_GOOGLE_CLIENT_ID:-}"
+      AVELLO_GOOGLE_CLIENT_SECRET: "${AVELLO_GOOGLE_CLIENT_SECRET:-}"
+      AVELLO_OAUTH_SESSION_SECRET: "${AVELLO_OAUTH_SESSION_SECRET:-}"
+      AVELLO_OAUTH_ALLOWED_EMAIL: "${AVELLO_OAUTH_ALLOWED_EMAIL:-}"
+      AVELLO_OAUTH_ENABLED: "${AVELLO_OAUTH_ENABLED:-false}"
     ports:
       - "127.0.0.1:18765:8765"
     healthcheck:
-      test: ["CMD","python","-c","import http.client,json,os,sys\ntoken=os.environ.get(\"MCP_BEARER_TOKEN\",\"\")\nif len(token)<32: sys.exit(\"MCP_TOKEN_NOT_READY\")\ndef probe(public):\n    conn=(http.client.HTTPSConnection(\"avello.hml.vitrineiapro.com.br\",timeout=8) if public else http.client.HTTPConnection(\"127.0.0.1\",8765,timeout=8))\n    def request(payload=None,auth=None):\n        headers={\"Accept\":\"application/json, text/event-stream\",\"Content-Type\":\"application/json\",\"MCP-Protocol-Version\":\"2025-03-26\"}\n        if auth is not None: headers[\"Authorization\"]=\"Bearer \"+auth\n        conn.request(\"POST\" if payload else \"GET\",\"/mcp\",body=json.dumps(payload) if payload else None,headers=headers)\n        r=conn.getresponse(); raw=r.read(1000000); return r.status,raw\n    try:\n        for candidate in (None,\"invalid-healthcheck-token\"):\n            status,_=request(auth=candidate)\n            if status!=401: raise RuntimeError(\"unauthorized_request_not_rejected\")\n        def rpc(method,params,n):\n            status,raw=request({\"jsonrpc\":\"2.0\",\"id\":n,\"method\":method,\"params\":params},token)\n            if status!=200: raise RuntimeError(\"authenticated_http_failed\")\n            result=json.loads(raw)\n            if \"error\" in result: raise RuntimeError(\"rpc_failed\")\n            return result[\"result\"]\n        rpc(\"initialize\",{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"avello-healthcheck\",\"version\":\"1\"}},1)\n        names={t[\"name\"] for t in rpc(\"tools/list\",{},2)[\"tools\"]}\n        if not {\"avello_status\",\"avello_ask\"}<=names: raise RuntimeError(\"tools_missing\")\n        def value(result):\n            return result.get(\"structuredContent\") or json.loads(next(x[\"text\"] for x in result[\"content\"] if x[\"type\"]==\"text\"))\n        state=value(rpc(\"tools/call\",{\"name\":\"avello_status\",\"arguments\":{}},3))\n        if state[\"calls_enabled\"]: raise RuntimeError(\"provider_calls_must_remain_disabled\")\n        for n,provider in enumerate((\"gpt\",\"claude\"),4):\n            result=value(rpc(\"tools/call\",{\"name\":\"avello_ask\",\"arguments\":{\"prompt\":\"healthcheck\",\"provider\":provider}},n))\n            if result.get(\"status\")!=\"blocked\": raise RuntimeError(\"disabled_call_not_blocked\")\n        if not public:\n            for n,provider in enumerate((\"gpt\",\"claude\"),10):\n                rpc(\"tools/call\",{\"name\":\"avello_models\",\"arguments\":{\"provider\":provider}},n)\n        if not public and os.getenv(\"AVELLO_SMOKE_ENABLED\",\"false\").lower()==\"true\":\n            for n,provider in enumerate((\"gpt\",\"claude\"),20):\n                rpc(\"tools/call\",{\"name\":\"avello_smoke\",\"arguments\":{\"provider\":provider}},n)\n        print(json.dumps({\"scope\":\"public_https\" if public else \"local\",\"authentication\":\"ok\",\"tools\":\"ok\",\"calls_disabled\":True,\"gpt_key_present\":state[\"gpt_key_present\"],\"claude_key_present\":state[\"claude_key_present\"],\"claude_model_configured\":state[\"claude_model_configured\"]}),flush=True)\n    finally:\n        conn.close()\ntry:\n    probe(False)\n    probe(True)\nexcept Exception as exc:\n    print(\"MCP_HEALTHCHECK_FAILED:\"+type(exc).__name__,flush=True)\n    sys.exit(1)\n"]
+      test: ["CMD", "python", "healthcheck.py"]
       interval: 60s
       timeout: 40s
       retries: 2
@@ -43,3 +48,4 @@ networks:
     name: n8n-traefik_app_network
 volumes:
   avello_smoke_data:
+
