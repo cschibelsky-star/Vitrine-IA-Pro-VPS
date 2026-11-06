@@ -27,6 +27,10 @@ class ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ContractRejected, "forbidden"):
             normalize_mock_request({**self.base(), "environment": "production"})
 
+    def test_malformed_scope_fails_closed(self):
+        with self.assertRaisesRegex(ContractRejected, "forbidden"):
+            normalize_mock_request({**self.base(), "scope": ["analysis"]})
+
     def test_invalid_identifier_blocked(self):
         with self.assertRaisesRegex(ContractRejected, "invalid_task_id"):
             normalize_mock_request({**self.base(), "task_id": "../bad"})
