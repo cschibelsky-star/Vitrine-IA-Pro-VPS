@@ -1,0 +1,26 @@
+name: Avello V5 runtime preflight
+on:
+  pull_request:
+    paths:
+      - connector-v5/**
+      - .github/workflows/avello-v5-runtime-preflight.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  runtime-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated V5 image
+        run: docker build -f connector-v5/Dockerfile -t avello-v5-preflight:${{ github.sha }} .
+      - name: Validate actual V5 patch startup without network or secrets
+        run: |
+          docker run --rm --network none --entrypoint python avello-v5-preflight:${{ github.sha }} -c '
+          import main_ext
+          assert main_ext.mcp is not None
+          assert "vitrine-avello-private" in main_ext.core.CONTROLLED_COMPOSE_POLICY
+          assert main_ext.core.CONTROLLED_COMPOSE_POLICY["vitrine-avello-private"]["services"] == {"avello_private_mcp"}
+          print("V5 in-memory patch and Avello allowlist loaded")
+          '
