@@ -159,4 +159,37 @@ class DiagnosticTests(unittest.TestCase):
         self.assertNotIn(secret,str(result))
         self.assertEqual(result["provider_code"],"bad_input")
 
+
+class ResponsesProtocolTests(unittest.TestCase):
+    def _response(self, data, content_type="text/event-stream"):
+        import io
+        response=io.BytesIO(data)
+        response.headers={"content-type":content_type}
+        return response
+    def test_structured_request(self):
+        request=bridge._gpt_request("oi","gpt-6.1-sol",64)
+        self.assertEqual(request["input"][0]["content"][0],{"type":"input_text","text":"oi"})
+        self.assertTrue(request["stream"])
+        self.assertFalse(request["store"])
+        self.assertEqual(request["max_output_tokens"],64)
+    def test_sse_completed_response(self):
+        import json
+        final={"model":"gpt-6.1-sol","output":[{"content":[{"type":"output_text","text":"AVELLO_OK"}]}],"usage":{"output_tokens":2}}
+        data=b': keepalive\r\n\r\ndata: {"type":"response.created"}\n\n'+("event: response.completed\ndata: "+json.dumps({"type":"response.completed","response":final})+"\n\n").encode()+b"this tail must not be read"
+        self.assertEqual(bridge._read_provider_response(self._response(data)),final)
+    def test_sse_truncated_is_rejected(self):
+        with self.assertRaises(ValueError):
+            bridge._read_provider_response(self._response(b'data: {"type":"response.output_text.delta","delta":"partial"}\n\n'))
+    def test_sse_failure_is_not_success(self):
+        data=b'data: {"type":"response.failed","response":{"error":{"message":"private"}}}\n\n'
+        result=bridge._read_provider_response(self._response(data))
+        self.assertEqual(result["status"],"provider_error")
+        self.assertNotIn("private",str(result))
+    def test_json_provider_response_unchanged(self):
+        self.assertEqual(bridge._read_provider_response(self._response(b'{"content":[]}',"application/json; charset=utf-8")),{"content":[]})
+    def test_sse_size_limit(self):
+        with patch.object(bridge,"MAX_RESPONSE_BYTES",8):
+            with self.assertRaises(ValueError):
+                bridge._read_provider_response(self._response(b'data: {"a":1}\n\n'))
+
 if __name__=="__main__": unittest.main()
