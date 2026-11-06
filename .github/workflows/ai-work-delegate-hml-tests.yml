@@ -26,6 +26,7 @@ jobs:
         run: >
           python -m py_compile
           connector-v2/ai_work_delegate.py
+          connector-v2/ai_work_delegate_contract.py
           connector-v2/roteia_delegate_adapter.py
           connector-v2/roteia_transport.py
           connector-v2/ai_work_delegate_tool.py
@@ -35,6 +36,8 @@ jobs:
           bootstrap/install_connector_release.py
       - name: Offline safety, transport, tool and installer tests (no network, no paid call)
         run: python -m unittest discover -s connector-v2 -p 'test_ai_work_delegate*.py' -v
+      - name: Offline mock contract compatibility tests
+        run: python -m unittest discover -s connector-v2 -p 'test_ai_work_delegate_contract.py' -v
       - name: Release gate requires ai_work_delegate and a persistent ledger
         run: python bootstrap/test_install_connector_release.py
       - name: Connector stabilization installer still idempotent

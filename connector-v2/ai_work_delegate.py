@@ -40,7 +40,7 @@ def _validate(req: DelegateRequest) -> None:
         raise DelegateBlocked("invalid_experiment_id")
     if not req.prompt or len(req.prompt) > 20000:
         raise DelegateBlocked("invalid_prompt")
-    if not isinstance(req.max_charge_cents, int) or not 0 < req.max_charge_cents <= MAX_REQUEST_CENTS:
+    if type(req.max_charge_cents) is not int or not 0 < req.max_charge_cents <= MAX_REQUEST_CENTS:
         raise DelegateBlocked("invalid_request_cap")
 
 
