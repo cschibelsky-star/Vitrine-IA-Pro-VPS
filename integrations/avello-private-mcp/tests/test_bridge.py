@@ -145,4 +145,18 @@ class SmokeTests(unittest.TestCase):
             self.assertEqual(bridge.smoke_probe()["status"],"queued_or_unknown")
         self.assertEqual(submit.call_count,1)
 
+
+class DiagnosticTests(unittest.TestCase):
+    def test_provider_error_redacts_secret(self):
+        import io
+        from unittest.mock import Mock
+        secret="sk-fake-secret-for-offline-test"
+        error=bridge.urllib.error.HTTPError("https://example.invalid",400,"bad request",{},io.BytesIO(('{"error":{"message":"invalid '+secret+'","code":"bad_input"}}').encode()))
+        opener=Mock()
+        opener.open.side_effect=error
+        with patch.object(bridge.urllib.request,"build_opener",return_value=opener):
+            result=bridge._call("https://example.invalid",{"Authorization":"Bearer "+secret},{})
+        self.assertNotIn(secret,str(result))
+        self.assertEqual(result["provider_code"],"bad_input")
+
 if __name__=="__main__": unittest.main()
