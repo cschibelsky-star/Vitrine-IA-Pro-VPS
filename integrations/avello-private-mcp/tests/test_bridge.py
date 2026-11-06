@@ -101,4 +101,48 @@ class CatalogTests(unittest.TestCase):
             with patch.object(bridge.urllib.request,"build_opener",return_value=opener):
                 self.assertEqual(bridge.list_models()["models"],["valid-model"])
 
+
+class SmokeTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path_patch = patch.object(bridge,"_SMOKE_LEDGER_PATH",str(Path(self.tmp.name)/"ledger.sqlite3"))
+        self.path_patch.start()
+        self.env_patch = patch.dict(os.environ,{"AVELLO_SMOKE_ENABLED":"true","AVELLO_SMOKE_RUN_ID":"offline-test","AVELLO_GPT_API_KEY":"fake","AVELLO_CLAUDE_API_KEY":"fake","AVELLO_CLAUDE_MODEL":"claude-opus-5","AVELLO_CALLS_ENABLED":"false"},clear=True)
+        self.env_patch.start()
+        self.executor_patch = patch.object(bridge._SMOKE_EXECUTOR,"submit",side_effect=lambda fn,*args:fn(*args))
+        self.executor_patch.start()
+    def tearDown(self):
+        self.executor_patch.stop(); self.env_patch.stop(); self.path_patch.stop(); self.tmp.cleanup()
+    def test_smoke_is_disabled_by_default(self):
+        with patch.dict(os.environ,{},clear=True):
+            self.assertEqual(bridge.smoke_probe()["reason"],"smoke_disabled")
+    def test_gpt_smoke_is_persistent_and_bounded(self):
+        raw={"model":"gpt-6.1-sol","output":[{"content":[{"type":"output_text","text":"AVELLO_OK"}]}],"usage":{"input_tokens":9,"output_tokens":4}}
+        with patch.object(bridge,"_call",return_value=raw) as call:
+            self.assertEqual(bridge.smoke_probe()["status"],"accepted")
+            self.assertEqual(bridge.smoke_probe()["status"],"ok")
+            self.assertEqual(bridge.smoke_probe()["status"],"ok")
+        self.assertEqual(call.call_count,1)
+        self.assertEqual(call.call_args.args[2]["max_output_tokens"],64)
+        self.assertEqual(os.environ["AVELLO_CALLS_ENABLED"],"false")
+    def test_both_providers_have_one_slot(self):
+        raw={"model":"test","content":[{"type":"text","text":"AVELLO_OK"}],"output":[{"content":[{"type":"output_text","text":"AVELLO_OK"}]}]}
+        with patch.object(bridge,"_call",return_value=raw) as call:
+            bridge.smoke_probe("gpt");bridge.smoke_probe("claude")
+            bridge.smoke_probe("gpt");bridge.smoke_probe("claude")
+        self.assertEqual(call.call_count,2)
+        self.assertEqual(call.call_args.args[2]["max_tokens"],64)
+    def test_error_is_not_retried(self):
+        with patch.object(bridge,"_call",return_value={"status":"network_error"}) as call:
+            bridge.smoke_probe()
+            self.assertEqual(bridge.smoke_probe()["status"],"network_error")
+        self.assertEqual(call.call_count,1)
+    def test_reserved_unknown_request_is_never_resubmitted(self):
+        with patch.object(bridge._SMOKE_EXECUTOR,"submit") as submit:
+            bridge.smoke_probe()
+            self.assertEqual(bridge.smoke_probe()["status"],"queued_or_unknown")
+        self.assertEqual(submit.call_count,1)
+
 if __name__=="__main__": unittest.main()
