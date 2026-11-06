@@ -21,12 +21,18 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+      - name: Install HTTP test dependencies
+        run: python -m pip install pytest httpx
       - name: Syntax
         run: python -m compileall -q server.py bridge.py tests
       - name: Offline tests
         env:
           AVELLO_CALLS_ENABLED: "false"
         run: python -m unittest discover -s tests -v
+      - name: HTTP-level MCP auth and discovery
+        env:
+          AVELLO_CALLS_ENABLED: "false"
+        run: python -m pytest -q tests/test_mcp_runtime.py
       - name: Import smoke
         env:
           AVELLO_CALLS_ENABLED: "false"
