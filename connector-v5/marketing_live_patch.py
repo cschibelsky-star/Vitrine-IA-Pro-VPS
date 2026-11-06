@@ -16,9 +16,18 @@ def _replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def apply(source: str) -> str:
+    # The canonical recovery branch may use a 0.5.11 generic-runner base.
+    # Preserve strict matching: exactly one of the two supported baselines.
+    version_candidates = (
+        'VERSION = "0.5.10-project-phpunit-runner-hardened"',
+        'VERSION = "0.5.11-generic-laravel-test-runner"',
+    )
+    matched = [candidate for candidate in version_candidates if source.count(candidate) == 1]
+    if len(matched) != 1:
+        raise RuntimeError(f"marketing_live_patch_version_match_count:{len(matched)}")
     source = _replace_once(
         source,
-        'VERSION = "0.5.10-project-phpunit-runner-hardened"',
+        matched[0],
         'VERSION = "0.5.11-marketing-live-homologation"',
         "version",
     )
