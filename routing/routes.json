@@ -205,6 +205,23 @@
       "network": "n8n-traefik_app_network",
       "cert_resolver": "le",
       "entrypoint": "websecure"
+    },
+    {
+      "id": "avello-private-hml",
+      "project_id": "vitrine-avello-private",
+      "deployment_code": null,
+      "environment": "homologation",
+      "hostname": "avello.hml.vitrineiapro.com.br",
+      "friendly_aliases": [],
+      "legacy_aliases": [],
+      "upstream": "http://avello-private-mcp-avello_private_mcp-1:8765",
+      "health_path": "/mcp",
+      "ssl": true,
+      "status": "pending_dns_proxy",
+      "legacy": false,
+      "network": "n8n-traefik_app_network",
+      "cert_resolver": "le",
+      "entrypoint": "websecure"
     }
   ]
 }
