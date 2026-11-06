@@ -14,6 +14,61 @@ MAX_CHARS = 12000
 MAX_RESPONSE_BYTES = 2_000_000
 SLOTS = threading.BoundedSemaphore(2)
 
+
+def _read_provider_response(response):
+    import time
+    content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type != "text/event-stream":
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise ValueError("response_too_large")
+        return json.loads(raw)
+    deadline = time.monotonic() + 65
+    total = 0
+    data_lines = []
+    while True:
+        if time.monotonic() > deadline:
+            raise TimeoutError("stream_deadline")
+        line = response.readline(MAX_RESPONSE_BYTES - total + 1)
+        total += len(line)
+        if total > MAX_RESPONSE_BYTES:
+            raise ValueError("response_too_large")
+        if not line:
+            raise ValueError("incomplete_stream")
+        line = line.decode("utf-8").rstrip("\r\n")
+        if line == "":
+            if not data_lines:
+                continue
+            data = "\n".join(data_lines)
+            data_lines = []
+            if data == "[DONE]":
+                raise ValueError("missing_completed_response")
+            event = json.loads(data)
+            if not isinstance(event, dict):
+                raise ValueError("invalid_stream_event")
+            kind = event.get("type")
+            if kind == "response.completed":
+                result = event.get("response")
+                if not isinstance(result, dict):
+                    raise ValueError("invalid_completed_response")
+                return result
+            if kind in ("response.failed", "error"):
+                return {"status":"provider_error","provider_code":"stream_failed"}
+            if kind == "response.incomplete":
+                return {"status":"invalid_provider_response","reason":"incomplete_response"}
+        elif line.startswith("data:"):
+            data_lines.append(line[5:].lstrip(" "))
+
+def _gpt_request(prompt, model, max_output_tokens=2048):
+    return {
+        "model":model,
+        "instructions":"Responda de forma clara e siga a solicitação do usuário.",
+        "input":[{"role":"user","content":[{"type":"input_text","text":prompt}]}],
+        "store":False,
+        "stream":True,
+        "max_output_tokens":max_output_tokens,
+    }
+
 def _call(url, headers, body):
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
     try:
@@ -22,7 +77,7 @@ def _call(url, headers, body):
                 return None
         opener = urllib.request.build_opener(NoRedirect())
         with opener.open(req, timeout=65) as resp:
-            result = json.loads(resp.read(MAX_RESPONSE_BYTES + 1))
+            result = _read_provider_response(resp)
     except urllib.error.HTTPError as exc:
         result = {"status": "provider_error", "http_status": exc.code}
         try:
@@ -62,8 +117,8 @@ def ask(prompt, provider="gpt", model=None):
             return {"status": "rejected", "reason": "unsupported_model"}
         key = os.getenv("AVELLO_GPT_API_KEY", "")
         url = GPT_URL
-        body = {"model": model, "input": prompt, "store": False}
-        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + key}
+        body = _gpt_request(prompt, model)
+        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + key, "Accept":"text/event-stream"}
     else:
         configured_model = os.getenv("AVELLO_CLAUDE_MODEL", "")
         model = model or configured_model
@@ -167,7 +222,8 @@ def _perform_smoke(run_id, provider):
         headers = {"Content-Type":"application/json", "Authorization":"Bearer "+key,
                    "Idempotency-Key":run_id+"-"+provider}
         if provider == "gpt":
-            body = {"model":model,"input":_SMOKE_PROMPT,"store":False,"max_output_tokens":64}
+            body = _gpt_request(_SMOKE_PROMPT, model, 64)
+            headers["Accept"] = "text/event-stream"
             url = GPT_URL
         else:
             headers["anthropic-version"] = "2023-06-01"
