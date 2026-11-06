@@ -4,7 +4,7 @@ import os
 from mcp.server.fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import PlainTextResponse
-from bridge import ask, GPT_MODELS, list_models
+from bridge import ask, GPT_MODELS, GPT_DEFAULT_MODEL, list_models
 
 mcp = FastMCP("Vitrine Avello Private", host="0.0.0.0",
               port=int(os.getenv("PORT", "8765")),
@@ -19,6 +19,8 @@ def avello_status() -> dict:
         "claude_model_configured": bool(os.getenv("AVELLO_CLAUDE_MODEL")),
         "calls_enabled": os.getenv("AVELLO_CALLS_ENABLED", "false").lower() == "true",
         "gpt_models": list(GPT_MODELS),
+        "gpt_default_model": GPT_DEFAULT_MODEL,
+        "claude_default_model": os.getenv("AVELLO_CLAUDE_MODEL", ""),
         "remote_execution": False,
     }
 
