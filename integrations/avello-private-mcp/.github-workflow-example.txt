@@ -1,0 +1,4 @@
+# Offline checks can be run with:
+# cd integrations/avello-private-mcp
+# python -m unittest discover -s tests -v
+# No provider credentials required. No API calls are made.

@@ -1,0 +1,51 @@
+services:
+  avello_private_mcp:
+    build:
+      context: "${AVELLO_BUILD_CONTEXT:-.}"
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PORT: "8765"
+      AVELLO_CALLS_ENABLED: "${AVELLO_CALLS_ENABLED:-false}"
+      AVELLO_GPT_API_KEY: "${AVELLO_GPT_API_KEY:-}"
+      AVELLO_CLAUDE_API_KEY: "${AVELLO_CLAUDE_API_KEY:-}"
+      AVELLO_CLAUDE_MODEL: "${AVELLO_CLAUDE_MODEL:-}"
+      AVELLO_SMOKE_GPT_MODEL: "${AVELLO_SMOKE_GPT_MODEL:-gpt-6.1-sol}"
+      AVELLO_SMOKE_PROVIDERS: "${AVELLO_SMOKE_PROVIDERS:-gpt,claude}"
+      AVELLO_SMOKE_ENABLED: "${AVELLO_SMOKE_ENABLED:-false}"
+      AVELLO_SMOKE_RUN_ID: "${AVELLO_SMOKE_RUN_ID:-}"
+      MCP_BEARER_TOKEN: "${MCP_BEARER_TOKEN:-}"
+      AVELLO_GOOGLE_CLIENT_ID: "${AVELLO_GOOGLE_CLIENT_ID:-}"
+      AVELLO_GOOGLE_CLIENT_SECRET: "${AVELLO_GOOGLE_CLIENT_SECRET:-}"
+      AVELLO_OAUTH_SESSION_SECRET: "${AVELLO_OAUTH_SESSION_SECRET:-}"
+      AVELLO_OAUTH_ALLOWED_EMAIL: "${AVELLO_OAUTH_ALLOWED_EMAIL:-}"
+      AVELLO_OAUTH_ENABLED: "${AVELLO_OAUTH_ENABLED:-false}"
+    ports:
+      - "127.0.0.1:18765:8765"
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 60s
+      timeout: 40s
+      retries: 2
+      start_period: 10s
+    networks:
+      - default
+      - avello_proxy
+    volumes:
+      - avello_smoke_data:/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    pids_limit: 128
+    mem_limit: 256m
+networks:
+  avello_proxy:
+    external: true
+    name: n8n-traefik_app_network
+volumes:
+  avello_smoke_data:
+
