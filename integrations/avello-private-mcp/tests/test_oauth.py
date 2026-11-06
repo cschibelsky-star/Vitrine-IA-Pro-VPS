@@ -62,6 +62,7 @@ def sign_in(client, client_id):
     assert callback.status_code==303,callback.text
     page=client.get(callback.headers["location"])
     assert page.status_code==200
+    assert page.headers["referrer-policy"] == "same-origin"
     import re
     return re.search(r'name="csrf" value="([A-Za-z0-9_-]+)"',page.text).group(1)
 
@@ -150,8 +151,9 @@ def test_consent_csrf_cancel_and_no_code_before_consent(oauth_env):
     csrf=sign_in(client,cid)
     with provider.store.connect() as db:
         assert db.execute("SELECT count(*) FROM oauth_records WHERE kind='code'").fetchone()[0]==0
-    for origin,nonce in (("https://evil.test",csrf),(ORIGIN,"wrong")):
+    for origin,nonce in (("https://evil.test",csrf),("null",csrf),(ORIGIN,"wrong")):
         assert client.post("/oauth/consent",data={"csrf":nonce,"decision":"allow"},headers={"Origin":origin}).status_code==403
+    assert client.post("/oauth/consent",data={"csrf":csrf,"decision":"allow"}).status_code==403
     response=client.post("/oauth/consent",data={"csrf":csrf,"decision":"deny"},headers={"Origin":ORIGIN})
     assert response.status_code==303
     assert parse_qs(urlparse(response.headers["location"]).query)["error"]==["access_denied"]
@@ -217,3 +219,4 @@ def test_store_single_use_and_persistence(tmp_path):
     assert store.get("code","random-code",consume=True) is None
     store.put("flow","expired",{},-1)
     assert store.get("flow","expired") is None
+

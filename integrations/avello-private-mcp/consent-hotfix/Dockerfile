@@ -1,0 +1,4 @@
+FROM 21dff5d82c73
+USER root
+RUN python -c 'from pathlib import Path; import hashlib; p=Path("/app/oauth_provider.py"); b=p.read_bytes(); blob=b"blob "+str(len(b)).encode()+b"\0"+b; assert hashlib.sha1(blob).hexdigest()=="eb0ef3803cb08266a86ecce220a118528a4b9c3e","Unexpected OAuth source; refusing hotfix"; s=b.decode(); old="        response.headers[\"Referrer-Policy\"] = \"no-referrer\""; new="        # Form navigation POSTs use Origin: null under no-referrer. Keep the\n        # consent form same-origin without disclosing OAuth URLs cross-origin.\n        response.headers[\"Referrer-Policy\"] = (\n            \"same-origin\" if request.url.path == \"/oauth/consent\" else \"no-referrer\"\n        )"; assert s.count(old)==1; fixed=s.replace(old,new); compile(fixed,str(p),"exec"); p.write_text(fixed); print("Consent header patched; strict Origin and CSRF checks retained")'
+USER 65532:65532

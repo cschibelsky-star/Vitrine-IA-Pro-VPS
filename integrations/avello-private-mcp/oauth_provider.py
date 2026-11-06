@@ -271,7 +271,11 @@ class OAuthHeaders(BaseHTTPMiddleware):
             self.hits.append(now)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        # Form navigation POSTs use Origin: null under no-referrer. Keep the
+        # consent form same-origin without disclosing OAuth URLs cross-origin.
+        response.headers["Referrer-Policy"] = (
+            "same-origin" if request.url.path == "/oauth/consent" else "no-referrer"
+        )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Content-Security-Policy"] = "default-src 'none'; form-action 'self' https://chatgpt.com; frame-ancestors 'none'; base-uri 'none'"
         return response
@@ -327,3 +331,4 @@ def install_oauth(app, provider):
                        max_age=600, same_site="lax", https_only=True)
     app.add_middleware(OAuthHeaders)
     app.add_middleware(RequestBodyLimitMiddleware, max_body_size=131072)
+
