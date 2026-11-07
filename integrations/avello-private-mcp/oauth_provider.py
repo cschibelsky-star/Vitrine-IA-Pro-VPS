@@ -42,6 +42,8 @@ def digest(value):
 
 def allowed_redirect(uri):
     # Each exact URI is also bound to its registered client by the SDK.
+    if str(uri) == "https://claude.ai/api/mcp/auth_callback":
+        return True
     return bool(re.fullmatch(
         r"https://chatgpt\.com/(?:connector_platform_oauth_redirect|connector/oauth/[A-Za-z0-9_-]{1,160})",
         str(uri),
@@ -111,7 +113,7 @@ class GoogleProvider:
 
     async def register_client(self, client_info):
         if not client_info.redirect_uris or not all(allowed_redirect(x) for x in client_info.redirect_uris):
-            raise RegistrationError("invalid_redirect_uri", "Only ChatGPT callbacks are accepted")
+            raise RegistrationError("invalid_redirect_uri", "Only supported ChatGPT or Claude callbacks are accepted")
         if client_info.token_endpoint_auth_method != "none":
             raise RegistrationError("invalid_client_metadata", "Use the public PKCE client method: none")
         if set((client_info.scope or "").split()) != {SCOPE}:
@@ -277,7 +279,7 @@ class OAuthHeaders(BaseHTTPMiddleware):
             "same-origin" if request.url.path == "/oauth/consent" else "no-referrer"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Content-Security-Policy"] = "default-src 'none'; form-action 'self' https://chatgpt.com; frame-ancestors 'none'; base-uri 'none'"
+        response.headers["Content-Security-Policy"] = "default-src 'none'; form-action 'self' https://chatgpt.com https://claude.ai; frame-ancestors 'none'; base-uri 'none'"
         return response
 
 
@@ -331,4 +333,5 @@ def install_oauth(app, provider):
                        max_age=600, same_site="lax", https_only=True)
     app.add_middleware(OAuthHeaders)
     app.add_middleware(RequestBodyLimitMiddleware, max_body_size=131072)
+
 

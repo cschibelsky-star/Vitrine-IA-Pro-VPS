@@ -3,6 +3,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import sys
 import time
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
@@ -21,8 +22,9 @@ CHALLENGE = base64.urlsafe_b64encode(hashlib.sha256(VERIFIER.encode()).digest())
 IDENTITY = {"iss":GOOGLE_ISSUER,"sub":"test-owner-subject","email":"owner@example.test","email_verified":True}
 
 
-@pytest.fixture
-def oauth_env(monkeypatch, tmp_path):
+@pytest.fixture(params=[REDIRECT, "https://claude.ai/api/mcp/auth_callback"])
+def oauth_env(monkeypatch, tmp_path, request):
+    monkeypatch.setattr(sys.modules[__name__], "REDIRECT", request.param)
     for key, value in {"AVELLO_GOOGLE_CLIENT_ID":"test-google-client", "AVELLO_GOOGLE_CLIENT_SECRET":"test-secret",
         "AVELLO_OAUTH_SESSION_SECRET":"session-test-"+"s"*48, "AVELLO_OAUTH_ALLOWED_EMAIL":"owner@example.test",
         "MCP_BEARER_TOKEN":"d"*48}.items():
@@ -63,6 +65,7 @@ def sign_in(client, client_id):
     page=client.get(callback.headers["location"])
     assert page.status_code==200
     assert page.headers["referrer-policy"] == "same-origin"
+    assert "https://claude.ai" in page.headers["content-security-policy"]
     import re
     return re.search(r'name="csrf" value="([A-Za-z0-9_-]+)"',page.text).group(1)
 
@@ -122,7 +125,10 @@ def test_http_pkce_tokens_refresh_revocation_and_private_diagnostics(oauth_env):
 
 
 @pytest.mark.parametrize("uri",["http://chatgpt.com/connector/oauth/a","https://chatgpt.com.evil.test/connector/oauth/a",
-    "https://evil.test/callback","https://chatgpt.com/connector/oauth/a?evil=1","https://chatgpt.com/connector/oauth/a#fragment"])
+    "https://evil.test/callback","https://chatgpt.com/connector/oauth/a?evil=1","https://chatgpt.com/connector/oauth/a#fragment",
+    "http://claude.ai/api/mcp/auth_callback", "https://claude.ai.evil.test/api/mcp/auth_callback",
+    "https://claude.ai/api/mcp/auth_callback?evil=1", "https://claude.ai/api/mcp/auth_callback#fragment",
+    "https://claude.ai/api/mcp/auth_callback/", "https://evil.test@claude.ai/api/mcp/auth_callback"])
 def test_untrusted_redirects_denied(oauth_env,uri):
     _,client=oauth_env
     assert register(client,redirect_uris=[uri]).status_code==400
@@ -190,6 +196,17 @@ def test_cookie_and_response_protections(oauth_env):
     assert client.post("/token",content=b"x"*140000).status_code==413
 
 
+def test_client_cannot_switch_to_another_supported_callback(oauth_env):
+    _,client=oauth_env
+    cid=register(client).json()["client_id"]
+    other=("https://claude.ai/api/mcp/auth_callback" if "chatgpt.com" in REDIRECT
+           else "https://chatgpt.com/connector/oauth/test-callback-id")
+    assert begin(client,cid,redirect_uri=other).status_code==400
+    code=grant(client,sign_in(client,cid))
+    assert client.post("/token",data={**token_form(cid,code),"redirect_uri":other}).status_code==400
+    assert client.post("/token",data=token_form(cid,code)).status_code==200
+
+
 def test_real_oidc_library_verifies_signature_nonce_issuer_audience_expiry(oauth_env):
     provider,_=oauth_env
     google=provider.google
@@ -219,4 +236,5 @@ def test_store_single_use_and_persistence(tmp_path):
     assert store.get("code","random-code",consume=True) is None
     store.put("flow","expired",{},-1)
     assert store.get("flow","expired") is None
+
 
