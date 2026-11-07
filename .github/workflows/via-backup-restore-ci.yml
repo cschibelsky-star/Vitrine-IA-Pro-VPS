@@ -4,6 +4,7 @@ on:
     paths:
       - 'connector-v2/via_backup_restore.py'
       - 'connector-v2/via_backup_operations.py'
+      - 'connector-v2/via_backup_mcp_tools.py'
       - 'connector-v2/test_via_backup_restore.py'
       - '.github/workflows/via-backup-restore-ci.yml'
   workflow_dispatch:
@@ -16,6 +17,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Python syntax
-        run: python -m py_compile connector-v2/via_backup_restore.py connector-v2/via_backup_operations.py connector-v2/test_via_backup_restore.py
+        run: python -m py_compile connector-v2/via_backup_restore.py connector-v2/via_backup_operations.py connector-v2/via_backup_mcp_tools.py connector-v2/test_via_backup_restore.py
       - name: Offline restore tests
         run: cd connector-v2 && python -m unittest -v test_via_backup_restore
