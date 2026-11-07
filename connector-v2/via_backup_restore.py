@@ -14,14 +14,14 @@ RESTORE_ROOT = Path("/srv/vitrine/restore-validation/via")
 VIA_PREFIX = "srv/projects/via/"
 
 def verify_via_backup(backup_name: str, expected_sha256: str, restore: bool = False) -> dict:
-    if not backup_name.startswith("vps-filesystem-") or not backup_name.endswith(".tar.gz"):
+    if not isinstance(backup_name, str) or not backup_name.startswith("vps-filesystem-") or not backup_name.endswith(".tar.gz"):
         raise ValueError("Invalid backup name")
     if Path(backup_name).name != backup_name:
         raise ValueError("Backup must be a basename")
     archive = BACKUP_ROOT / backup_name
     if archive.is_symlink() or not archive.is_file():
         raise ValueError("Backup unavailable")
-    if len(expected_sha256) != 64 or any(c not in "0123456789abcdefABCDEF" for c in expected_sha256):
+    if not isinstance(expected_sha256, str) or len(expected_sha256) != 64 or any(c not in "0123456789abcdefABCDEF" for c in expected_sha256):
         raise ValueError("Invalid SHA-256")
     digest = hashlib.sha256()
     with archive.open("rb") as f:
@@ -41,7 +41,7 @@ def verify_via_backup(backup_name: str, expected_sha256: str, restore: bool = Fa
             if not relative:
                 continue
             parts = Path(relative).parts
-            if (Path(relative).is_absolute() or ".." in parts or
+            if (Path(relative).is_absolute() or ".." in parts or "." in parts or
                 m.issym() or m.islnk() or m.isdev() or m.isfifo() or
                 not (m.isdir() or m.isfile())):
                 raise ValueError("Unsafe VIA archive entry")
@@ -51,6 +51,8 @@ def verify_via_backup(backup_name: str, expected_sha256: str, restore: bool = Fa
             raise ValueError("VIA files absent from backup")
         if restore:
             # Never restore in place or into a caller-selected path.
+            if RESTORE_ROOT.is_symlink():
+                raise ValueError("Restore root cannot be a symlink")
             root = RESTORE_ROOT / digest.hexdigest()[:20]
             if root.is_symlink() or root.exists():
                 raise ValueError("Restore destination already exists")
