@@ -73,9 +73,9 @@ def _canonical_github_origin(url: str) -> tuple[str, str] | None:
     import re
     value = str(url or "").strip()
     match = re.fullmatch(
-        r"(?:https://github\\.com/|git@github\\.com:)"
+        r"(?:https://github\.com/|git@github\.com:)"
         r"([A-Za-z0-9][A-Za-z0-9-]{0,38})/"
-        r"([A-Za-z0-9_.-]+?)(?:\\.git)?",
+        r"([A-Za-z0-9_.-]+?)(?:\.git)?",
         value,
     )
     if not match:
