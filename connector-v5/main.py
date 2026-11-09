@@ -68,6 +68,21 @@ def _validated_workspace_root(workspace_root: str) -> Path:
     return workspace
 
 
+def _canonical_github_origin(url: str) -> tuple[str, str] | None:
+    """Normalize only exact GitHub HTTPS or git SSH remote forms."""
+    import re
+    value = str(url or "").strip()
+    match = re.fullmatch(
+        r"(?:https://github\.com/|git@github\.com:)"
+        r"([A-Za-z0-9][A-Za-z0-9-]{0,38})/"
+        r"([A-Za-z0-9_.-]+?)(?:\.git)?",
+        value,
+    )
+    if not match:
+        return None
+    return (match.group(1).lower(), match.group(2).lower())
+
+
 def _validated_repository_url(url: str) -> str:
     value = str(url or "").strip()
     if value.startswith("https://github.com/") or value.startswith("git@github.com:"):
@@ -479,7 +494,8 @@ def project_git_reconcile_to_origin(project_id: str, branch: str = "", preservat
     if not origin.get("ok"):
         return {"ok": False, "error": "origin_unavailable", "detail": origin}
     actual_origin = str(origin.get("stdout", "")).strip()
-    if actual_origin != expected_origin:
+    if not (_canonical_github_origin(actual_origin) is not None and
+            _canonical_github_origin(actual_origin) == _canonical_github_origin(expected_origin)):
         return {"ok": False, "error": "origin_mismatch", "expected": expected_origin, "actual": actual_origin}
 
     refspec = f"refs/heads/{target_branch}:refs/remotes/origin/{target_branch}"
