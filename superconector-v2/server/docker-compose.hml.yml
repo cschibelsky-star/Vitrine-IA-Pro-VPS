@@ -1,0 +1,17 @@
+name: vitrine-super-v2-public-hml
+services:
+  public_mcp:
+    build: .
+    image: vitrine-super-v2-public:0.2.0-dev
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    ports:
+      - "127.0.0.1:8878:8000"
+    networks: [public_mcp_net]
+networks:
+  public_mcp_net:
+    internal: true
