@@ -37,3 +37,13 @@ Nao modificar Super legado, V4/V5 runtime, TV Sumare, producao, credenciais, mig
 - Tentativa controlada de BUILD serviço `public_mcp`: **NEGADA**, `controlled_service_not_allowed`. Não houve build ou start. Nenhuma tentativa de contornar allowlist foi realizada.
 - Próximo bloqueio: permitir explicitamente o serviço `public_mcp` e a ação controlada de build em HML na política V5, mediante implementação/revisão específica; depois executar build, boot e teste MCP `initialize`/`tools/list` em ambiente isolado.
 - Sem domínio público, OAuth operacional, acesso V5, deploy em produção, merge ou publicação.
+
+## Homologação de protocolo MCP da V2 — 2026-11-10
+
+- Workflow isolado `.github/workflows/superconector-v2-hml-smoke.yml` adicionado; build Docker, serviço read-only, rede local do runner e cliente MCP real.
+- GitHub Actions run **42933015122**, commit `762adb59c2329ec1c312b3ef4fd135c5ee8e05ac`: **success**.
+- Evidência do log: `V2 MCP initialize + tools/list + tools/call: PASS (3 tools)`.
+- Executado em runner efêmero do GitHub Actions; contêiner de teste removido após execução.
+- Ferramentas disponíveis: `public_capabilities`, `connection_requirements`, `service_readiness` (apenas informativas).
+- V5 ativo não alterado; PR #71 ainda em draft e sem merge. Não houve implantação persistente da V2 na VPS, HTTPS público, OAuth ou conexão ao ChatGPT.
+- Próximo gate: autorização controlada para instalar serviço `public_mcp` em HML isolada, com política V5 aprovada e testada; depois comprovar MCP via endpoint HML, autenticação e isolamento por cliente antes de qualquer publicação pública.
