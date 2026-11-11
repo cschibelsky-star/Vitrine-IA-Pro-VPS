@@ -41,6 +41,15 @@ class HMLPreflight(unittest.TestCase):
             self.assertIn("read_only: true", content)
             self.assertIn("no-new-privileges:true", content)
 
+    def test_hml_bind_is_loopback_only(self):
+        compose = (SERVER / "docker-compose.hml.yml").read_text(encoding="utf-8")
+        self.assertIn('127.0.0.1:8878:8000', compose)
+        self.assertIn("read_only: true", compose)
+        self.assertIn("cap_drop: [ALL]", compose)
+        self.assertIn("no-new-privileges:true", compose)
+        self.assertIn("restart: \"no\"", compose)
+        self.assertNotIn("0.0.0.0:8878:8000", compose)
+
     def test_mcp_bind_is_container_reachable(self):
         content = (SERVER / "main.py").read_text(encoding="utf-8")
         self.assertIn('host="0.0.0.0"', content)
