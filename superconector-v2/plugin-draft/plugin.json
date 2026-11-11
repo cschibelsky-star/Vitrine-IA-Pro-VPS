@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "vitrine-superconector-v2",
+  "version": "0.2.0",
+  "description": "Conector MCP publico informativo, gateway operacional autenticado em desenvolvimento; sem endpoint operacional comprovado.",
+  "author": {
+    "name": "Vitrine IA Pro"
+  },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Vitrine Superconector V2",
+        "shortDescription": "Integrações empresariais IA",
+        "longDescription": "Ferramentas publicas informativas. Integracao operacional e autenticacao por cliente pendentes de homologacao. Sem acesso de infraestrutura ao publico.",
+        "developerName": "Vitrine IA Pro",
+        "category": "Business & Operations",
+        "capabilities": [],
+        "defaultPrompt": "Mostre as capacidades e os requisitos de conexao do Vitrine Superconector V2."
+      }
+    }
+  }
+}
