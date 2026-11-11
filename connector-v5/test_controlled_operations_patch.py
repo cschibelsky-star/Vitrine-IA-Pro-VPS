@@ -34,3 +34,16 @@ def test_recovered_controlled_operations_layer():
     assert '("tvsumare-enterprise", "HEYGEN_API_KEY"): ("tvsumare_web", "HEYGEN_API_KEY")' in source
     assert 'source_value is None or not str(source_value).strip()' in source
     assert '__MIGRATE_EXISTING__' in source
+
+def test_superconector_v2_hml_policy_is_narrow():
+    base = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
+    source = apply_controlled_operations_patch(apply_marketing_live_patch(base))
+    assert '"vitrine-superconector-v2-hml": {' in source
+    assert '"compose_files": {"superconector-v2/server/docker-compose.hml.yml"}' in source
+    assert '"services": {"public_mcp"}' in source
+    assert '"build": {"public_mcp"}' in source
+    assert '"up": {"public_mcp"}' in source
+    assert 'project_id == "vitrine-superconector-v2-hml"' in source
+    assert 'manifest.get("runtime", {}).get("allowed_keys") == []' in source
+    assert '"run_once": set()' in source
+
