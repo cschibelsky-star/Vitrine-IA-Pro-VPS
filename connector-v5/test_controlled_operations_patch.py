@@ -47,3 +47,46 @@ def test_superconector_v2_hml_policy_is_narrow():
     assert 'manifest.get("runtime", {}).get("allowed_keys") == []' in source
     assert '"run_once": set()' in source
 
+
+def test_superconector_v2_runtime_exception_is_fail_closed():
+    import ast
+    import types
+
+    base = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
+    source = apply_controlled_operations_patch(apply_marketing_live_patch(base))
+    module = ast.parse(source)
+    target = next(
+        node for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_controlled_compose_base"
+    )
+    target.decorator_list = []
+    code = compile(ast.fix_missing_locations(ast.Module(body=[target], type_ignores=[])), "<v5-policy-test>", "exec")
+
+    def run(project_id, keys, error):
+        manifest = {"docker": {"project_name": "vitrine-super-v2-public-hml"}, "runtime": {"allowed_keys": keys}}
+        def runtime_config(_manifest):
+            raise PermissionError(error)
+        env = {
+            "Path": Path,
+            "_safe_file": lambda *_: (Path("/tmp/dummy-compose.yml"), "superconector-v2/server/docker-compose.hml.yml"),
+            "_project_paths": lambda _: (manifest, Path("/tmp"), Path("/tmp")),
+            "_runtime_config": runtime_config,
+        }
+        exec(code, env)
+        return env["_controlled_compose_base"](project_id, "superconector-v2/server/docker-compose.hml.yml")
+
+    command, relative, directory = run("vitrine-superconector-v2-hml", [], "runtime_keys_not_configured")
+    assert command == ["docker", "compose", "-p", "vitrine-super-v2-public-hml", "-f", "/tmp/dummy-compose.yml"]
+    assert relative == "superconector-v2/server/docker-compose.hml.yml"
+
+    for project, keys, error in (
+        ("tvsumare", [], "runtime_keys_not_configured"),
+        ("vitrine-superconector-v2-hml", ["API_KEY"], "runtime_keys_not_configured"),
+        ("vitrine-superconector-v2-hml", [], "another_permission_error"),
+    ):
+        try:
+            run(project, keys, error)
+        except PermissionError as exc:
+            assert str(exc) == error
+        else:
+            raise AssertionError("runtime exception incorrectly granted")
