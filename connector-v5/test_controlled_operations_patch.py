@@ -64,6 +64,7 @@ def test_superconector_v2_runtime_exception_is_fail_closed():
 
     def run(project_id, keys, error):
         manifest = {"docker": {"project_name": "vitrine-super-v2-public-hml"}, "runtime": {"allowed_keys": keys}}
+        compose = "docker-compose.vps.yml" if project_id == "tvsumare" else "superconector-v2/server/docker-compose.hml.yml"
         def runtime_config(_manifest):
             raise PermissionError(error)
         env = {
@@ -72,12 +73,12 @@ def test_superconector_v2_runtime_exception_is_fail_closed():
                 "vitrine-superconector-v2-hml": {"compose_files": {"superconector-v2/server/docker-compose.hml.yml"}},
                 "tvsumare": {"compose_files": {"docker-compose.vps.yml"}},
             },
-            "_safe_file": lambda *_: (Path("/tmp/dummy-compose.yml"), "superconector-v2/server/docker-compose.hml.yml"),
+            "_safe_file": lambda *_: (Path("/tmp/dummy-compose.yml"), compose),
             "_project_paths": lambda _: (manifest, Path("/tmp"), Path("/tmp")),
             "_runtime_config": runtime_config,
         }
         exec(code, env)
-        return env["_controlled_compose_base"](project_id, "superconector-v2/server/docker-compose.hml.yml")
+        return env["_controlled_compose_base"](project_id, compose)
 
     command, relative, directory = run("vitrine-superconector-v2-hml", [], "runtime_keys_not_configured")
     assert command == ["docker", "compose", "-p", "vitrine-super-v2-public-hml", "-f", "/tmp/dummy-compose.yml"]
