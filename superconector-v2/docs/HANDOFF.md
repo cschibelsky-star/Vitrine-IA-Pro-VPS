@@ -27,3 +27,13 @@ Data: 2026-11-10. Estado: **codigo versionado em branch isolada; HML nao implant
 ## Invariantes
 
 Nao modificar Super legado, V4/V5 runtime, TV Sumare, producao, credenciais, migrations ou fazer merge/cutover. Nenhuma dessas operacoes esta comprovada ou autorizada por este handoff.
+
+## Execução adicional — 2026-11-10, HML V5
+
+- Corrigido bind do FastMCP para host 0.0.0.0 / porta 8000, stateless e resposta JSON; teste estático de escuta incluído. **Não testado em runtime real**.
+- Manifest V5 `vitrine-superconector-v2-hml` criado com workspace `/srv/projects/vitrine-superconector-v2-hml`, branch `feature/superconector-v2-hml`, compose próprio e nenhum diretório compartilhado.
+- Clone via V5: `ok=true`, exit_code 0; Git limpo na branch esperada.
+- Docker Compose config via V5: `ok=true`, exit_code 0; porta 127.0.0.1:8878, rede `internal:true`, `cap_drop:[ALL]`, filesystem `read_only:true`, `no-new-privileges:true`.
+- Tentativa controlada de BUILD serviço `public_mcp`: **NEGADA**, `controlled_service_not_allowed`. Não houve build ou start. Nenhuma tentativa de contornar allowlist foi realizada.
+- Próximo bloqueio: permitir explicitamente o serviço `public_mcp` e a ação controlada de build em HML na política V5, mediante implementação/revisão específica; depois executar build, boot e teste MCP `initialize`/`tools/list` em ambiente isolado.
+- Sem domínio público, OAuth operacional, acesso V5, deploy em produção, merge ou publicação.
