@@ -22,3 +22,13 @@ Data da inspeção: 2026-11-10 (Brasil). PR: https://github.com/cschibelsky-star
 Próximo passo seguro: reconciliar a linhagem validada do runtime V5 com Git e seus patches de inicialização, sem resetar o runtime, e executar testes de startup + regressão que comprovem a política restrita antes de nova implantação. Evitar correções cosméticas de versão que ocultem divergências de semântica.
 
 Nenhuma alteração em TV Sumaré, produção, chaves, containers ativos, migrations ou acesso público é autorizada por este registro.
+
+## Atualização de homologação isolada — 2026-11-10 (horário de Brasília)
+
+- Branch `fix/v5-superconector-v2-hml-allowlist` teve `marketing_live_patch.py` reconciliado com a base `0.5.11-generic-laravel-test-runner`, preservando `tests_laravel` e gate específico do Marketing.
+- Workflow `V5 TV Sumare policy CI` passou a executar regressões e smoke Docker/MCP em runner GitHub Actions, sem mounts da VPS nem credenciais reais.
+- Run **42932472054**, commit `74cb52bffb77cff3f3fb59454c046e55b83604bb`: conclusão **success**. Compilação, testes de política, build Docker isolado, servidor MCP real, verificação da proteção TV Sumaré: todos aprovados.
+- Log do smoke: `MCP initialize + tools/list + connector_health: PASS`, `Tool count: 33`.
+- Contêiner de teste foi descartável, com filesystem somente leitura, sem privilégios e porta de loopback no runner; **não foi implantado na VPS**.
+- O build do serviço `public_mcp` no V5 ativo segue bloqueado pela política atual até atualização controlada, que **não está autorizada por este PR**.
+- PR #71 permanece em draft, sem merge. O teste comprova o candidato V5 isolado, não conexão do Superconector V2 ao ChatGPT.
