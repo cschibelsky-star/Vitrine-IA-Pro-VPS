@@ -26,15 +26,14 @@ jobs:
           python-version: '3.12'
       - name: Static isolation checks
         run: python -m unittest discover -s superconector-v2/tests -p 'test_hml_preflight.py' -q
-      - name: Build informational MCP image
-        run: docker build -t super-v2-smoke:ci superconector-v2/server
-      - name: Start isolated read-only MCP candidate
+      - name: Validate exact HML Compose
+        run: docker compose -f superconector-v2/server/docker-compose.hml.yml config --quiet
+      - name: Build and start isolated HML Compose
         run: |
           set -eu
-          docker run -d --name super-v2-mcp-smoke \
-            --read-only --cap-drop ALL --security-opt no-new-privileges \
-            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
-            -p 127.0.0.1:8878:8000 super-v2-smoke:ci
+          docker compose -f superconector-v2/server/docker-compose.hml.yml build public_mcp
+          docker compose -f superconector-v2/server/docker-compose.hml.yml up -d --no-build --no-deps public_mcp
+          docker compose -f superconector-v2/server/docker-compose.hml.yml ps
       - name: Protocol initialize, tools/list and tools/call
         run: |
           set -eu
@@ -46,6 +45,6 @@ jobs:
             sleep 1
           done
           python superconector-v2/tests/smoke_mcp_http.py
-      - name: Cleanup ephemeral container
+      - name: Cleanup ephemeral HML Compose
         if: always()
-        run: docker rm -f super-v2-mcp-smoke >/dev/null 2>&1 || true
+        run: docker compose -f superconector-v2/server/docker-compose.hml.yml down --remove-orphans >/dev/null 2>&1 || true
