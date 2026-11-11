@@ -4,7 +4,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import patch, MagicMock
 from io import BytesIO
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +25,7 @@ class GatewayV2Tests(unittest.TestCase):
                 self.assertEqual(server.gateway_models()["status"], "not_configured")
 
     def test_catalog_uses_fixed_get(self):
-        opener = Mock()
+        opener = MagicMock()
         opener.open.return_value.__enter__.return_value.read.return_value = b'{"data":[{"id":"gpt-test"}]}'
         with patch.dict(os.environ, {"AVELLO_V2_API_KEY": "offline-placeholder"}, clear=True):
             with patch.object(server.urllib.request, "build_opener", return_value=opener):
