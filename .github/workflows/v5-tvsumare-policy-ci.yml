@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'connector-v5/controlled_operations_patch.py'
+      - 'connector-v5/marketing_live_patch.py'
       - 'connector-v5/test_controlled_operations_patch.py'
       - '.github/workflows/v5-tvsumare-policy-ci.yml'
   push:
@@ -11,6 +12,7 @@ on:
       - 'fix/v5-tvsumare-prod-readonly-20261101'
     paths:
       - 'connector-v5/controlled_operations_patch.py'
+      - 'connector-v5/marketing_live_patch.py'
       - 'connector-v5/test_controlled_operations_patch.py'
       - '.github/workflows/v5-tvsumare-policy-ci.yml'
   workflow_dispatch:
