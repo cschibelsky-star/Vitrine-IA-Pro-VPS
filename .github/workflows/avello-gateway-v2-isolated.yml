@@ -21,6 +21,14 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
     steps:
+      - name: Require isolated branch
+        env:
+          EXPECTED_REF: refs/heads/feature/avello-gateway-v2-isolated-20261111
+        run: |
+          if [ "$GITHUB_REF" != "$EXPECTED_REF" ]; then
+            echo "ERROR: Run this workflow only on the isolated Avello V2 branch."
+            exit 1
+          fi
       - name: Checkout isolated branch
         uses: actions/checkout@v4
         with:
@@ -36,7 +44,17 @@ jobs:
       - name: Report runtime version without secrets
         run: |
           python --version
-          python -m pip show mcp | grep -E '^(Name|Version):'
+          python -m pip show mcp pydantic pydantic-core | grep -E '^(Name|Version):'
+          python -m pip check
+          python - <<'PY'
+          import importlib.metadata as metadata
+          from pydantic._internal import _typing_extra
+          print('MCP:', metadata.version('mcp'))
+          print('Pydantic:', metadata.version('pydantic'))
+          assert hasattr(_typing_extra, 'eval_type_backport'), 'MCP/Pydantic import compatibility failure'
+          from mcp.server.fastmcp import FastMCP
+          print('FastMCP import: OK')
+          PY
       - name: Run offline unit tests (no provider calls)
         run: python -m unittest discover -s integrations/avello-gateway-v2/tests -v
       - name: Verify MCP tool registry without HTTP exposure
