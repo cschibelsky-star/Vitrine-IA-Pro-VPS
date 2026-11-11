@@ -1,0 +1,51 @@
+name: Superconector V2 isolated MCP smoke
+
+on:
+  push:
+    branches:
+      - feature/superconector-v2-hml
+    paths:
+      - 'superconector-v2/**'
+      - '.github/workflows/superconector-v2-hml-smoke.yml'
+  pull_request:
+    paths:
+      - 'superconector-v2/**'
+      - '.github/workflows/superconector-v2-hml-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Static isolation checks
+        run: python -m unittest discover -s superconector-v2/tests -p 'test_hml_preflight.py' -q
+      - name: Build informational MCP image
+        run: docker build -t super-v2-smoke:ci superconector-v2/server
+      - name: Start isolated read-only MCP candidate
+        run: |
+          set -eu
+          docker run -d --name super-v2-mcp-smoke \
+            --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            -p 127.0.0.1:8878:8000 super-v2-smoke:ci
+      - name: Protocol initialize, tools/list and tools/call
+        run: |
+          set -eu
+          python -m pip install --disable-pip-version-check -r superconector-v2/server/requirements.txt
+          for attempt in $(seq 1 25); do
+            if python -c "import socket; s=socket.create_connection(('127.0.0.1',8878),1); s.close()" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          python superconector-v2/tests/smoke_mcp_http.py
+      - name: Cleanup ephemeral container
+        if: always()
+        run: docker rm -f super-v2-mcp-smoke >/dev/null 2>&1 || true
