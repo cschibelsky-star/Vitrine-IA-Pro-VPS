@@ -21,6 +21,12 @@ async def main():
                 if name == "service_readiness":
                     # MCP SDK may wrap a returned dict in structuredContent["result"].
                     payload = body.get("result", body)
+                    if not payload:
+                        import json
+                        for part in result.content:
+                            if getattr(part, "type", "") == "text":
+                                payload = json.loads(part.text)
+                                break
                     assert isinstance(payload, dict), "invalid readiness payload"
                     assert payload.get("production_operations") == "not_available", payload
             print(f"V2 MCP initialize + tools/list + tools/call: PASS ({len(names)} tools)")
