@@ -95,3 +95,77 @@ def test_superconector_v2_runtime_exception_is_fail_closed():
             assert str(exc) == error
         else:
             raise AssertionError("runtime exception incorrectly granted")
+
+
+def test_superconector_v2_controlled_build_authorization_behavior():
+    """Exercise actual patched control flow, never invoking real Docker or project code."""
+    import ast
+    from typing import Any
+
+    source = apply_controlled_operations_patch(
+        apply_marketing_live_patch(Path(__file__).with_name("main.py").read_text(encoding="utf-8"))
+    )
+    tree = ast.parse(source)
+    policy = next(
+        node for node in tree.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "CONTROLLED_COMPOSE_POLICY"
+    )
+    helpers = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {"_controlled_compose_base", "project_compose_service_execute"}
+    ]
+    assert len(helpers) == 2
+    for node in helpers:
+        node.decorator_list = []
+
+    calls = []
+    hml_path = "superconector-v2/server/docker-compose.hml.yml"
+    def resolve_file(_project, requested, _safe):
+        assert requested == hml_path
+        return Path("/tmp/synthetic-hml-compose.yml"), hml_path
+
+    def resolve_project(_project):
+        return (
+            {"docker": {"project_name": "vitrine-super-v2-public-hml"},
+             "runtime": {"allowed_keys": []}},
+            Path("/tmp"), Path("/tmp"),
+        )
+
+    def runtime_config(_manifest):
+        raise PermissionError("runtime_keys_not_configured")
+
+    def fake_run(cmd, directory, timeout=0):
+        calls.append((cmd, directory, timeout))
+        return {"ok": True, "exit_code": 0}
+
+    scope = {
+        "Any": Any,
+        "Path": Path,
+        "_safe_file": resolve_file,
+        "_project_paths": resolve_project,
+        "_runtime_config": runtime_config,
+        "_run": fake_run,
+    }
+    module = ast.fix_missing_locations(ast.Module(body=[policy] + helpers, type_ignores=[]))
+    exec(compile(module, "<controlled-policy-behavior>", "exec"), scope)
+    execute = scope["project_compose_service_execute"]
+
+    result = execute("vitrine-superconector-v2-hml", hml_path, "public_mcp", "build", "EXECUTAR")
+    assert result["ok"] is True
+    assert len(calls) == 1
+    assert calls[0][0] == [
+        "docker", "compose", "-p", "vitrine-super-v2-public-hml",
+        "-f", "/tmp/synthetic-hml-compose.yml", "build", "public_mcp",
+    ]
+    for project, service, operation, confirm, expected in (
+        ("tvsumare", "public_mcp", "build", "EXECUTAR", "controlled_service_not_allowed"),
+        ("vitrine-superconector-v2-hml", "web_prod", "build", "EXECUTAR", "controlled_service_not_allowed"),
+        ("vitrine-superconector-v2-hml", "public_mcp", "run_once", "EXECUTAR", "controlled_operation_not_allowed"),
+        ("vitrine-superconector-v2-hml", "public_mcp", "build", "", "confirmation_required"),
+    ):
+        denial = execute(project, hml_path, service, operation, confirm)
+        assert denial["error"] == expected
+        assert len(calls) == 1, "Denied request invoked Docker"
