@@ -29,6 +29,10 @@ jobs:
           python-version: '3.12'
       - name: Compile V5 patch and tests
         run: python -m py_compile connector-v5/controlled_operations_patch.py connector-v5/test_controlled_operations_patch.py
+      - name: Execute V5 policy regression tests
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q connector-v5/test_controlled_operations_patch.py
       - name: Verify production inspection does not grant deployment
         run: |
           python - <<'PY'
