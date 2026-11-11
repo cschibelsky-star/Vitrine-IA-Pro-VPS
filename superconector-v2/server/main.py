@@ -5,7 +5,7 @@ No VPS, Docker, filesystem, or tenant credentials are exposed here.
 """
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("Vitrine IA Pro Superconector V2")
+mcp = FastMCP("Vitrine IA Pro Superconector V2", host="0.0.0.0", port=8000, stateless_http=True, json_response=True)
 
 PUBLIC_FEATURES = (
     "Lista de capacidades e integracoes suportadas",
