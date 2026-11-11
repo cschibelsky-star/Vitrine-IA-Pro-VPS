@@ -17,8 +17,12 @@ async def main():
                 result = await client.call_tool(name, arguments={})
                 assert not result.isError, f"call_tool failed for {name}: {result}"
                 body = result.structuredContent or {}
-                assert isinstance(body, dict)
-                assert body.get("production_operations") == "not_available" if name == "service_readiness" else True
+                assert isinstance(body, dict), f"unexpected MCP payload for {name}"
+                if name == "service_readiness":
+                    # MCP SDK may wrap a returned dict in structuredContent["result"].
+                    payload = body.get("result", body)
+                    assert isinstance(payload, dict), "invalid readiness payload"
+                    assert payload.get("production_operations") == "not_available", payload
             print(f"V2 MCP initialize + tools/list + tools/call: PASS ({len(names)} tools)")
 
 if __name__ == "__main__":
