@@ -14,4 +14,4 @@ services:
     networks: [public_mcp_net]
 networks:
   public_mcp_net:
-    internal: true
+    driver: bridge
