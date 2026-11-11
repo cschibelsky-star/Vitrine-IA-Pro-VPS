@@ -56,3 +56,13 @@ Nao modificar Super legado, V4/V5 runtime, TV Sumare, producao, credenciais, mig
 - Execução ocorreu em GitHub Actions isolado; **não equivale à instalação persistente na VPS**.
 - PR #71 permanece sem merge e V5 ativo não recebeu a nova política.
 - Pendentes: habilitação controlada do serviço `public_mcp` no V5 ativo ou rota de instalação aprovada e separada, validação de host VPS, HTTPS e autenticação OAuth.
+
+## Gate operacional antes da instalação persistente
+
+- Verificação em 2026-11-10: V5 ativo reportou `0.5.14-runtime-secret-import` e `project_compose_service_status(public_mcp)` respondeu `controlled_service_not_allowed`.
+- PR #71 ainda está `draft` e `merged=false`. Instalação HML no host ainda não ocorreu; `project_docker_status` não listou contêiner.
+- HML via GitHub Actions 42933476006 comprovou build, boot e três ferramentas MCP pelo Compose exato, em runner efêmero.
+- Teste de pré-instalação acrescentado: porta de publicação limitada a `127.0.0.1:8878:8000`, `read_only:true`, `cap_drop:[ALL]` e `no-new-privileges`.
+- A imagem informativa possui rede `bridge` habilitada para viabilizar a publicação loopback: revisar/limitar **egress** no host antes de uso operacional.
+- NÃO executar `build` ou `up` em VPS via serviço genérico ou serviço alternativo para contornar a allowlist.
+- Próximo gate operacional: autorização independente e específica para atualização controlada do V5 em HML isolada, com política verificada; depois executar somente o `public_mcp`, validar ausência de regressão, handshake MCP local, e finalmente projetar HTTPS+OAuth para acesso externo.
