@@ -41,6 +41,12 @@ class HMLPreflight(unittest.TestCase):
             self.assertIn("read_only: true", content)
             self.assertIn("no-new-privileges:true", content)
 
+    def test_mcp_bind_is_container_reachable(self):
+        content = (SERVER / "main.py").read_text(encoding="utf-8")
+        self.assertIn('host="0.0.0.0"', content)
+        self.assertIn("port=8000", content)
+        self.assertIn('mcp.run(transport="streamable-http")', content)
+
     def test_remote_publication_not_misrepresented(self):
         self.assertFalse((ROOT / "plugin-draft/mcp.json").exists(),
                          "Do not invent an MCP HTTPS URL before real deployment")
