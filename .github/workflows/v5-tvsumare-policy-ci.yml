@@ -44,14 +44,14 @@ jobs:
           set -eu
           docker run -d --name v5-pr71-smoke --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=16m -p 127.0.0.1:18967:8000 vitrine-v5-pr71-smoke:ci
           trap 'docker rm -f v5-pr71-smoke >/dev/null 2>&1 || true' EXIT
-          docker cp connector-v5/tests/smoke_mcp_isolated.py v5-pr71-smoke:/tmp/mcp_smoke.py
+          python -m pip install --disable-pip-version-check 'fastmcp>=2.10,<3'
           for attempt in $(seq 1 30); do
             if python -c "import socket; s=socket.create_connection(('127.0.0.1',18967),1); s.close()" 2>/dev/null; then
               break
             fi
             sleep 1
           done
-          docker exec v5-pr71-smoke python /tmp/mcp_smoke.py
+          V5_SMOKE_URL=http://127.0.0.1:18967/mcp python connector-v5/tests/smoke_mcp_isolated.py
       - name: Verify production inspection does not grant deployment
         run: |
           python - <<'PY'
