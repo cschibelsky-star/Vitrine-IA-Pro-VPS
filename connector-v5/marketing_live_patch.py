@@ -18,7 +18,7 @@ def _replace_once(source: str, old: str, new: str, label: str) -> str:
 def apply(source: str) -> str:
     source = _replace_once(
         source,
-        'VERSION = "0.5.10-project-phpunit-runner-hardened"',
+        'VERSION = "0.5.11-generic-laravel-test-runner"',
         'VERSION = "0.5.11-marketing-live-homologation"',
         "version",
     )
@@ -27,10 +27,12 @@ def apply(source: str) -> str:
         source,
         '''    commands = {
         "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
+        "tests_laravel": "php artisan test --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
     }''',
         '''    commands = {
         "tests_marketing": "php vendor/bin/phpunit tests/Unit/Marketing --colors=never",
+        "tests_laravel": "php artisan test --colors=never",
         "migrate_pretend": "php artisan migrate --pretend --no-interaction",
         "marketing_gemini_live": "php vendor/bin/phpunit tests/Unit/Marketing/MarketingGeminiLiveHomologationTest.php --colors=never",
     }''',
@@ -48,13 +50,20 @@ def apply(source: str) -> str:
 
     source = _replace_once(
         source,
-        '''    if operation == "tests_marketing":
+        '''    if operation in {"tests_marketing", "tests_laravel"}:
         composer_lock = repository / "composer.lock"''',
-        '''    if operation in {"tests_marketing", "marketing_gemini_live"}:
+        '''    if operation in {"tests_marketing", "tests_laravel", "marketing_gemini_live"}:
         if operation == "marketing_gemini_live" and project_id != "vitrine-marketing-agents-core-hml":
             return {"ok": False, "error": "marketing_live_validation_not_allowed_for_project", "project_id": project_id}
         composer_lock = repository / "composer.lock"''',
         "dependency_scope",
+    )
+
+    source = _replace_once(
+        source,
+        'if operation == "tests_marketing":\n            dependency_image = f"vitrine-marketing-phpunit-deps:{lock_hash}"',
+        'if operation in {"tests_marketing", "marketing_gemini_live"}:\n            dependency_image = f"vitrine-marketing-phpunit-deps:{lock_hash}"',
+        "marketing_live_dependency_image",
     )
 
     source = _replace_once(
