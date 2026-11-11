@@ -47,3 +47,12 @@ Nao modificar Super legado, V4/V5 runtime, TV Sumare, producao, credenciais, mig
 - Ferramentas disponíveis: `public_capabilities`, `connection_requirements`, `service_readiness` (apenas informativas).
 - V5 ativo não alterado; PR #71 ainda em draft e sem merge. Não houve implantação persistente da V2 na VPS, HTTPS público, OAuth ou conexão ao ChatGPT.
 - Próximo gate: autorização controlada para instalar serviço `public_mcp` em HML isolada, com política V5 aprovada e testada; depois comprovar MCP via endpoint HML, autenticação e isolamento por cliente antes de qualquer publicação pública.
+
+## Validação com Docker Compose real — 2026-11-10
+
+- CI do Compose real: GitHub Actions run **42933476006**, commit `aa9fd73217c8eac1872d8a08c7d4f562ed47a7da`: **success**.
+- Build, boot, MCP `initialize`, `tools/list`, `tools/call` e remoção do contêiner efêmero aprovados.
+- Rede HML alterada de `internal:true` para bridge padrão, mantendo publicação exclusiva no loopback `127.0.0.1:8878:8000`; recomenda-se revisar política de egress antes de disponibilização externa.
+- Execução ocorreu em GitHub Actions isolado; **não equivale à instalação persistente na VPS**.
+- PR #71 permanece sem merge e V5 ativo não recebeu a nova política.
+- Pendentes: habilitação controlada do serviço `public_mcp` no V5 ativo ou rota de instalação aprovada e separada, validação de host VPS, HTTPS e autenticação OAuth.
