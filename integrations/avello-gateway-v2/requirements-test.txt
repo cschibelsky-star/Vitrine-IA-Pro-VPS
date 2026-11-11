@@ -1,1 +1,4 @@
 mcp==1.21.0
+# MCP 1.21.0 imports pydantic._internal._typing_extra.eval_type_backport.
+# Keep the isolated test environment on the compatible Pydantic 2.11 line.
+pydantic>=2.11,<2.12
