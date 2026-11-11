@@ -1,0 +1,23 @@
+name: vitrine-super-v2-gateway-hml
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    image: vitrine-super-v2-gateway:0.2.0-dev
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SUPER_V5_READ_ENABLED: "false"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    ports:
+      - "127.0.0.1:8879:8001"
+    networks:
+      - gateway_lab
+networks:
+  gateway_lab:
+    internal: true
