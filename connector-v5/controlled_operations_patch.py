@@ -258,6 +258,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": {"studio_app", "studio_worker", "studio_scheduler"},
         "up": {"studio_app", "studio_web", "studio_worker", "studio_scheduler"},
     },
+    "vitrine-superconector-v2-hml": {
+        "compose_files": {"superconector-v2/server/docker-compose.hml.yml"},
+        "services": {"public_mcp"},
+        "run_once": set(),
+        "build": {"public_mcp"},
+        "up": {"public_mcp"},
+    },
     "tvsumare": {
         "compose_files": {"docker-compose.vps.yml"},
         # Production is observable, but not mutable through generic Compose tools.
@@ -279,7 +286,18 @@ def _controlled_compose_base(project_id: str, compose_file: str) -> tuple[list[s
     manifest, _, repository = _project_paths(project_id)
     project_name = str(manifest.get("docker", {}).get("project_name", project_id) or project_id).strip()
     base = ["docker", "compose"]
-    runtime_target, _ = _runtime_config(manifest)
+    try:
+        runtime_target, _ = _runtime_config(manifest)
+    except PermissionError as exc:
+        # No credentials are needed for the isolated, informational HML service.
+        # Never broaden this exception to other projects or sensitive services.
+        if (
+            project_id == "vitrine-superconector-v2-hml"
+            and str(exc) == "runtime_keys_not_configured"
+            and manifest.get("runtime", {}).get("allowed_keys") == []
+        ):
+            return base + ["-p", project_name, "-f", str(target)], relative, repository
+        raise
     if not runtime_target.is_file():
         return [], relative, repository
     base += ["--env-file", str(runtime_target), "-p", project_name, "-f", str(target)]
