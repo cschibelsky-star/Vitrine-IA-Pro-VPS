@@ -68,6 +68,10 @@ def test_superconector_v2_runtime_exception_is_fail_closed():
             raise PermissionError(error)
         env = {
             "Path": Path,
+            "CONTROLLED_COMPOSE_POLICY": {
+                "vitrine-superconector-v2-hml": {"compose_files": {"superconector-v2/server/docker-compose.hml.yml"}},
+                "tvsumare": {"compose_files": {"docker-compose.vps.yml"}},
+            },
             "_safe_file": lambda *_: (Path("/tmp/dummy-compose.yml"), "superconector-v2/server/docker-compose.hml.yml"),
             "_project_paths": lambda _: (manifest, Path("/tmp"), Path("/tmp")),
             "_runtime_config": runtime_config,
