@@ -1,10 +1,10 @@
 """Isolated read-only MCP gateway V2. No inference, no remote execution."""
 import json
-import hmac
 import os
 import urllib.error
 import urllib.request
 from mcp.server.fastmcp import FastMCP
+from auth_guard import ProtectedMCP
 
 BASE_URL = "https://avellogateway.online"
 MAX_BYTES = 1024 * 1024
@@ -50,30 +50,5 @@ def gateway_models() -> dict:
         return {"status": "network_error"}
     except (ValueError, TypeError):
         return {"status": "invalid_response"}
-
-class ProtectedMCP:
-    """Fail-closed bearer authorization for every HTTP request and websocket."""
-    def __init__(self, inner):
-        self.inner = inner
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] not in ("http", "websocket"):
-            await self.inner(scope, receive, send)
-            return
-        configured = os.getenv("AVELLO_V2_MCP_BEARER_TOKEN", "")
-        headers = scope.get("headers", [])
-        supplied = [value for name, value in headers if name.lower() == b"authorization"]
-        expected = ("Bearer " + configured).encode("utf-8")
-        authorized = bool(configured) and len(supplied) == 1 and hmac.compare_digest(supplied[0], expected)
-        if not authorized:
-            if scope["type"] == "websocket":
-                await send({"type": "websocket.close", "code": 1008})
-            else:
-                await send({"type": "http.response.start", "status": 401,
-                            "headers": [(b"content-type", b"application/json"),
-                                        (b"cache-control", b"no-store")]})
-                await send({"type": "http.response.body", "body": b'{"error":"unauthorized"}'})
-            return
-        await self.inner(scope, receive, send)
 
 app = ProtectedMCP(mcp.streamable_http_app())
