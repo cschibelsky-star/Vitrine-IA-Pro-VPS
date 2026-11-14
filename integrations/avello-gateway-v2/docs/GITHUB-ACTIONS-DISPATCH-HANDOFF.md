@@ -59,3 +59,10 @@ CODE PREPARED ONLY. No tests executed, no external workflow started, no plugin c
 - Dependencias testadas: mcp==1.21.0 e pydantic==2.11.10. A execucao anterior 43551048566 falhou na importacao eval_type_backport com Pydantic 2.14.3.
 - Evidencia limita-se a testes offline e introspeccao do registro MCP. NAO comprova autorizacao de emissor, dispatch remoto, Actions:write, deploy, disponibilidade externa ou seguranca de producao.
 - Nao habilitar VIA_GITHUB_DISPATCH_TOOL_ENABLED sem gate de emissor confiavel, rate limit, auditoria e validacao do workflow no default branch.
+
+## CI do controle de autorizacao — aprovado (2026-11-14)
+- Run: https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS/actions/runs/43551482153
+- Job 132314728460; commit 214963571a6d3ea95a73f45414d612cfe9740cfd; conclusao success.
+- Logs: Ran 22 tests in 0.034s; OK. Registry: 2 read-only tools.
+- Cobertura adicionada: replay_denied e rate_limited por identidade; controle atomico via SQLite BEGIN IMMEDIATE.
+- Limites: testes offline nao validam assinatura de um emissor real, integracao em HML, Actions:write nem dispatch remoto. Ferramenta permanece desativada; PR draft.
