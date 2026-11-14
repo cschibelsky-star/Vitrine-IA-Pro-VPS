@@ -37,3 +37,10 @@ CODE PREPARED ONLY. No tests executed, no external workflow started, no plugin c
 - A funcao ainda depende de um gate server-side VIA_GITHUB_DISPATCH_APPROVED; uma flag global NAO substitui autorizacao por usuario, nem permite implantacao. Nao ativar ambas as flags antes de substituir a flag por verificacao autenticada por chamada e auditoria persistente.
 - Verificacao de GitHub: branch padrao de JARVIS e main, contendo apenas android-apk-hml.yml e android-apk.yml; workflow via-android-118-isolated-validation.yml existe somente na branch experimental. O workflow_dispatch nao esta pronto para acionamento manual por esta rota.
 - Nenhuma chamada de dispatch, deploy, alteracao de credencial ou exposicao MCP foi realizada.
+
+## Atualizacao — politica de autorizacao isolada
+- Criados dispatch_authorization.py e tests/test_dispatch_authorization.py no PR #75.
+- Politica: identidade de origem autenticada (exigida a montante), assinatura HMAC por requisicao vinculada ao destino fixo, janela de 120 segundos e nonce de uso unico gravado em SQLite.
+- Esta politica nao esta integrada ao ingress MCP; nao existe endpoint de dispatch exposto. A auditoria atual e apenas ledger de nonce, nao um historico completo de requisicoes e resultados.
+- Testes adicionados, mas ainda nao comprovados por execucao de CI; verificar e corrigir falhas antes de habilitar.
+- Necessario validar autenticacao real do solicitante, auditoria persistente de decisoes e resultados, rate limiting, correlacao do run_id, permissao Actions:write e disponibilidade do workflow na branch padrao.
