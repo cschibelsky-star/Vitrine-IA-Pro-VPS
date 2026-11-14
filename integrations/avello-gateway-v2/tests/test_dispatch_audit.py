@@ -16,11 +16,12 @@ class AuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "ledger.sqlite")
             with patch.dict(os.environ, {"VIA_DISPATCH_NONCE_DB": path}):
-                record("operator-1", "a"*32, "blocked", "dispatch_attempt")
+                record("operator-1", "a"*32, "dispatch_attempt")
                 record("operator-1", "a"*32, "accepted_not_verified")
             with sqlite3.connect(path) as db:
                 rows = db.execute("SELECT identity, nonce, outcome FROM dispatch_events ORDER BY event_id").fetchall()
             self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0][2], "dispatch_attempt")
             self.assertEqual(rows[1][2], "accepted_not_verified")
 
     def test_missing_audit_storage_fails_closed(self):
