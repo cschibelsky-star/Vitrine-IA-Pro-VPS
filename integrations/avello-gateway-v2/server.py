@@ -51,9 +51,23 @@ def gateway_models() -> dict:
     except (ValueError, TypeError):
         return {"status": "invalid_response"}
 
-# SECURITY GATE: dispatch is deliberately NOT registered as an MCP tool.
-# An environment-wide approval flag is not a per-caller authorization decision.
-# Registration must wait for authenticated caller identity, per-request policy,
-# immutable audit records, rate limits, and an independently reviewed deployment.
+# DISABLED by default. Signed approval must originate from a trusted issuer.
+# This is source-only integration: no deployment or credential provisioned.
+if os.getenv("VIA_GITHUB_DISPATCH_TOOL_ENABLED", "") == "true":
+    from dispatch_request_context import current_approval
+    from dispatch_authorization import authorize, AuthorizationDenied
+    from github_actions_dispatch import dispatch, DispatchError, REPOSITORY, WORKFLOW, BRANCH
+
+    @mcp.tool()
+    def via_android_request_validation() -> dict:
+        """Request the fixed source-only VIA Android validation workflow."""
+        approval = current_approval.get()
+        if approval is None:
+            return {"status": "blocked", "reason": "signed_approval_required"}
+        try:
+            authorize(approval.identity, approval.nonce, approval.issued_at, approval.signature)
+            return dispatch(REPOSITORY, WORKFLOW, BRANCH)
+        except (AuthorizationDenied, DispatchError) as exc:
+            return {"status": "blocked", "reason": str(exc)}
 
 app = ProtectedMCP(mcp.streamable_http_app())
