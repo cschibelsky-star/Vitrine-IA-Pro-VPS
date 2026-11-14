@@ -36,7 +36,7 @@ class AuthorizationTests(unittest.TestCase):
         signature = self.signature()
         result = policy.authorize(self.identity, self.nonce, self.issued, signature, now=self.issued)
         self.assertTrue(result["authorized"])
-        with self.assertRaisesRegex(policy.AuthorizationDenied, "audit_unavailable"):
+        with self.assertRaisesRegex(policy.AuthorizationDenied, "replay_denied"):
             policy.authorize(self.identity, self.nonce, self.issued, signature, now=self.issued)
 
     def test_rejects_forged_identity(self):
@@ -56,6 +56,25 @@ class AuthorizationTests(unittest.TestCase):
     def test_rejects_invalid_nonce(self):
         with self.assertRaisesRegex(policy.AuthorizationDenied, "invalid_nonce"):
             policy.authorize(self.identity, "oops", self.issued, "0"*64, now=self.issued)
+
+    def test_hourly_limit_is_enforced(self):
+        for index in range(policy.MAX_APPROVALS_PER_HOUR):
+            nonce = f"{index + 1:032x}"
+            signature = self.signature(nonce=nonce)
+            result = policy.authorize(self.identity, nonce, self.issued, signature, now=self.issued)
+            self.assertTrue(result["authorized"])
+        nonce = "f" * 32
+        with self.assertRaisesRegex(policy.AuthorizationDenied, "rate_limited"):
+            policy.authorize(self.identity, nonce, self.issued, self.signature(nonce=nonce), now=self.issued)
+
+    def test_other_identity_has_independent_limit(self):
+        for index in range(policy.MAX_APPROVALS_PER_HOUR):
+            nonce = f"{index + 1:032x}"
+            policy.authorize(self.identity, nonce, self.issued, self.signature(nonce=nonce), now=self.issued)
+        identity = "second-operator"
+        nonce = "e" * 32
+        signature = self.signature(identity=identity, nonce=nonce)
+        self.assertTrue(policy.authorize(identity, nonce, self.issued, signature, now=self.issued)["authorized"])
 
 
 if __name__ == "__main__":
