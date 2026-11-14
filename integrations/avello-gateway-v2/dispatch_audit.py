@@ -3,7 +3,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-_ALLOWED = {"accepted_not_verified", "blocked", "dispatch_error"}
+_ALLOWED = {"dispatch_attempt", "accepted_not_verified", "blocked", "dispatch_error"}
 
 
 class AuditUnavailable(Exception):
