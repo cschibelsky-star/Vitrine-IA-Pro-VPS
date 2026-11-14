@@ -72,7 +72,7 @@ if os.getenv("VIA_GITHUB_DISPATCH_TOOL_ENABLED", "") == "true":
         # The approval is consumed before any network call.
         # If audit storage is unavailable, fail closed before dispatch.
         try:
-            record(approval.identity, approval.nonce, "blocked", "dispatch_attempt")
+            record(approval.identity, approval.nonce, "dispatch_attempt")
         except AuditUnavailable:
             return {"status": "blocked", "reason": "audit_unavailable"}
         try:
@@ -86,6 +86,8 @@ if os.getenv("VIA_GITHUB_DISPATCH_TOOL_ENABLED", "") == "true":
                 return {"status": "blocked", "reason": "audit_unavailable"}
             return {"status": "blocked", "reason": str(exc)}
         except AuditUnavailable:
-            return {"status": "blocked", "reason": "audit_unavailable"}
+            # A successful POST may already have been accepted by GitHub.
+            # Never misreport it as blocked or retry automatically.
+            return {"status": "outcome_unknown", "reason": "audit_unavailable_after_dispatch"}
 
 app = ProtectedMCP(mcp.streamable_http_app())
