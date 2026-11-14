@@ -51,4 +51,41 @@ def gateway_models() -> dict:
     except (ValueError, TypeError):
         return {"status": "invalid_response"}
 
+# DISABLED by default. Signed approval must originate from a trusted issuer.
+# This is source-only integration: no deployment or credential provisioned.
+if os.getenv("VIA_GITHUB_DISPATCH_TOOL_ENABLED", "") == "true":
+    from dispatch_request_context import current_approval
+    from dispatch_authorization import authorize, AuthorizationDenied
+    from dispatch_audit import record, AuditUnavailable
+    from github_actions_dispatch import dispatch, DispatchError, REPOSITORY, WORKFLOW, BRANCH
+
+    @mcp.tool()
+    def via_android_request_validation() -> dict:
+        """Request the fixed source-only VIA Android validation workflow."""
+        approval = current_approval.get()
+        if approval is None:
+            return {"status": "blocked", "reason": "signed_approval_required"}
+        try:
+            authorize(approval.identity, approval.nonce, approval.issued_at, approval.signature)
+        except AuthorizationDenied as exc:
+            return {"status": "blocked", "reason": str(exc)}
+        # The approval is consumed before any network call.
+        # If audit storage is unavailable, fail closed before dispatch.
+        try:
+            record(approval.identity, approval.nonce, "blocked", "dispatch_attempt")
+        except AuditUnavailable:
+            return {"status": "blocked", "reason": "audit_unavailable"}
+        try:
+            result = dispatch(REPOSITORY, WORKFLOW, BRANCH)
+            record(approval.identity, approval.nonce, "accepted_not_verified")
+            return result
+        except DispatchError as exc:
+            try:
+                record(approval.identity, approval.nonce, "dispatch_error", str(exc))
+            except AuditUnavailable:
+                return {"status": "blocked", "reason": "audit_unavailable"}
+            return {"status": "blocked", "reason": str(exc)}
+        except AuditUnavailable:
+            return {"status": "blocked", "reason": "audit_unavailable"}
+
 app = ProtectedMCP(mcp.streamable_http_app())
