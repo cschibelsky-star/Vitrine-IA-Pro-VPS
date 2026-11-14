@@ -51,21 +51,9 @@ def gateway_models() -> dict:
     except (ValueError, TypeError):
         return {"status": "invalid_response"}
 
-# Disabled by default. Registration requires an independently approved deployment,
-# GitHub App Actions:write, and a callable policy gate. No GitHub POST on import.
-if os.getenv("VIA_GITHUB_DISPATCH_TOOL_ENABLED", "").lower() == "true":
-    from github_actions_dispatch import dispatch, DispatchError, REPOSITORY, WORKFLOW, BRANCH
-
-    @mcp.tool()
-    def via_android_request_validation() -> dict:
-        """Request the fixed VIA Android source-only CI check; no release/deploy."""
-        # A separate server-side policy gate must explicitly authorize this caller.
-        # Do not infer permission from a valid ingress bearer token alone.
-        if os.getenv("VIA_GITHUB_DISPATCH_APPROVED", "").lower() != "true":
-            return {"status": "blocked", "reason": "approval_required"}
-        try:
-            return dispatch(REPOSITORY, WORKFLOW, BRANCH)
-        except DispatchError as exc:
-            return {"status": "blocked", "reason": str(exc)}
+# SECURITY GATE: dispatch is deliberately NOT registered as an MCP tool.
+# An environment-wide approval flag is not a per-caller authorization decision.
+# Registration must wait for authenticated caller identity, per-request policy,
+# immutable audit records, rate limits, and an independently reviewed deployment.
 
 app = ProtectedMCP(mcp.streamable_http_app())
