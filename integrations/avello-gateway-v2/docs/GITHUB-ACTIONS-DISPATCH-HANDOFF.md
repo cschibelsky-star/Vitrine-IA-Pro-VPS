@@ -44,3 +44,10 @@ CODE PREPARED ONLY. No tests executed, no external workflow started, no plugin c
 - Esta politica nao esta integrada ao ingress MCP; nao existe endpoint de dispatch exposto. A auditoria atual e apenas ledger de nonce, nao um historico completo de requisicoes e resultados.
 - Testes adicionados, mas ainda nao comprovados por execucao de CI; verificar e corrigir falhas antes de habilitar.
 - Necessario validar autenticacao real do solicitante, auditoria persistente de decisoes e resultados, rate limiting, correlacao do run_id, permissao Actions:write e disponibilidade do workflow na branch padrao.
+
+## Integracao autenticada por chamada — 2026-11-14
+- auth_guard.py recebe headers de aprovacao como dados nao confiaveis e os propaga em ContextVar, isolados por requisicao ASGI. Bearer continua obrigatorio.
+- dispatch_request_context.py define o contrato; server.py registra via_android_request_validation SOMENTE com VIA_GITHUB_DISPATCH_TOOL_ENABLED=true (desligado por padrao). A ferramenta exige assinatura HMAC valida e nonce atomico antes de chamar o adaptador.
+- Adicionados testes offline test_dispatch_ingress.py para bloqueio 401, ausencia/duplicacao de headers e isolamento de contexto.
+- ALERTA: nenhuma identidade de emissor confiavel foi integrada; assinatura HMAC nao deve ser emitida pelo proprio usuario ou ChatGPT. Falta autorizacao por operador confiavel, rate limit, auditoria de dispatch e correlacao run_id. Nao habilitar o flag nem implantar.
+- Testes adicionados nesta etapa ainda exigem execucao em checkout real ou CI; o PR continua draft e nao foi acionado workflow externo.
