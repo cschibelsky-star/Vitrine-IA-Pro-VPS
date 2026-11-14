@@ -16,6 +16,7 @@ from pathlib import Path
 from github_actions_dispatch import REPOSITORY, WORKFLOW, BRANCH
 
 MAX_AGE_SECONDS = 120
+MAX_APPROVALS_PER_HOUR = 3
 IDENTITY_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:@-]{2,127}\Z")
 NONCE_PATTERN = re.compile(r"[a-f0-9]{32,64}\Z")
 
@@ -52,11 +53,24 @@ def authorize(identity: str, nonce: str, issued_at: int, signature: str, *, now:
     expected = hmac.new(key.encode(), canonical_message(identity, nonce, issued_at), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature, expected):
         raise AuthorizationDenied("invalid_signature")
-    # Atomic insert with UNIQUE constraint; fail closed on DB errors.
+    # BEGIN IMMEDIATE serializes authorization decisions across workers.
+    # Nonces are never deleted: replay prevention survives restarts.
     try:
-        with sqlite3.connect(ledger, timeout=3) as db:
-            db.execute("CREATE TABLE IF NOT EXISTS approvals (nonce TEXT PRIMARY KEY, identity TEXT NOT NULL, issued_at INTEGER NOT NULL)")
-            db.execute("INSERT INTO approvals (nonce, identity, issued_at) VALUES (?, ?, ?)", (nonce, identity, issued_at))
+        with sqlite3.connect(ledger, timeout=3, isolation_level=None) as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                db.execute("CREATE TABLE IF NOT EXISTS approvals (nonce TEXT PRIMARY KEY, identity TEXT NOT NULL, issued_at INTEGER NOT NULL)")
+                if db.execute("SELECT 1 FROM approvals WHERE nonce = ?", (nonce,)).fetchone():
+                    raise AuthorizationDenied("replay_denied")
+                count = db.execute("SELECT COUNT(*) FROM approvals WHERE identity = ? AND issued_at > ? AND issued_at <= ?",
+                                   (identity, current - 3600, current)).fetchone()[0]
+                if count >= MAX_APPROVALS_PER_HOUR:
+                    raise AuthorizationDenied("rate_limited")
+                db.execute("INSERT INTO approvals (nonce, identity, issued_at) VALUES (?, ?, ?)", (nonce, identity, issued_at))
+                db.execute("COMMIT")
+            except BaseException:
+                db.execute("ROLLBACK")
+                raise
     except sqlite3.Error:
         raise AuthorizationDenied("audit_unavailable") from None
     return {"authorized": True, "identity": identity, "nonce": nonce, "repository": REPOSITORY, "workflow": WORKFLOW, "ref": BRANCH}
