@@ -2,12 +2,18 @@ name: Avello Gateway V2 isolated offline validation
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/github-actions-dispatch-guard-isolated-20261114
+    paths:
+      - integrations/avello-gateway-v2/**
+      - .github/workflows/avello-gateway-v2-isolated.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: avello-v2-isolated-manual
+  group: avello-v2-isolated-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
