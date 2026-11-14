@@ -51,3 +51,11 @@ CODE PREPARED ONLY. No tests executed, no external workflow started, no plugin c
 - Adicionados testes offline test_dispatch_ingress.py para bloqueio 401, ausencia/duplicacao de headers e isolamento de contexto.
 - ALERTA: nenhuma identidade de emissor confiavel foi integrada; assinatura HMAC nao deve ser emitida pelo proprio usuario ou ChatGPT. Falta autorizacao por operador confiavel, rate limit, auditoria de dispatch e correlacao run_id. Nao habilitar o flag nem implantar.
 - Testes adicionados nesta etapa ainda exigem execucao em checkout real ou CI; o PR continua draft e nao foi acionado workflow externo.
+
+## Evidencia GitHub Actions — validacao isolada aprovada (2026-11-14)
+- Workflow run: https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS/actions/runs/43551226829
+- Job: 132313886531, conclusao success, commit testado 40d2cd37cff6e757d5472d6345ace6c3e0ac26ef.
+- Logs: Ran 20 tests in 0.025s; OK. Verificacao adicional: MCP tool registry: verified (2 read-only tools).
+- Dependencias testadas: mcp==1.21.0 e pydantic==2.11.10. A execucao anterior 43551048566 falhou na importacao eval_type_backport com Pydantic 2.14.3.
+- Evidencia limita-se a testes offline e introspeccao do registro MCP. NAO comprova autorizacao de emissor, dispatch remoto, Actions:write, deploy, disponibilidade externa ou seguranca de producao.
+- Nao habilitar VIA_GITHUB_DISPATCH_TOOL_ENABLED sem gate de emissor confiavel, rate limit, auditoria e validacao do workflow no default branch.
