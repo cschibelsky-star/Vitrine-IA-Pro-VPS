@@ -31,3 +31,9 @@ CODE PREPARED ONLY. No tests executed, no external workflow started, no plugin c
 - Resultado: 4 testes passaram; python -m py_compile github_actions_dispatch.py passou.
 - Limite: nao foram executados os testes diretamente de um checkout autenticado do repositorio nem em GitHub Actions; nao houve POST real, uso de token real ou implantacao.
 - Bloqueio de ativacao: workflow_dispatch precisa ser verificado quanto a disponibilidade na branch padrao e a GitHub App precisa comprovar Actions:write. Sem esses dois gates, nao registrar ferramenta MCP nem disparar workflow.
+
+## Atualizacao 2026-11-14 — registro MCP bloqueado
+- server.py recebeu registro condicional da ferramenta via_android_request_validation, desligada por padrao (VIA_GITHUB_DISPATCH_TOOL_ENABLED nao habilitado).
+- A funcao ainda depende de um gate server-side VIA_GITHUB_DISPATCH_APPROVED; uma flag global NAO substitui autorizacao por usuario, nem permite implantacao. Nao ativar ambas as flags antes de substituir a flag por verificacao autenticada por chamada e auditoria persistente.
+- Verificacao de GitHub: branch padrao de JARVIS e main, contendo apenas android-apk-hml.yml e android-apk.yml; workflow via-android-118-isolated-validation.yml existe somente na branch experimental. O workflow_dispatch nao esta pronto para acionamento manual por esta rota.
+- Nenhuma chamada de dispatch, deploy, alteracao de credencial ou exposicao MCP foi realizada.
