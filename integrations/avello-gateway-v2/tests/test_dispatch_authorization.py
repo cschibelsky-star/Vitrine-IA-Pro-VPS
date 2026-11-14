@@ -48,9 +48,10 @@ class AuthorizationTests(unittest.TestCase):
             policy.authorize(self.identity, self.nonce, self.issued, self.signature(), now=self.issued + 121)
 
     def test_rejects_missing_server_policy(self):
+        signature = self.signature()
         with patch.dict(os.environ, {"VIA_DISPATCH_APPROVAL_HMAC_KEY": ""}):
             with self.assertRaisesRegex(policy.AuthorizationDenied, "policy_not_configured"):
-                policy.authorize(self.identity, self.nonce, self.issued, self.signature(), now=self.issued)
+                policy.authorize(self.identity, self.nonce, self.issued, signature, now=self.issued)
 
     def test_rejects_invalid_nonce(self):
         with self.assertRaisesRegex(policy.AuthorizationDenied, "invalid_nonce"):
