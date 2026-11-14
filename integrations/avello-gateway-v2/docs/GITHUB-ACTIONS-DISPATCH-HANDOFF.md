@@ -24,3 +24,10 @@ The connected GitHub plugin can read Actions runs and write repository contents,
 
 ## Current state
 CODE PREPARED ONLY. No tests executed, no external workflow started, no plugin changed, no HML/production deployment. Preserve JARVIS build 117 and installed Samsung app.
+
+## Verificacao offline realizada em 2026-11-14
+- O codigo do adaptador e o conteudo dos quatro testes foram reproduzidos em ambiente Python isolado desta sessao (copia local para verificacao; NAO e CI do GitHub).
+- Comando: python -m unittest discover -s /mnt/data/avello-dispatch-test -p 'test_*.py' -v
+- Resultado: 4 testes passaram; python -m py_compile github_actions_dispatch.py passou.
+- Limite: nao foram executados os testes diretamente de um checkout autenticado do repositorio nem em GitHub Actions; nao houve POST real, uso de token real ou implantacao.
+- Bloqueio de ativacao: workflow_dispatch precisa ser verificado quanto a disponibilidade na branch padrao e a GitHub App precisa comprovar Actions:write. Sem esses dois gates, nao registrar ferramenta MCP nem disparar workflow.
