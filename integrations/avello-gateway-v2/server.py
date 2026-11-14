@@ -56,6 +56,7 @@ def gateway_models() -> dict:
 if os.getenv("VIA_GITHUB_DISPATCH_TOOL_ENABLED", "") == "true":
     from dispatch_request_context import current_approval
     from dispatch_authorization import authorize, AuthorizationDenied
+    from dispatch_audit import record, AuditUnavailable
     from github_actions_dispatch import dispatch, DispatchError, REPOSITORY, WORKFLOW, BRANCH
 
     @mcp.tool()
@@ -66,8 +67,25 @@ if os.getenv("VIA_GITHUB_DISPATCH_TOOL_ENABLED", "") == "true":
             return {"status": "blocked", "reason": "signed_approval_required"}
         try:
             authorize(approval.identity, approval.nonce, approval.issued_at, approval.signature)
-            return dispatch(REPOSITORY, WORKFLOW, BRANCH)
-        except (AuthorizationDenied, DispatchError) as exc:
+        except AuthorizationDenied as exc:
             return {"status": "blocked", "reason": str(exc)}
+        # The approval is consumed before any network call.
+        # If audit storage is unavailable, fail closed before dispatch.
+        try:
+            record(approval.identity, approval.nonce, "blocked", "dispatch_attempt")
+        except AuditUnavailable:
+            return {"status": "blocked", "reason": "audit_unavailable"}
+        try:
+            result = dispatch(REPOSITORY, WORKFLOW, BRANCH)
+            record(approval.identity, approval.nonce, "accepted_not_verified")
+            return result
+        except DispatchError as exc:
+            try:
+                record(approval.identity, approval.nonce, "dispatch_error", str(exc))
+            except AuditUnavailable:
+                return {"status": "blocked", "reason": "audit_unavailable"}
+            return {"status": "blocked", "reason": str(exc)}
+        except AuditUnavailable:
+            return {"status": "blocked", "reason": "audit_unavailable"}
 
 app = ProtectedMCP(mcp.streamable_http_app())
