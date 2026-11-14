@@ -66,3 +66,11 @@ CODE PREPARED ONLY. No tests executed, no external workflow started, no plugin c
 - Logs: Ran 22 tests in 0.034s; OK. Registry: 2 read-only tools.
 - Cobertura adicionada: replay_denied e rate_limited por identidade; controle atomico via SQLite BEGIN IMMEDIATE.
 - Limites: testes offline nao validam assinatura de um emissor real, integracao em HML, Actions:write nem dispatch remoto. Ferramenta permanece desativada; PR draft.
+
+## CI de auditoria persistente — aprovado (2026-11-14)
+- GitHub Actions: https://github.com/cschibelsky-star/Vitrine-IA-Pro-VPS/actions/runs/43551744903
+- Job 132315561362, commit 27a70ec3b0994e3da2331e33d5e68831b6531d0d, conclusao success.
+- Logs: Ran 25 tests in 0.026s; OK. MCP tool registry: verified (2 read-only tools).
+- Auditoria SQLite testada offline (persistencia de eventos, indisponibilidade do banco e rejeicao de outcome invalido).
+- Importante: evento preflight atualmente registrado com outcome 'blocked' e reason 'dispatch_attempt'; a nomenclatura deve ser corrigida antes de habilitar para nao confundir tentativa autorizada com bloqueio. Resultado aceito nao implica conclusao do workflow.
+- Pendente: emissor confiavel, autorizacao de identidade verificada, Actions:write, correlacao run_id e workflow na branch padrao. Nenhuma implantacao ou chamada de dispatch foi feita.
