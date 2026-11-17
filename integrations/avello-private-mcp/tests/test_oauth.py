@@ -129,6 +129,33 @@ def test_http_pkce_tokens_refresh_revocation_and_private_diagnostics(oauth_env):
     "http://claude.ai/api/mcp/auth_callback", "https://claude.ai.evil.test/api/mcp/auth_callback",
     "https://claude.ai/api/mcp/auth_callback?evil=1", "https://claude.ai/api/mcp/auth_callback#fragment",
     "https://claude.ai/api/mcp/auth_callback/", "https://evil.test@claude.ai/api/mcp/auth_callback"])
+@pytest.mark.parametrize("uri", [
+    "http://127.0.0.1:1455/callback",
+    "http://127.0.0.1:1455/callback/avello2",
+    "http://127.0.0.1:65535/callback/server_123",
+])
+def test_codex_loopback_redirects_allowed(oauth_env, uri):
+    _, client = oauth_env
+    assert register(client, redirect_uris=[uri]).status_code == 201
+
+
+@pytest.mark.parametrize("uri", [
+    "http://127.0.0.1:0/callback",
+    "http://127.0.0.1:65536/callback",
+    "http://localhost:1455/callback",
+    "http://0.0.0.0:1455/callback",
+    "http://127.0.0.2:1455/callback",
+    "http://127.0.0.1:1455/callback?next=evil",
+    "http://127.0.0.1:1455/callback#fragment",
+    "http://127.0.0.1:1455/callback/../../evil",
+    "https://127.0.0.1:1455/callback",
+    "http://127.0.0.1:1455/evil",
+])
+def test_untrusted_codex_redirects_denied(oauth_env, uri):
+    _, client = oauth_env
+    assert register(client, redirect_uris=[uri]).status_code == 400
+
+
 def test_untrusted_redirects_denied(oauth_env,uri):
     _,client=oauth_env
     assert register(client,redirect_uris=[uri]).status_code==400
