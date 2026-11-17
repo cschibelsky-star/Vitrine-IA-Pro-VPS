@@ -13,7 +13,7 @@ The caller MUST prohibit revocation, expired approvals, reuse of one-shot
 approvals, or mismatched operation/tenant. The callback is not an approval
 service and an in-memory value supplied by a caller is not a real approval.
 
-Tokens must be transmitted only over authenticated private channels. Private
+Each grant now includes a random signed `jti`, but uniqueness alone is NOT replay defense. The executor must atomically consume that ID using a trusted shared store before starting a profile, and fail closed if the store is unavailable.\n\nTokens must be transmitted only over authenticated private channels. Private
 keys must be server-side only and must never appear in the Git repository,
 public MCP, executor container, logs, or conversation. Issuer and audience
 must be configured explicitly; the illustrative `.invalid` domain in tests is
