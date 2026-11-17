@@ -1,0 +1,23 @@
+name: Super V2 Mission Grant Issuer Tests
+on:
+  pull_request:
+    paths:
+      - 'superconector-v2/experiments/executor/mission_grant_issuer.py'
+      - 'superconector-v2/experiments/executor/tests/test_mission_grant_issuer.py'
+      - '.github/workflows/super-v2-mission-grant-issuer-tests.yml'
+  workflow_dispatch:
+jobs:
+  mission-grant-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install minimal test requirements
+        run: python -m pip install 'PyJWT[crypto]>=2.9,<3'
+      - name: Unit tests
+        run: python -m unittest discover -s superconector-v2/experiments/executor/tests -p 'test_mission_grant_issuer.py' -v
