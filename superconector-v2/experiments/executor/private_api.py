@@ -12,6 +12,7 @@ import jwt
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 from runner import run_profile
+from mission_grant_ledger import consume_grant, GrantRejected, LedgerUnavailable
 
 HEX40 = re.compile(r"^[a-f0-9]{40}$")
 APP = FastAPI(title="Superconector V2 private HML executor", docs_url=None,
@@ -32,6 +33,7 @@ def _settings() -> dict[str, Any]:
         "sha": os.getenv("SUPER_EXECUTOR_SOURCE_SHA", ""),
         "tenant": os.getenv("SUPER_EXECUTOR_TENANT_ID", ""),
         "server_root": os.getenv("SUPER_EXECUTOR_SERVER_ROOT", "/workspace"),
+        "ledger_path": os.getenv("SUPER_EXECUTOR_GRANT_LEDGER_PATH", ""),
     }
 
 def _identity(request: Request, settings: dict[str, Any]) -> dict[str, Any]:
@@ -43,7 +45,7 @@ def _identity(request: Request, settings: dict[str, Any]) -> dict[str, Any]:
     try:
         claims = jwt.decode(auth[7:], settings["public_key"], algorithms=["RS256"],
                             issuer=settings["issuer"], audience=settings["audience"],
-                            options={"require": ["exp", "iat", "iss", "aud", "sub"]},
+                            options={"require": ["exp", "iat", "iss", "aud", "sub", "nbf", "jti"]},
                             leeway=0)
     except jwt.InvalidTokenError:
         raise HTTPException(401, "invalid_token") from None
@@ -82,6 +84,13 @@ def execute(body: ExecuteRequest, request: Request) -> dict[str, Any]:
         raise HTTPException(403, "profile_not_approved_for_mission")
     if body.profile not in ("probe", "syntax"):
         raise HTTPException(403, "profile_not_allowed")
+    # Check and consume once before any subprocess, never bypass absent ledger.
+    try:
+        consume_grant(s["ledger_path"], claims, pinned_sha=s["sha"])
+    except GrantRejected as exc:
+        raise HTTPException(403, str(exc)) from None
+    except LedgerUnavailable:
+        raise HTTPException(503, "grant_ledger_unavailable") from None
     # Never accept shell, paths, environment or commands from clients.
     result = run_profile(body.profile, Path(s["server_root"]), approval="EXECUTAR",
                          context="isolated-ci-only", source_sha=s["sha"])
