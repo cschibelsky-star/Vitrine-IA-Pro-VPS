@@ -39,10 +39,11 @@ def test_superconector_v2_hml_policy_is_narrow():
     base = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
     source = apply_controlled_operations_patch(apply_marketing_live_patch(base))
     assert '"vitrine-superconector-v2-hml": {' in source
-    assert '"compose_files": {"superconector-v2/server/docker-compose.hml.yml"}' in source
-    assert '"services": {"public_mcp"}' in source
-    assert '"build": {"public_mcp"}' in source
-    assert '"up": {"public_mcp"}' in source
+    assert '"superconector-v2/server/docker-compose.hml.yml"' in source
+    assert '"superconector-v2/experiments/executor/docker-compose.private-hml.yml"' in source
+    assert '"services": {"public_mcp", "private_executor"}' in source
+    assert '"build": {"public_mcp", "private_executor"}' in source
+    assert '"up": {"public_mcp", "private_executor"}' in source
     assert 'project_id == "vitrine-superconector-v2-hml"' in source
     assert 'manifest.get("runtime", {}).get("allowed_keys") == []' in source
     assert '"run_once": set()' in source
@@ -169,3 +170,17 @@ def test_superconector_v2_controlled_build_authorization_behavior():
         denial = execute(project, hml_path, service, operation, confirm)
         assert denial["error"] == expected
         assert len(calls) == 1, "Denied request invoked Docker"
+
+
+def test_private_executor_is_explicitly_hml_only():
+    base = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
+    source = apply_controlled_operations_patch(apply_marketing_live_patch(base))
+    policy = source.split("CONTROLLED_COMPOSE_POLICY:", 1)[1].split("def _controlled_compose_base", 1)[0]
+    super_only = policy.split('"vitrine-superconector-v2-hml": {', 1)[1].split('\n    },', 1)[0]
+    assert '"superconector-v2/experiments/executor/docker-compose.private-hml.yml"' in super_only
+    assert '"services": {"public_mcp", "private_executor"}' in super_only
+    assert '"build": {"public_mcp", "private_executor"}' in super_only
+    assert '"up": {"public_mcp", "private_executor"}' in super_only
+    assert '"run_once": set()' in super_only
+    assert '"private_executor"' not in policy.split('"vitrine-superconector-v2-hml": {', 1)[0]
+    assert '"private_executor"' not in policy.split('"vitrine-superconector-v2-hml": {', 1)[1].split('\n    },', 1)[1]

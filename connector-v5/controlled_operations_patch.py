@@ -259,11 +259,14 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "up": {"studio_app", "studio_web", "studio_worker", "studio_scheduler"},
     },
     "vitrine-superconector-v2-hml": {
-        "compose_files": {"superconector-v2/server/docker-compose.hml.yml"},
-        "services": {"public_mcp"},
+        "compose_files": {
+            "superconector-v2/server/docker-compose.hml.yml",
+            "superconector-v2/experiments/executor/docker-compose.private-hml.yml",
+        },
+        "services": {"public_mcp", "private_executor"},
         "run_once": set(),
-        "build": {"public_mcp"},
-        "up": {"public_mcp"},
+        "build": {"public_mcp", "private_executor"},
+        "up": {"public_mcp", "private_executor"},
     },
     "tvsumare": {
         "compose_files": {"docker-compose.vps.yml"},
