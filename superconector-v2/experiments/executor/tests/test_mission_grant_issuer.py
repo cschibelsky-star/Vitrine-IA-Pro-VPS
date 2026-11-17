@@ -42,6 +42,16 @@ class MissionGrantTests(unittest.TestCase):
         self.assertEqual(claims["exp"] - claims["iat"], 120)
         self.assertEqual(claims["source_sha"], SHA)
 
+    def test_signed_grants_have_unique_jti(self):
+        def decode(token):
+            return jwt.decode(token, self.public, algorithms=["RS256"],
+                              audience="super-private-executor-hml",
+                              issuer="https://auth.example.invalid/hml",
+                              options={"verify_exp": False, "verify_nbf": False})
+        first, second = decode(self.issue()), decode(self.issue())
+        self.assertTrue(first["jti"])
+        self.assertNotEqual(first["jti"], second["jti"])
+
     def test_wrong_subject_fails(self):
         with self.assertRaises(GrantDenied):
             self.issue(authenticated_subject="other-user")
