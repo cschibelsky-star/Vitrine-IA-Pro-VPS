@@ -1,0 +1,24 @@
+name: Superconector V2 isolated executor proof
+
+on:
+  pull_request:
+    paths:
+      - "superconector-v2/experiments/executor/**"
+      - ".github/workflows/super-v2-isolated-executor-proof.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-linux-executor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Execute permitted profiles and fail-closed negative tests
+        run: python -m unittest discover -s superconector-v2/experiments/executor -p 'test_*.py' -v
