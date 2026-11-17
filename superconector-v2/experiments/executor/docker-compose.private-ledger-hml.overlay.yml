@@ -1,0 +1,20 @@
+# DEVELOPMENT CANDIDATE ONLY. DO NOT USE UNTIL A TRUSTED APPROVAL
+# SERVICE, INDEPENDENT REVIEW AND EXPLICIT HML AUTHORIZATION EXIST.
+# Base docker-compose.private-hml.yml always keeps execution disabled.
+services:
+  private_executor:
+    environment:
+      SUPER_EXECUTOR_HML_ENABLED: "false"
+      SUPER_EXECUTOR_GRANT_LEDGER_PATH: /var/lib/super-grants/ledger.sqlite
+    volumes:
+      # Host path must be isolated to this HML executor and preprovisioned.
+      # This shared DB DOES NOT enforce table-level write separation:
+      # an attacker with executor DB write access can alter approvals.
+      # A separate authorization service/transactional API is REQUIRED
+      # before granting any real mission. This overlay is NOT deployment-ready.
+      - type: bind
+        source: ${SUPER_EXECUTOR_LEDGER_HOST_DIR:?missing_isolated_hml_ledger_directory}
+        target: /var/lib/super-grants
+        read_only: false
+        bind:
+          create_host_path: false
