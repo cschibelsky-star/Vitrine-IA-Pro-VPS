@@ -41,12 +41,21 @@ def digest(value):
 
 
 def allowed_redirect(uri):
-    # Each exact URI is also bound to its registered client by the SDK.
-    if str(uri) == "https://claude.ai/api/mcp/auth_callback":
+    # Each exact URI is bound to the registered client by the MCP SDK.
+    # Codex uses a local HTTP callback with an ephemeral port and may append
+    # a server-specific callback ID. Only numeric IPv4 loopback is permitted.
+    value = str(uri)
+    if value == "https://claude.ai/api/mcp/auth_callback":
         return True
+    loopback = re.fullmatch(
+        r"http://127\.0\.0\.1:([0-9]{1,5})/callback(?:/[A-Za-z0-9_-]{1,128})?",
+        value,
+    )
+    if loopback:
+        return 1 <= int(loopback.group(1)) <= 65535
     return bool(re.fullmatch(
         r"https://chatgpt\.com/(?:connector_platform_oauth_redirect|connector/oauth/[A-Za-z0-9_-]{1,160})",
-        str(uri),
+        value,
     ))
 
 
@@ -113,7 +122,7 @@ class GoogleProvider:
 
     async def register_client(self, client_info):
         if not client_info.redirect_uris or not all(allowed_redirect(x) for x in client_info.redirect_uris):
-            raise RegistrationError("invalid_redirect_uri", "Only supported ChatGPT or Claude callbacks are accepted")
+            raise RegistrationError("invalid_redirect_uri", "Only supported ChatGPT, Claude, or Codex loopback callbacks are accepted")
         if client_info.token_endpoint_auth_method != "none":
             raise RegistrationError("invalid_client_metadata", "Use the public PKCE client method: none")
         if set((client_info.scope or "").split()) != {SCOPE}:
