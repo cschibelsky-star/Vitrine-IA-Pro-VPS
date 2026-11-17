@@ -43,6 +43,7 @@ CREATE TABLE consumed_grants (
     approval_id TEXT NOT NULL,
     tenant_id TEXT NOT NULL,
     consumed_at INTEGER NOT NULL,
+    UNIQUE (mission_id, approval_id),
     FOREIGN KEY (mission_id, approval_id)
         REFERENCES approved_missions(mission_id, approval_id)
 );
