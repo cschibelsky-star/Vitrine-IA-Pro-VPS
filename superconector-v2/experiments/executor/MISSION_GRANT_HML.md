@@ -76,3 +76,38 @@ This review is a preliminary engineering assessment, NOT independent sign-off.
 The optional shared-SQLite mount can be used **only for disposable isolated
 engineering tests** with fictitious approvals. It is not a trustworthy
 institutional approval register for real missions.
+
+
+## Private approval authority candidate (2026-11-17)
+
+**Not deployed or activated.** The approval authority runs as UID 10002,
+is independent from the executor UID 10001 and exposes no TCP port.
+It owns the persistent SQLite store under a mount that is NOT present
+in the executor container. Its only HTTP route is POST /internal/consume
+over a preprovisioned Unix-domain socket. The executor mounts the socket
+directory read-only and forwards the original signed grant; it never
+receives write access to the database.
+
+`docker-compose.private-ledger-hml.overlay.yml` is a candidate only;
+do not apply until review, preprovisioned directory ACLs, trusted
+institutional issuance, immutable pinned checkout, and real HML tests.
+The authority and executor must use the same pinned public verification
+key and SHA. An issuer private key must never be mounted into either.
+
+**Trust gaps, not waived by passing CI:**
+- Unix socket filesystem ACLs and host bind ownership must be validated
+  on the target VPS, including denial of access from unrelated containers.
+- The service authenticates bearer mission grants, not an independent
+  caller identity. The socket must be exclusively reachable by the
+  intended executor, and grants must be kept private. The host's Docker
+  administration remains a trusted boundary.
+- A separately authenticated institutional provisioning process must
+  still create/revoke immutable approvals. No provisioning API is exposed.
+- A single SQLite store and instance must be retained for this candidate.
+  Protect durability, startup verification, backups, permissions and
+  approval audit trail. Test service termination/network isolation.
+- Current consume-then-execute ordering prevents replay but can consume
+  an authorization even when a subsequent subprocess fails. This is
+  fail-closed, but requires explicit operational retry policy.
+- No independent security review has signed off this design; no live
+  mission authority, key issuance, approval provisioning, or HML deploy.
