@@ -36,6 +36,11 @@ class GrantLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(GrantRejected, "grant_replayed"):
             self.consume()
 
+    def test_same_approval_with_new_jti_denied(self):
+        self.consume()
+        with self.assertRaisesRegex(GrantRejected, "grant_replayed"):
+            self.consume({**self.claims, "jti": "grant-2"})
+
     def test_replay_after_reopening_db(self):
         self.consume()
         with self.assertRaises(GrantRejected):
