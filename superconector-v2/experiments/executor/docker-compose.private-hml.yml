@@ -1,0 +1,35 @@
+name: vitrine-super-v2-executor-hml
+services:
+  private_executor:
+    build:
+      context: ../../..
+      dockerfile: superconector-v2/experiments/executor/Dockerfile.private
+    restart: "no"
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    pids_limit: 32
+    mem_limit: 192m
+    cpus: 0.5
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    environment:
+      SUPER_EXECUTOR_HML_ENABLED: "false"
+      SUPER_EXECUTOR_SOURCE_SHA: "${SUPER_EXECUTOR_SOURCE_SHA:-}"
+      SUPER_EXECUTOR_OIDC_ISSUER: "${SUPER_EXECUTOR_OIDC_ISSUER:-}"
+      SUPER_EXECUTOR_OIDC_AUDIENCE: "${SUPER_EXECUTOR_OIDC_AUDIENCE:-}"
+      SUPER_EXECUTOR_OIDC_PUBLIC_KEY: "${SUPER_EXECUTOR_OIDC_PUBLIC_KEY:-}"
+      SUPER_EXECUTOR_TENANT_ID: "${SUPER_EXECUTOR_TENANT_ID:-}"
+      SUPER_EXECUTOR_SERVER_ROOT: /workspace
+    networks: [private_hml_net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/healthz', timeout=3)"]
+      interval: 30s
+      retries: 2
+      timeout: 5s
+      start_period: 10s
+networks:
+  private_hml_net:
+    internal: true
