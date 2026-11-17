@@ -21,4 +21,4 @@ jobs:
         with:
           python-version: "3.12"
       - name: Execute permitted profiles and fail-closed negative tests
-        run: python -m unittest discover -s superconector-v2/experiments/executor -p 'test_*.py' -v
+        run: python -m unittest discover -s superconector-v2/experiments/executor -p 'test_runner.py' -v

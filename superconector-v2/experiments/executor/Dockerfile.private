@@ -1,0 +1,11 @@
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
+WORKDIR /opt/executor
+RUN groupadd -g 10001 executor && useradd -u 10001 -g executor -M -s /usr/sbin/nologin executor
+COPY superconector-v2/experiments/executor/requirements-private.txt /opt/executor/requirements-private.txt
+RUN pip install --no-cache-dir -r /opt/executor/requirements-private.txt
+COPY superconector-v2/experiments/executor/runner.py superconector-v2/experiments/executor/private_api.py /opt/executor/
+COPY superconector-v2/server/main.py superconector-v2/server/gateway.py /workspace/
+USER executor
+EXPOSE 8091
+CMD ["uvicorn", "private_api:APP", "--host", "0.0.0.0", "--port", "8091", "--no-access-log"]
