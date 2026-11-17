@@ -45,3 +45,34 @@ NOT a provider.
 
 Requires `PyJWT[crypto]`. The test generates an ephemeral RSA key in memory.
 No production keys, Docker socket, or external HTTP connections are used.
+
+
+## 2026-11-17 review — trust boundary and isolated ledger candidate
+
+This review is a preliminary engineering assessment, NOT independent sign-off.
+
+- Packaging: `Dockerfile.private` includes the verification/consumption library.
+- Optional overlay: `docker-compose.private-ledger-hml.overlay.yml` specifies a
+  host-provisioned persistent private bind mount, no automatic creation, and
+  retains `SUPER_EXECUTOR_HML_ENABLED=false`. This overlay is NOT applied.
+- Provisioning ownership: only an authenticated institutionally operated
+  authorization service may register/revoke approvals. The executor must
+  never expose admin/provisioning operations to clients.
+- **Critical blocker:** SQLite uses database-file write permissions rather
+  than per-table grants. Sharing a writable SQLite database with the executor
+  means the executor's account can potentially rewrite `approved_missions`.
+  Application-level conventions are NOT a security boundary. Do not claim
+  exclusive institutional provisioning when this shared-write design is used.
+- Required production-grade alternative: move the authoritative approval
+  records to a separately owned service/store. Have a tightly scoped internal
+  authorization service transactionally validate revocation and consume grants
+  through a private authenticated channel; the executor receives no write access
+  to the authoritative approvals store. Evaluate atomicity, durability, replay,
+  service-down fail-closed behavior, audit and key management in an independent review.
+- Other gates: source-SHA provenance, locked-down private execution path,
+  operator identity, revocation under concurrent requests, backup/restore and
+  fail-closed startup. No HML activation before all gates pass.
+
+The optional shared-SQLite mount can be used **only for disposable isolated
+engineering tests** with fictitious approvals. It is not a trustworthy
+institutional approval register for real missions.
