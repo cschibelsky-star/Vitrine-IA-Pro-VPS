@@ -39,10 +39,11 @@ def test_superconector_v2_hml_policy_is_narrow():
     base = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
     source = apply_controlled_operations_patch(apply_marketing_live_patch(base))
     assert '"vitrine-superconector-v2-hml": {' in source
-    assert '"compose_files": {"superconector-v2/server/docker-compose.hml.yml"}' in source
-    assert '"services": {"public_mcp"}' in source
-    assert '"build": {"public_mcp"}' in source
-    assert '"up": {"public_mcp"}' in source
+    assert '"superconector-v2/server/docker-compose.hml.yml"' in source
+    assert '"superconector-v2/experiments/executor/docker-compose.private-hml.yml"' in source
+    assert '"services": {"public_mcp", "private_executor"}' in source
+    assert '"build": {"public_mcp", "private_executor"}' in source
+    assert '"up": {"public_mcp", "private_executor"}' in source
     assert 'project_id == "vitrine-superconector-v2-hml"' in source
     assert 'manifest.get("runtime", {}).get("allowed_keys") == []' in source
     assert '"run_once": set()' in source
