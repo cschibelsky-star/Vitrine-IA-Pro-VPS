@@ -124,11 +124,6 @@ def test_http_pkce_tokens_refresh_revocation_and_private_diagnostics(oauth_env):
         assert value.encode() not in raw
 
 
-@pytest.mark.parametrize("uri",["http://chatgpt.com/connector/oauth/a","https://chatgpt.com.evil.test/connector/oauth/a",
-    "https://evil.test/callback","https://chatgpt.com/connector/oauth/a?evil=1","https://chatgpt.com/connector/oauth/a#fragment",
-    "http://claude.ai/api/mcp/auth_callback", "https://claude.ai.evil.test/api/mcp/auth_callback",
-    "https://claude.ai/api/mcp/auth_callback?evil=1", "https://claude.ai/api/mcp/auth_callback#fragment",
-    "https://claude.ai/api/mcp/auth_callback/", "https://evil.test@claude.ai/api/mcp/auth_callback"])
 @pytest.mark.parametrize("uri", [
     "http://127.0.0.1:1455/callback",
     "http://127.0.0.1:1455/callback/avello2",
@@ -156,6 +151,11 @@ def test_untrusted_codex_redirects_denied(oauth_env, uri):
     assert register(client, redirect_uris=[uri]).status_code == 400
 
 
+@pytest.mark.parametrize("uri",["http://chatgpt.com/connector/oauth/a","https://chatgpt.com.evil.test/connector/oauth/a",
+    "https://evil.test/callback","https://chatgpt.com/connector/oauth/a?evil=1","https://chatgpt.com/connector/oauth/a#fragment",
+    "http://claude.ai/api/mcp/auth_callback", "https://claude.ai.evil.test/api/mcp/auth_callback",
+    "https://claude.ai/api/mcp/auth_callback?evil=1", "https://claude.ai/api/mcp/auth_callback#fragment",
+    "https://claude.ai/api/mcp/auth_callback/", "https://evil.test@claude.ai/api/mcp/auth_callback"])
 def test_untrusted_redirects_denied(oauth_env,uri):
     _,client=oauth_env
     assert register(client,redirect_uris=[uri]).status_code==400
