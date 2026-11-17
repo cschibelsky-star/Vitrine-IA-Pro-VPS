@@ -3,12 +3,16 @@ import os
 import pathlib
 import time
 import unittest
+import sqlite3
+import tempfile
+from uuid import uuid4
 from unittest.mock import patch
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from private_api import APP
+from mission_grant_ledger import SCHEMA
 
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "server"
 SHA = "a" * 40
@@ -26,6 +30,16 @@ class PrivateApiTests(unittest.TestCase):
             serialization.PublicFormat.SubjectPublicKeyInfo).decode()
 
     def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.ledger = str(pathlib.Path(self.temp.name) / "approvals.sqlite")
+        with sqlite3.connect(self.ledger) as con:
+            con.executescript(SCHEMA)
+            con.execute(
+                "INSERT INTO approved_missions VALUES (?,?,?,?,?,?,?,?)",
+                ("mission-test-1", "approval-test-1", "tenant-hml",
+                 "tester", "probe", SHA, int(time.time()) + 600, None)
+            )
         self.env = patch.dict(os.environ, {
             "SUPER_EXECUTOR_HML_ENABLED": "true",
             "SUPER_EXECUTOR_OIDC_ISSUER": "https://example.invalid/oidc",
@@ -34,6 +48,7 @@ class PrivateApiTests(unittest.TestCase):
             "SUPER_EXECUTOR_TENANT_ID": "tenant-hml",
             "SUPER_EXECUTOR_SOURCE_SHA": SHA,
             "SUPER_EXECUTOR_SERVER_ROOT": str(ROOT),
+            "SUPER_EXECUTOR_GRANT_LEDGER_PATH": self.ledger,
         })
         self.env.start()
         self.addCleanup(self.env.stop)
@@ -42,7 +57,8 @@ class PrivateApiTests(unittest.TestCase):
     def token(self, **changes):
         now = int(time.time())
         claims = dict(iss="https://example.invalid/oidc", aud="super-executor-hml",
-                      sub="tester", iat=now, exp=now+90,
+                      sub="tester", iat=now, nbf=now, exp=now+90, jti=str(uuid4()),
+                      source_sha=SHA,
                       tenant_id="tenant-hml", scope="executor:hml:run",
                       mission_id="mission-test-1", approval_id="approval-test-1",
                       approved_profile="probe")
@@ -63,6 +79,29 @@ class PrivateApiTests(unittest.TestCase):
         self.assertEqual(result["exit_code"], 0)
         self.assertIn("vitrine_executor_probe_ok", result["stdout"])
         self.assertFalse(result["production_allowed"])
+
+    def test_replay_same_token_rejected(self):
+        token = self.token()
+        self.assertEqual(self.invoke(token=token).status_code, 200)
+        second = self.invoke(token=token)
+        self.assertEqual(second.status_code, 403)
+        self.assertEqual(second.json()["detail"], "grant_replayed")
+
+    def test_second_token_same_approval_rejected(self):
+        self.assertEqual(self.invoke().status_code, 200)
+        self.assertEqual(self.invoke().status_code, 403)
+
+    def test_revoked_approval_rejected(self):
+        with sqlite3.connect(self.ledger) as con:
+            con.execute("UPDATE approved_missions SET revoked_at=? WHERE mission_id=?",
+                        (int(time.time()), "mission-test-1"))
+        self.assertEqual(self.invoke().status_code, 403)
+
+    def test_ledger_unavailable_is_fail_closed(self):
+        os.environ["SUPER_EXECUTOR_GRANT_LEDGER_PATH"] = ""
+        response = self.invoke()
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"], "grant_ledger_unavailable")
 
     def test_missing_bearer(self):
         self.assertEqual(self.client.post("/v1/hml/execute", json={
