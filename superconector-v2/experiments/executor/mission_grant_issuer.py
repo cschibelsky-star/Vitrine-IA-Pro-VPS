@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 import re
+from uuid import uuid4
 import jwt
 
 SHA40 = re.compile(r"^[a-f0-9]{40}$")
@@ -76,6 +77,7 @@ def issue_mission_grant(
     issued_at = int(now.timestamp())
     claims = {
         "iss": issuer, "aud": audience, "sub": authenticated_subject,
+        "jti": str(uuid4()),
         "iat": issued_at, "nbf": issued_at, "exp": issued_at + ttl_seconds,
         "tenant_id": mission.tenant_id, "mission_id": mission.mission_id,
         "approval_id": mission.approval_id, "approved_profile": mission.approved_profile,
