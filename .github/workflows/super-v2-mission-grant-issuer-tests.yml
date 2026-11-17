@@ -3,7 +3,10 @@ on:
   pull_request:
     paths:
       - 'superconector-v2/experiments/executor/mission_grant_issuer.py'
+      - 'superconector-v2/experiments/executor/mission_grant_ledger.py'
+      - 'superconector-v2/experiments/executor/private_api.py'
       - 'superconector-v2/experiments/executor/tests/test_mission_grant_issuer.py'
+      - 'superconector-v2/experiments/executor/tests/test_mission_grant_ledger.py'
       - '.github/workflows/super-v2-mission-grant-issuer-tests.yml'
   workflow_dispatch:
 jobs:
@@ -20,4 +23,4 @@ jobs:
       - name: Install minimal test requirements
         run: python -m pip install 'PyJWT[crypto]>=2.9,<3'
       - name: Unit tests
-        run: python -m unittest discover -s superconector-v2/experiments/executor/tests -p 'test_mission_grant_issuer.py' -v
+        run: python -m unittest discover -s superconector-v2/experiments/executor/tests -p 'test_mission_grant_*.py' -v
