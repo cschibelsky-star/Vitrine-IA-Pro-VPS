@@ -377,3 +377,37 @@ def test_consent_errors_distinguish_missing_browser_session_and_expired_records(
     response = client.post("/oauth/consent", data={"csrf": csrf, "decision": "allow"}, headers={"Origin": ORIGIN})
     assert response.status_code == 400
     assert "Fluxo de autorização ausente ou expirado" in response.text
+
+
+@pytest.mark.parametrize("callback,expected", [
+    ("http://127.0.0.1:1455/callback", "http://127.0.0.1:1455"),
+    ("http://127.0.0.1:23117/callback/avello2", "http://127.0.0.1:23117"),
+    ("https://chatgpt.com/connector/oauth/test-callback-id", "https://chatgpt.com"),
+    ("https://claude.ai/api/mcp/auth_callback", "https://claude.ai"),
+])
+def test_consent_csp_allows_only_registered_callback_origin(oauth_env, monkeypatch, callback, expected):
+    monkeypatch.setattr(sys.modules[__name__], "REDIRECT", callback)
+    _, client = oauth_env
+    cid = register(client).json()["client_id"]
+    response = begin(client, cid)
+    start = client.get(response.headers["location"])
+    assert start.status_code in (302, 307)
+    callback_response = client.get("/oauth/google/callback?state=mock-state&code=mock-google-code")
+    assert callback_response.status_code == 303
+    page = client.get(callback_response.headers["location"])
+    assert page.status_code == 200
+    assert "form-action 'self' " + expected + ";" in page.headers["content-security-policy"]
+    assert "http://127.0.0.1:" not in page.headers["content-security-policy"] or expected.startswith("http://127.0.0.1:")
+    import re
+    csrf = re.search(r'name="csrf" value="([A-Za-z0-9_-]+)"', page.text).group(1)
+    consent = client.post("/oauth/consent", data={"csrf":csrf,"decision":"allow"}, headers={"Origin":ORIGIN})
+    assert consent.status_code == 303
+    assert consent.headers["location"].startswith(callback)
+    assert "form-action 'self' " + expected + ";" in consent.headers["content-security-policy"]
+
+
+def test_consent_csp_does_not_allow_unvalidated_callback_when_session_missing(oauth_env):
+    _, client = oauth_env
+    response = client.post("/oauth/consent", data={"decision":"allow"}, headers={"Origin":ORIGIN})
+    assert response.status_code == 400
+    assert response.headers["content-security-policy"].split("form-action ", 1)[1].split(";", 1)[0] == "'self'"
