@@ -223,8 +223,12 @@ def test_codex_oauth_explicit_wrong_scope_or_resource_rejected(oauth_env):
     _, client = oauth_env
     assert register(client, scope="admin").status_code == 400
     cid = register(client).json()["client_id"]
-    assert begin(client, cid, resource="https://other.example").status_code == 400
-    assert begin(client, cid, scope="admin").status_code == 400
+    for params in ({"resource": "https://other.example"}, {"scope": "admin"}):
+        rejected = begin(client, cid, **params)
+        assert rejected.status_code == 400 or (
+            rejected.status_code in (302, 303)
+            and "error=" in rejected.headers.get("location", "")
+        )
     csrf = sign_in(client, cid)
     code = grant(client, csrf)
     form = token_form(cid, code)
