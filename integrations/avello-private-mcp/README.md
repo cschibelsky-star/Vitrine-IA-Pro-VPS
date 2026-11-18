@@ -21,8 +21,17 @@ A revogação invalida os dois tokens da família.
 No cliente, cadastrar a URL MCP com **OAuth**, **Dynamic Client Registration (DCR)**
 e método público `none` (PKCE). As credenciais Google NÃO são client ID/secret do
 ChatGPT: pertencem exclusivamente ao trecho servidor → Google.
-Callbacks DCR são restritos aos caminhos OAuth oficiais do ChatGPT; o SDK vincula
-cada URI exata ao cliente registrado. CIMD não é anunciado.
+Callbacks DCR são restritos aos caminhos OAuth oficiais do ChatGPT e Claude
+ou a loopback IPv4 do Codex (`http://127.0.0.1:<porta>/callback[/<id>]`).
+O SDK vincula cada URI exata ao cliente registrado. CIMD não é anunciado.
+O recurso único é `https://avello.hml.vitrineiapro.com.br/mcp` e o escopo
+único é `avello:use`. Se um cliente OAuth omitir `resource` ou `scope`,
+o servidor aplica exclusivamente esses valores fixos; valores explícitos
+diferentes são rejeitados. Isso evita depender de opções manuais do Codex.
+
+No Windows, depois da implantação **autorizada** em HML, testar com
+`codex.cmd mcp login avello2` e `codex.cmd mcp list`.
+Até lá, não esperar que a alteração no PR corrija o login do servidor ativo.
 
 ## Configuração
 

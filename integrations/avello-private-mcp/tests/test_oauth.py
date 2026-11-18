@@ -124,6 +124,33 @@ def test_http_pkce_tokens_refresh_revocation_and_private_diagnostics(oauth_env):
         assert value.encode() not in raw
 
 
+@pytest.mark.parametrize("uri", [
+    "http://127.0.0.1:1455/callback",
+    "http://127.0.0.1:1455/callback/avello2",
+    "http://127.0.0.1:65535/callback/server_123",
+])
+def test_codex_loopback_redirects_allowed(oauth_env, uri):
+    _, client = oauth_env
+    assert register(client, redirect_uris=[uri]).status_code == 201
+
+
+@pytest.mark.parametrize("uri", [
+    "http://127.0.0.1:0/callback",
+    "http://127.0.0.1:65536/callback",
+    "http://localhost:1455/callback",
+    "http://0.0.0.0:1455/callback",
+    "http://127.0.0.2:1455/callback",
+    "http://127.0.0.1:1455/callback?next=evil",
+    "http://127.0.0.1:1455/callback#fragment",
+    "http://127.0.0.1:1455/callback/../../evil",
+    "https://127.0.0.1:1455/callback",
+    "http://127.0.0.1:1455/evil",
+])
+def test_untrusted_codex_redirects_denied(oauth_env, uri):
+    _, client = oauth_env
+    assert register(client, redirect_uris=[uri]).status_code == 400
+
+
 @pytest.mark.parametrize("uri",["http://chatgpt.com/connector/oauth/a","https://chatgpt.com.evil.test/connector/oauth/a",
     "https://evil.test/callback","https://chatgpt.com/connector/oauth/a?evil=1","https://chatgpt.com/connector/oauth/a#fragment",
     "http://claude.ai/api/mcp/auth_callback", "https://claude.ai.evil.test/api/mcp/auth_callback",
@@ -132,6 +159,82 @@ def test_http_pkce_tokens_refresh_revocation_and_private_diagnostics(oauth_env):
 def test_untrusted_redirects_denied(oauth_env,uri):
     _,client=oauth_env
     assert register(client,redirect_uris=[uri]).status_code==400
+
+
+@pytest.mark.parametrize("callback", [
+    "http://127.0.0.1:1455/callback",
+    "http://127.0.0.1:1455/callback/avello2",
+])
+def test_codex_oauth_end_to_end_with_optional_resource_and_scope(oauth_env, monkeypatch, callback):
+    """DCR, PKCE, Google mock, consent, token, MCP, refresh and revocation."""
+    monkeypatch.setattr(sys.modules[__name__], "REDIRECT", callback)
+    _, client = oauth_env
+    registration = client.post("/register", json={
+        "client_name": "Codex", "redirect_uris": [callback],
+        "token_endpoint_auth_method": "none",
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        # Codex can register without a scope.
+    })
+    assert registration.status_code == 201, registration.text
+    cid = registration.json()["client_id"]
+    csrf = sign_in_without_optional_resource_and_scope(client, cid, callback)
+    code = grant(client, csrf)
+    form = {"client_id": cid, "grant_type": "authorization_code",
+            "code": code, "code_verifier": VERIFIER, "redirect_uri": callback}
+    # Even without resource, tokens remain bound to RESOURCE.
+    tokens_response = client.post("/token", data=form)
+    assert tokens_response.status_code == 200, tokens_response.text
+    tokens = tokens_response.json()
+    assert tokens["scope"] == SCOPE
+    discover = lambda token: client.post("/mcp", headers={
+        "Authorization": "Bearer " + token,
+        "Accept": "application/json, text/event-stream",
+    }, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
+    assert discover(tokens["access_token"]).status_code == 200
+    refresh = client.post("/token", data={"client_id": cid, "grant_type": "refresh_token",
+        "refresh_token": tokens["refresh_token"]})
+    assert refresh.status_code == 200, refresh.text
+    assert discover(tokens["access_token"]).status_code == 401
+    assert discover(refresh.json()["access_token"]).status_code == 200
+    assert client.post("/revoke", data={"client_id": cid,
+        "token": refresh.json()["refresh_token"]}).status_code == 200
+    assert discover(refresh.json()["access_token"]).status_code == 401
+
+
+def sign_in_without_optional_resource_and_scope(client, cid, callback):
+    response = client.get("/authorize", params={
+        "client_id": cid, "response_type": "code", "redirect_uri": callback,
+        "code_challenge": CHALLENGE, "code_challenge_method": "S256",
+        "state": "client-state",
+    })
+    assert response.status_code == 302, response.text
+    start = client.get(response.headers["location"])
+    assert start.status_code in (302, 307)
+    callback_response = client.get("/oauth/google/callback?state=mock-state&code=mock-google-code")
+    assert callback_response.status_code == 303, callback_response.text
+    consent = client.get(callback_response.headers["location"])
+    assert consent.status_code == 200
+    import re
+    return re.search(r'name="csrf" value="([A-Za-z0-9_-]+)"', consent.text).group(1)
+
+
+def test_codex_oauth_explicit_wrong_scope_or_resource_rejected(oauth_env):
+    _, client = oauth_env
+    assert register(client, scope="admin").status_code == 400
+    cid = register(client).json()["client_id"]
+    for params in ({"resource": "https://other.example"}, {"scope": "admin"}):
+        rejected = begin(client, cid, **params)
+        assert rejected.status_code == 400 or (
+            rejected.status_code in (302, 303)
+            and "error=" in rejected.headers.get("location", "")
+        )
+    csrf = sign_in(client, cid)
+    code = grant(client, csrf)
+    form = token_form(cid, code)
+    assert client.post("/token", data={**form,
+        "resource": "https://other.example"}).status_code == 400
+    assert client.post("/token", data=form).status_code == 200
 
 
 def test_unbound_callbacks_wrong_owner_and_failed_oidc_are_denied(oauth_env):

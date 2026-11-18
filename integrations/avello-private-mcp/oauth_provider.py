@@ -41,12 +41,21 @@ def digest(value):
 
 
 def allowed_redirect(uri):
-    # Each exact URI is also bound to its registered client by the SDK.
-    if str(uri) == "https://claude.ai/api/mcp/auth_callback":
+    # Each exact URI is bound to the registered client by the MCP SDK.
+    # Codex uses a local HTTP callback with an ephemeral port and may append
+    # a server-specific callback ID. Only numeric IPv4 loopback is permitted.
+    value = str(uri)
+    if value == "https://claude.ai/api/mcp/auth_callback":
         return True
+    loopback = re.fullmatch(
+        r"http://127\.0\.0\.1:([0-9]{1,5})/callback(?:/[A-Za-z0-9_-]{1,128})?",
+        value,
+    )
+    if loopback:
+        return 1 <= int(loopback.group(1)) <= 65535
     return bool(re.fullmatch(
         r"https://chatgpt\.com/(?:connector_platform_oauth_redirect|connector/oauth/[A-Za-z0-9_-]{1,160})",
-        str(uri),
+        value,
     ))
 
 
@@ -113,15 +122,22 @@ class GoogleProvider:
 
     async def register_client(self, client_info):
         if not client_info.redirect_uris or not all(allowed_redirect(x) for x in client_info.redirect_uris):
-            raise RegistrationError("invalid_redirect_uri", "Only supported ChatGPT or Claude callbacks are accepted")
+            raise RegistrationError("invalid_redirect_uri", "Only supported ChatGPT, Claude, or Codex loopback callbacks are accepted")
         if client_info.token_endpoint_auth_method != "none":
             raise RegistrationError("invalid_client_metadata", "Use the public PKCE client method: none")
-        if set((client_info.scope or "").split()) != {SCOPE}:
+        # DCR clients may omit scope. In that case bind the client to our only
+        # supported scope; never permit an additional or elevated scope.
+        effective_scopes = set((client_info.scope or SCOPE).split())
+        if effective_scopes != {SCOPE}:
             raise RegistrationError("invalid_client_metadata", "Invalid scope")
-        self.store.put("client", client_info.client_id, client_info.model_dump(mode="json"), 90*86400)
+        stored = client_info.model_dump(mode="json")
+        stored["scope"] = SCOPE
+        self.store.put("client", client_info.client_id, stored, 90*86400)
 
     async def authorize(self, client, params):
-        if params.resource != RESOURCE or set(params.scopes or []) != {SCOPE}:
+        # RFC 8707 resource is optional for a single-resource authorization server.
+        # A missing value resolves only to RESOURCE; any other target is denied.
+        if params.resource not in (None, RESOURCE) or set(params.scopes or [SCOPE]) != {SCOPE}:
             raise AuthorizeError("invalid_request", "Expected the Avello resource and scope")
         if not allowed_redirect(params.redirect_uri) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", params.code_challenge):
             raise AuthorizeError("invalid_request", "Invalid callback or PKCE challenge")
@@ -299,7 +315,9 @@ def install_oauth(app, provider):
         if len(body)>16384:
             return JSONResponse({"error":"invalid_request"}, status_code=413)
         form = await request.form()
-        if form.get("resource") != RESOURCE:
+        # Codex may omit RFC 8707's optional resource parameter. Tokens are
+        # always minted for RESOURCE; an explicit foreign target is rejected.
+        if form.get("resource") not in (None, RESOURCE):
             return JSONResponse({"error":"invalid_target"}, status_code=400)
         return await handler.handle(request)
 
