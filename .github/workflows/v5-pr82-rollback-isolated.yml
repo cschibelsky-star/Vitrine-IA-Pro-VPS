@@ -1,0 +1,59 @@
+name: V5 PR82 isolated candidate and rollback validation
+
+on:
+  push:
+    branches:
+      - hml/v5-pr82-isolated-validation-20261117
+    paths:
+      - ".github/workflows/v5-pr82-rollback-isolated.yml"
+      - "connector-v5/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hml-isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate PR82
+        uses: actions/checkout@v4
+        with:
+          path: candidate
+      - name: Checkout pre-existing PR78 candidate as rollback reference
+        uses: actions/checkout@v4
+        with:
+          ref: d1f43f3b26cddaf54571e0b814624fb7b98df030
+          path: rollback
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Regression tests candidate
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          cd candidate
+          python -m pytest -q connector-v5/test_controlled_operations_patch.py
+      - name: Build candidate and preserved reference as separate local images
+        run: |
+          docker build -f candidate/connector-v5/Dockerfile -t v5-pr82-isolated:candidate candidate
+          docker build -f rollback/connector-v5/Dockerfile -t v5-pr82-isolated:rollback rollback
+      - name: Start candidate and verify MCP tools
+        run: |
+          set -eu
+          trap 'docker rm -f v5-pr82-test v5-pr82-recovered >/dev/null 2>&1 || true' EXIT
+          docker run -d --name v5-pr82-test --read-only --cap-drop ALL --security-opt no-new-privileges --network bridge --tmpfs /tmp:rw,noexec,nosuid,size=16m -p 127.0.0.1:18978:8000 v5-pr82-isolated:candidate
+          python -m pip install --disable-pip-version-check 'fastmcp>=2.10,<3'
+          for attempt in $(seq 1 40); do
+            if V5_SMOKE_URL=http://127.0.0.1:18978/mcp python candidate/connector-v5/tests/smoke_mcp_isolated.py; then break; fi
+            if [ "$attempt" -eq 40 ]; then docker logs --tail 50 v5-pr82-test; exit 1; fi
+            sleep 2
+          done
+          docker rm -f v5-pr82-test
+          docker run -d --name v5-pr82-recovered --read-only --cap-drop ALL --security-opt no-new-privileges --network bridge --tmpfs /tmp:rw,noexec,nosuid,size=16m -p 127.0.0.1:18978:8000 v5-pr82-isolated:rollback
+          for attempt in $(seq 1 40); do
+            if V5_SMOKE_URL=http://127.0.0.1:18978/mcp python rollback/connector-v5/tests/smoke_mcp_isolated.py; then break; fi
+            if [ "$attempt" -eq 40 ]; then docker logs --tail 50 v5-pr82-recovered; exit 1; fi
+            sleep 2
+          done
+          echo "Isolated candidate and reference restoration: PASS (GitHub runner only, not VPS rollback)"
