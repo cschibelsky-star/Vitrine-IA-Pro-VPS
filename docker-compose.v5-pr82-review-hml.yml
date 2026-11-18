@@ -1,0 +1,22 @@
+# Candidate-only HML. No production routes, data mounts, secrets or Docker socket.
+services:
+  connector_v5_pr82_review:
+    image: v5-pr82-review:20261117
+    build:
+      context: .
+      dockerfile: connector-v5/Dockerfile
+    container_name: v5_pr82_review_20261117
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    ports:
+      - "127.0.0.1:18978:8000"
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),3); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
