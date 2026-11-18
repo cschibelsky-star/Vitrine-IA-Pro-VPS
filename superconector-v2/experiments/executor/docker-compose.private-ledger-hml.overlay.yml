@@ -1,0 +1,50 @@
+# NOT DEPLOYED. Optional HML candidate for independent review.
+# Explicitly retains disabled state. Host directories must already exist.
+services:
+  private_executor:
+    environment:
+      SUPER_EXECUTOR_HML_ENABLED: "false"
+      SUPER_EXECUTOR_APPROVAL_SOCKET: /run/super-approval/authority.sock
+    volumes:
+      - type: bind
+        source: ${SUPER_APPROVAL_SOCKET_HOST_DIR:?missing_socket_directory}
+        target: /run/super-approval
+        read_only: true
+        bind:
+          create_host_path: false
+
+  approval_authority:
+    build:
+      context: ../../..
+      dockerfile: superconector-v2/experiments/executor/Dockerfile.approval-authority
+    restart: "no"
+    user: "10002:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    network_mode: none
+    pids_limit: 32
+    mem_limit: 192m
+    cpus: 0.5
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    environment:
+      SUPER_APPROVAL_DB_PATH: /var/lib/super-approval/ledger.sqlite
+      SUPER_EXECUTOR_SOURCE_SHA: "${SUPER_EXECUTOR_SOURCE_SHA:-}"
+      SUPER_EXECUTOR_OIDC_ISSUER: "${SUPER_EXECUTOR_OIDC_ISSUER:-}"
+      SUPER_EXECUTOR_OIDC_AUDIENCE: "${SUPER_EXECUTOR_OIDC_AUDIENCE:-}"
+      SUPER_EXECUTOR_OIDC_PUBLIC_KEY: "${SUPER_EXECUTOR_OIDC_PUBLIC_KEY:-}"
+      SUPER_EXECUTOR_TENANT_ID: "${SUPER_EXECUTOR_TENANT_ID:-}"
+    volumes:
+      - type: bind
+        source: ${SUPER_APPROVAL_DB_HOST_DIR:?missing_private_approval_directory}
+        target: /var/lib/super-approval
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SUPER_APPROVAL_SOCKET_HOST_DIR:?missing_socket_directory}
+        target: /run/super-approval
+        read_only: false
+        bind:
+          create_host_path: false

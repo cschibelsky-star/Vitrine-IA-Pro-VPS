@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from typing import Any
 import jwt
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 from runner import run_profile
@@ -32,6 +33,7 @@ def _settings() -> dict[str, Any]:
         "sha": os.getenv("SUPER_EXECUTOR_SOURCE_SHA", ""),
         "tenant": os.getenv("SUPER_EXECUTOR_TENANT_ID", ""),
         "server_root": os.getenv("SUPER_EXECUTOR_SERVER_ROOT", "/workspace"),
+        "approval_socket": os.getenv("SUPER_EXECUTOR_APPROVAL_SOCKET", ""),
     }
 
 def _identity(request: Request, settings: dict[str, Any]) -> dict[str, Any]:
@@ -43,7 +45,7 @@ def _identity(request: Request, settings: dict[str, Any]) -> dict[str, Any]:
     try:
         claims = jwt.decode(auth[7:], settings["public_key"], algorithms=["RS256"],
                             issuer=settings["issuer"], audience=settings["audience"],
-                            options={"require": ["exp", "iat", "iss", "aud", "sub"]},
+                            options={"require": ["exp", "iat", "iss", "aud", "sub", "nbf", "jti"]},
                             leeway=0)
     except jwt.InvalidTokenError:
         raise HTTPException(401, "invalid_token") from None
@@ -82,6 +84,25 @@ def execute(body: ExecuteRequest, request: Request) -> dict[str, Any]:
         raise HTTPException(403, "profile_not_approved_for_mission")
     if body.profile not in ("probe", "syntax"):
         raise HTTPException(403, "profile_not_allowed")
+    # Approval authority owns the database. Executor only contacts its private
+    # Unix socket, never opens or writes the approvals ledger.
+    socket = s["approval_socket"]
+    if not socket or not Path(socket).is_socket():
+        raise HTTPException(503, "approval_service_unavailable")
+    try:
+        with httpx.Client(transport=httpx.HTTPTransport(uds=socket),
+                          base_url="http://localhost", timeout=3.0) as client:
+            response = client.post("/internal/consume",
+                                   json={"profile": body.profile, "source_sha": body.source_sha},
+                                   headers={"Authorization": request.headers["authorization"]})
+        if response.status_code != 200 or response.json() != {"consumed": True}:
+            if response.status_code in (401, 403, 409):
+                raise HTTPException(403, "approval_rejected") from None
+            raise HTTPException(503, "approval_service_unavailable")
+    except httpx.HTTPError:
+        raise HTTPException(503, "approval_service_unavailable") from None
+    except (ValueError, KeyError):
+        raise HTTPException(503, "approval_service_unavailable") from None
     # Never accept shell, paths, environment or commands from clients.
     result = run_profile(body.profile, Path(s["server_root"]), approval="EXECUTAR",
                          context="isolated-ci-only", source_sha=s["sha"])

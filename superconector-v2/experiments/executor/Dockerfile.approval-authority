@@ -1,0 +1,9 @@
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
+WORKDIR /opt/approval-authority
+RUN groupadd -g 10001 executor_transport && useradd -u 10002 -g 10001 -M -s /usr/sbin/nologin approval_authority
+COPY superconector-v2/experiments/executor/requirements-private.txt /opt/approval-authority/requirements-private.txt
+RUN pip install --no-cache-dir -r /opt/approval-authority/requirements-private.txt
+COPY superconector-v2/experiments/executor/mission_grant_ledger.py superconector-v2/experiments/executor/private_approval_service.py /opt/approval-authority/
+USER 10002:10001
+CMD ["sh", "-c", "umask 007; exec uvicorn private_approval_service:APP --uds /run/super-approval/authority.sock --no-access-log"]
