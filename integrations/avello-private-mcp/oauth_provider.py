@@ -11,6 +11,7 @@ import sqlite3
 import time
 from collections import deque
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from authlib.integrations.starlette_client import OAuth
 from cryptography.fernet import Fernet
@@ -255,6 +256,13 @@ class GoogleProvider:
             else:
                 reason = "Fluxo de autorização ausente ou expirado. Inicie uma nova conexão no aplicativo."
             return PlainTextResponse(reason, status_code=400)
+        # The form may redirect to the registered OAuth callback after POST.
+        # CSP form-action checks redirects too; permit only this validated origin.
+        callback_uri = str(flow["params"]["redirect_uri"])
+        if not allowed_redirect(callback_uri):
+            return PlainTextResponse("Destino de retorno inválido.", status_code=400)
+        parsed_callback = urlsplit(callback_uri)
+        request.state.avello_consent_callback_origin = f"{parsed_callback.scheme}://{parsed_callback.netloc}"
         if request.method == "GET":
             client = await self.get_client(flow["client_id"])
             name = html.escape((client.client_name or "ChatGPT")[:100]) if client else "ChatGPT"
@@ -308,7 +316,15 @@ class OAuthHeaders(BaseHTTPMiddleware):
             "same-origin" if request.url.path == "/oauth/consent" else "no-referrer"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Content-Security-Policy"] = "default-src 'none'; form-action 'self' https://chatgpt.com https://claude.ai; frame-ancestors 'none'; base-uri 'none'"
+        form_targets = "'self' https://chatgpt.com https://claude.ai"
+        if request.url.path == "/oauth/consent":
+            # Do not globally allow arbitrary loopback ports or external sites.
+            # The provider sets this only for a registered, validated callback.
+            callback_origin = getattr(request.state, "avello_consent_callback_origin", "")
+            form_targets = "'self'" + (" " + callback_origin if callback_origin else "")
+        response.headers["Content-Security-Policy"] = (
+            f"default-src 'none'; form-action {form_targets}; frame-ancestors 'none'; base-uri 'none'"
+        )
         return response
 
 
