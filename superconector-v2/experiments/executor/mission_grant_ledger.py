@@ -37,7 +37,7 @@ CREATE TABLE approved_missions (
     revoked_at INTEGER,
     PRIMARY KEY (mission_id, approval_id)
 );
-CREATE TABLE consumed_grants (
+CREATE TABLE provisioning_nonces (\n    project_id TEXT NOT NULL,\n    nonce TEXT NOT NULL,\n    used_at INTEGER NOT NULL,\n    PRIMARY KEY (project_id, nonce)\n);\nCREATE TABLE consumed_grants (
     jti TEXT PRIMARY KEY,
     mission_id TEXT NOT NULL,
     approval_id TEXT NOT NULL,
