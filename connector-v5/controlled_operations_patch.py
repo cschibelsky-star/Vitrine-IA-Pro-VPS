@@ -258,6 +258,13 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": {"studio_app", "studio_worker", "studio_scheduler"},
         "up": {"studio_app", "studio_web", "studio_worker", "studio_scheduler"},
     },
+    "via-integrated-isolated-hml-20261117-ssh": {
+        "compose_files": {"docker-compose.via-isolated-hml.yml"},
+        "services": {"via"},
+        "run_once": set(),
+        "build": {"via"},
+        "up": {"via"},
+    },
     "tvsumare": {
         "compose_files": {"docker-compose.vps.yml"},
         # Production is observable, but not mutable through generic Compose tools.
@@ -276,10 +283,28 @@ def _controlled_compose_base(project_id: str, compose_file: str) -> tuple[list[s
     target, relative = _safe_file(project_id, compose_file, True)
     if relative not in policy["compose_files"]:
         raise PermissionError("controlled_compose_file_not_allowed")
-    manifest, _, repository = _project_paths(project_id)
+    manifest, workspace, repository = _project_paths(project_id)
     project_name = str(manifest.get("docker", {}).get("project_name", project_id) or project_id).strip()
+    if project_id == "via-integrated-isolated-hml-20261117-ssh":
+        # Do not grant permissions if the registered manifest has been repointed.
+        if (
+            workspace != Path("/srv/projects/via-integrated-isolated-hml-20261117-ssh")
+            or project_name != "via-isolated-hml-20261117"
+            or manifest.get("docker", {}).get("compose_file") != "docker-compose.via-isolated-hml.yml"
+            or manifest.get("runtime", {}).get("allowed_keys") != []
+        ):
+            raise PermissionError("via_isolated_manifest_mismatch")
     base = ["docker", "compose"]
-    runtime_target, _ = _runtime_config(manifest)
+    try:
+        runtime_target, _ = _runtime_config(manifest)
+    except PermissionError as exc:
+        if (
+            project_id == "via-integrated-isolated-hml-20261117-ssh"
+            and str(exc) == "runtime_keys_not_configured"
+            and manifest.get("runtime", {}).get("allowed_keys") == []
+        ):
+            return base + ["-p", project_name, "-f", str(target)], relative, repository
+        raise
     if not runtime_target.is_file():
         return [], relative, repository
     base += ["--env-file", str(runtime_target), "-p", project_name, "-f", str(target)]
