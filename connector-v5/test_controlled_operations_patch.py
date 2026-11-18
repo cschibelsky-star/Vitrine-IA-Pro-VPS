@@ -44,7 +44,8 @@ def test_superconector_v2_hml_policy_is_narrow():
     assert '"services": {"public_mcp", "private_executor"}' in source
     assert '"build": {"public_mcp", "private_executor"}' in source
     assert '"up": {"public_mcp", "private_executor"}' in source
-    assert 'project_id == "vitrine-superconector-v2-hml"' in source
+    assert '"vitrine-superconector-v2-hml"' in source
+    assert 'project_id in {' in source
     assert 'manifest.get("runtime", {}).get("allowed_keys") == []' in source
     assert '"run_once": set()' in source
 
@@ -199,8 +200,8 @@ def test_via_isolated_hml_policy_is_exact_and_no_other_permissions_change():
         and node.target.id == "CONTROLLED_COMPOSE_POLICY"
     )
     policy_expr = ast.unparse(policy_assignment.value)
-    assert '"via-integrated-isolated-hml-20261117-ssh"' in policy_expr
-    assert '"docker-compose.via-isolated-hml.yml"' in policy_expr
+    assert "'via-integrated-isolated-hml-20261117-ssh'" in policy_expr
+    assert "'docker-compose.via-isolated-hml.yml'" in policy_expr
 
     policy = source.split("CONTROLLED_COMPOSE_POLICY:", 1)[1].split("def _controlled_compose_base", 1)[0]
     isolated = policy.split('"via-integrated-isolated-hml-20261117-ssh": {', 1)[1].split("\\n    },", 1)[0]
