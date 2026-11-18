@@ -65,7 +65,10 @@ def sign_in(client, client_id):
     page=client.get(callback.headers["location"])
     assert page.status_code==200
     assert page.headers["referrer-policy"] == "same-origin"
-    assert "https://claude.ai" in page.headers["content-security-policy"]
+    # Consent form CSP must allow only the registered OAuth callback origin.
+    callback_origin = urlparse(REDIRECT)
+    expected_origin = f"{callback_origin.scheme}://{callback_origin.netloc}"
+    assert "form-action 'self' " + expected_origin + ";" in page.headers["content-security-policy"]
     import re
     return re.search(r'name="csrf" value="([A-Za-z0-9_-]+)"',page.text).group(1)
 
