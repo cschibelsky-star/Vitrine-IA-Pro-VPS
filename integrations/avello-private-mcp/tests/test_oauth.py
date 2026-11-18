@@ -341,3 +341,39 @@ def test_store_single_use_and_persistence(tmp_path):
     assert store.get("flow","expired") is None
 
 
+
+
+def test_google_callback_renews_flow_before_consent(oauth_env):
+    provider, client = oauth_env
+    cid = register(client).json()["client_id"]
+    response = begin(client, cid)
+    start = client.get(response.headers["location"])
+    assert start.status_code in (302, 307)
+    # The initial authorization is nearly expired when Google returns.
+    with provider.store.connect() as db:
+        db.execute("UPDATE oauth_records SET expires=? WHERE kind='flow'", (time.time()+2,))
+    callback = client.get("/oauth/google/callback?state=mock-state&code=mock-google-code")
+    assert callback.status_code == 303
+    with provider.store.connect() as db:
+        remaining = db.execute("SELECT expires FROM oauth_records WHERE kind='flow'").fetchone()[0]-time.time()
+    assert remaining > 590
+    consent_page = client.get(callback.headers["location"])
+    assert consent_page.status_code == 200
+
+
+def test_consent_errors_distinguish_missing_browser_session_and_expired_records(oauth_env):
+    provider, client = oauth_env
+    cid = register(client).json()["client_id"]
+    csrf = sign_in(client, cid)
+    client.cookies.clear()
+    response = client.post("/oauth/consent", data={"csrf": csrf, "decision": "allow"}, headers={"Origin": ORIGIN})
+    assert response.status_code == 400
+    assert "Sessão do navegador ausente" in response.text
+    assert "csrf" not in response.text.lower()
+    # Restore a fresh browser session, then expire only the flow.
+    csrf = sign_in(client, cid)
+    with provider.store.connect() as db:
+        db.execute("UPDATE oauth_records SET expires=0 WHERE kind='flow'")
+    response = client.post("/oauth/consent", data={"csrf": csrf, "decision": "allow"}, headers={"Origin": ORIGIN})
+    assert response.status_code == 400
+    assert "Fluxo de autorização ausente ou expirado" in response.text
