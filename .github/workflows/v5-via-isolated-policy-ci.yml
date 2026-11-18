@@ -1,0 +1,41 @@
+name: V5 VIA isolated HML authorization CI
+
+on:
+  pull_request:
+    paths:
+      - "connector-v5/controlled_operations_patch.py"
+      - "connector-v5/test_controlled_operations_patch.py"
+      - ".github/workflows/v5-via-isolated-policy-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  via-isolated-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile policy and test modules
+        run: python -m py_compile connector-v5/controlled_operations_patch.py connector-v5/test_controlled_operations_patch.py
+      - name: Verify existing and VIA-only policy behavior
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q connector-v5/test_controlled_operations_patch.py
+      - name: Build V5 isolated smoke image
+        run: docker build --file connector-v5/Dockerfile --tag v5-via-policy-smoke:ci .
+      - name: Validate isolated MCP startup and tool discovery
+        run: |
+          set -eu
+          docker run -d --name v5-via-policy-smoke --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=16m -p 127.0.0.1:18968:8000 v5-via-policy-smoke:ci
+          trap 'docker rm -f v5-via-policy-smoke >/dev/null 2>&1 || true' EXIT
+          python -m pip install --disable-pip-version-check 'fastmcp>=2.10,<3'
+          for attempt in $(seq 1 30); do
+            if python -c "import socket; s=socket.create_connection(('127.0.0.1',18968),1); s.close()" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          V5_SMOKE_URL=http://127.0.0.1:18968/mcp python connector-v5/tests/smoke_mcp_isolated.py
