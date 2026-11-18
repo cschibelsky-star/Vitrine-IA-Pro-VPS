@@ -184,3 +184,116 @@ def test_private_executor_is_explicitly_hml_only():
     assert '"run_once": set()' in super_only
     assert '"private_executor"' not in policy.split('"vitrine-superconector-v2-hml": {', 1)[0]
     assert '"private_executor"' not in policy.split('"vitrine-superconector-v2-hml": {', 1)[1].split('\n    },', 1)[1]
+
+
+def test_via_isolated_hml_policy_is_exact_and_no_other_permissions_change():
+    import ast
+
+    base = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
+    source = apply_controlled_operations_patch(apply_marketing_live_patch(base))
+    module = ast.parse(source)
+    policy_assignment = next(
+        node for node in module.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "CONTROLLED_COMPOSE_POLICY"
+    )
+    policy_expr = ast.unparse(policy_assignment.value)
+    assert '"via-integrated-isolated-hml-20261117-ssh"' in policy_expr
+    assert '"docker-compose.via-isolated-hml.yml"' in policy_expr
+
+    policy = source.split("CONTROLLED_COMPOSE_POLICY:", 1)[1].split("def _controlled_compose_base", 1)[0]
+    isolated = policy.split('"via-integrated-isolated-hml-20261117-ssh": {', 1)[1].split("\\n    },", 1)[0]
+    assert '"compose_files": {"docker-compose.via-isolated-hml.yml"}' in isolated
+    assert '"services": {"via"}' in isolated
+    assert '"run_once": set()' in isolated
+    assert '"build": {"via"}' in isolated
+    assert '"up": {"via"}' in isolated
+    assert '"via-integrated-isolated-hml-20261117-ssh"' not in policy.split('"vitrine-superconector-v2-hml": {', 1)[0]
+
+
+def test_via_isolated_hml_authorization_is_fail_closed_and_uses_exact_compose():
+    import ast
+    from typing import Any
+
+    base = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
+    source = apply_controlled_operations_patch(apply_marketing_live_patch(base))
+    tree = ast.parse(source)
+    policy = next(
+        node for node in tree.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "CONTROLLED_COMPOSE_POLICY"
+    )
+    helpers = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {"_controlled_compose_base", "project_compose_service_execute"}
+    ]
+    assert len(helpers) == 2
+    for node in helpers:
+        node.decorator_list = []
+
+    project_id = "via-integrated-isolated-hml-20261117-ssh"
+    compose = "docker-compose.via-isolated-hml.yml"
+    project_dir = Path("/srv/projects/via-integrated-isolated-hml-20261117-ssh")
+    manifest = {
+        "docker": {"project_name": "via-isolated-hml-20261117", "compose_file": compose},
+        "runtime": {"allowed_keys": []},
+    }
+    commands = []
+    def resolve_file(_project, requested, _safe):
+        if requested != compose:
+            raise PermissionError("controlled_compose_file_not_allowed")
+        return project_dir / "repository" / compose, compose
+
+    def resolve_project(_project):
+        return manifest, project_dir, project_dir / "repository"
+
+    def runtime_config(_):
+        raise PermissionError("runtime_keys_not_configured")
+
+    def record_command(command, _cwd, timeout=0):
+        commands.append(command)
+        return {"ok": True, "exit_code": 0}
+
+    scope = {
+        "Any": Any,
+        "Path": Path,
+        "_safe_file": resolve_file,
+        "_project_paths": resolve_project,
+        "_runtime_config": runtime_config,
+        "_run": record_command,
+    }
+    exec(compile(ast.fix_missing_locations(ast.Module(body=[policy] + helpers, type_ignores=[])),
+                 "<via-controlled-policy>", "exec"), scope)
+    execute = scope["project_compose_service_execute"]
+    for operation in ("build", "up"):
+        result = execute(project_id, compose, "via", operation, "EXECUTAR")
+        assert result["ok"] is True
+    assert len(commands) == 2
+    assert commands[0][-2:] == ["build", "via"]
+    assert commands[1][-5:] == ["up", "-d", "--no-deps", "--no-build", "via"][-5:]
+
+    for case in (
+        (project_id, compose, "via", "run_once", "EXECUTAR", "controlled_operation_not_allowed"),
+        (project_id, compose, "db", "build", "EXECUTAR", "controlled_service_not_allowed"),
+        (project_id, compose, "via", "build", "", "confirmation_required"),
+        ("via", compose, "via", "build", "EXECUTAR", "controlled_service_not_allowed"),
+        (project_id, "docker-compose.homolog.yml", "via", "build", "EXECUTAR", "controlled_compose_file_not_allowed"),
+    ):
+        result = execute(*case[:5])
+        assert result["ok"] is False
+        assert result["error"] == case[5]
+    assert len(commands) == 2, "Denied operation invoked Docker"
+
+    original_workspace = project_dir
+    manifest["docker"]["project_name"] = "repository"
+    result = execute(project_id, compose, "via", "build", "EXECUTAR")
+    assert result["error"] == "via_isolated_manifest_mismatch"
+    assert len(commands) == 2
+    manifest["docker"]["project_name"] = "via-isolated-hml-20261117"
+    manifest["runtime"]["allowed_keys"] = ["PRODUCTION_TOKEN"]
+    result = execute(project_id, compose, "via", "build", "EXECUTAR")
+    assert result["error"] == "runtime_keys_not_configured"
+    assert len(commands) == 2
