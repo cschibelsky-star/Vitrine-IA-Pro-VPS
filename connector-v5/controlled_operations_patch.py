@@ -268,6 +268,14 @@ CONTROLLED_COMPOSE_POLICY: dict[str, dict[str, Any]] = {
         "build": {"public_mcp", "private_executor"},
         "up": {"public_mcp", "private_executor"},
     },
+    "via-integrated-isolated-hml-20261117-ssh": {
+        # A single pre-registered HML project and local-only Compose file.
+        "compose_files": {"docker-compose.via-isolated-hml.yml"},
+        "services": {"via"},
+        "run_once": set(),
+        "build": {"via"},
+        "up": {"via"},
+    },
     "tvsumare": {
         "compose_files": {"docker-compose.vps.yml"},
         # Production is observable, but not mutable through generic Compose tools.
@@ -286,16 +294,29 @@ def _controlled_compose_base(project_id: str, compose_file: str) -> tuple[list[s
     target, relative = _safe_file(project_id, compose_file, True)
     if relative not in policy["compose_files"]:
         raise PermissionError("controlled_compose_file_not_allowed")
-    manifest, _, repository = _project_paths(project_id)
+    manifest, workspace, repository = _project_paths(project_id)
     project_name = str(manifest.get("docker", {}).get("project_name", project_id) or project_id).strip()
+    if project_id == "via-integrated-isolated-hml-20261117-ssh":
+        # Explicit deployment boundary: never accept a reused project ID with
+        # an unrelated workspace/Compose project, even if its service name matches.
+        if (
+            workspace != Path("/srv/projects/via-integrated-isolated-hml-20261117-ssh")
+            or project_name != "via-isolated-hml-20261117"
+            or manifest.get("docker", {}).get("compose_file") != "docker-compose.via-isolated-hml.yml"
+        ):
+            raise PermissionError("via_isolated_manifest_mismatch")
     base = ["docker", "compose"]
     try:
         runtime_target, _ = _runtime_config(manifest)
     except PermissionError as exc:
-        # No credentials are needed for the isolated, informational HML service.
-        # Never broaden this exception to other projects or sensitive services.
+        # Only these two isolated HML services may operate without a runtime env
+        # file, and only when the manifest explicitly declares zero allowed keys.
+        # Other projects remain fail-closed.
         if (
-            project_id == "vitrine-superconector-v2-hml"
+            project_id in {
+                "vitrine-superconector-v2-hml",
+                "via-integrated-isolated-hml-20261117-ssh",
+            }
             and str(exc) == "runtime_keys_not_configured"
             and manifest.get("runtime", {}).get("allowed_keys") == []
         ):
