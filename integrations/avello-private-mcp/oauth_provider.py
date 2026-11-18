@@ -230,6 +230,12 @@ class GoogleProvider:
         except Exception:
             request.session.clear()
             return PlainTextResponse("Acesso negado. Use a conta Google autorizada.", status_code=403)
+        # Preserve a full consent window after the Google login round-trip.
+        pending_flow = self.store.get("flow", flow)
+        if not pending_flow:
+            request.session.clear()
+            return PlainTextResponse("Sessão inválida ou expirada.", status_code=400)
+        self.store.put("flow", flow, pending_flow, 600)
         consent = secrets.token_urlsafe(32)
         self.store.put("consent", consent, {"flow":flow,"subject":"google:"+user["sub"]}, 300)
         request.session.clear()
@@ -241,7 +247,14 @@ class GoogleProvider:
         consent = self.store.get("consent", csrf)
         flow = self.store.get("flow", consent["flow"]) if consent else None
         if not flow:
-            return PlainTextResponse("Autorização expirada. Reconecte pelo ChatGPT.", status_code=400)
+            # Do not expose cookie contents, record keys or authorization codes.
+            if not csrf:
+                reason = "Sessão do navegador ausente. Inicie uma nova conexão no aplicativo."
+            elif not consent:
+                reason = "Consentimento ausente ou expirado. Inicie uma nova conexão no aplicativo."
+            else:
+                reason = "Fluxo de autorização ausente ou expirado. Inicie uma nova conexão no aplicativo."
+            return PlainTextResponse(reason, status_code=400)
         if request.method == "GET":
             client = await self.get_client(flow["client_id"])
             name = html.escape((client.client_name or "ChatGPT")[:100]) if client else "ChatGPT"
