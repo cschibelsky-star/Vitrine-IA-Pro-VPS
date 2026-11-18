@@ -7,6 +7,11 @@ on:
     paths:
       - ".github/workflows/v5-pr82-rollback-isolated.yml"
       - "connector-v5/**"
+  pull_request:
+    paths:
+      - ".github/workflows/v5-pr82-rollback-isolated.yml"
+      - "docker-compose.v5-pr82-review-hml.yml"
+      - "connector-v5/**"
   workflow_dispatch:
 
 permissions:
