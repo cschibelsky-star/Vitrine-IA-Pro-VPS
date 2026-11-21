@@ -55,9 +55,15 @@ jobs:
                 : 'unclassified_operation_failure';
               const steps = Array.isArray(detail.steps) ? detail.steps.map(step => ({stage: step.stage, ok: step.result?.ok, exit_code: step.result?.exit_code})) : undefined;
               const failureText = JSON.stringify(body.detail || detail).toLowerCase();
+              const commandText = JSON.stringify((detail.steps || []).map(step => ({stage: step.stage, stderr: step.result?.stderr || ''}))).toLowerCase();
               const failureClass = /permission denied|access denied/.test(failureText) ? 'permission_denied'
                 : /compose.*invalid|no configuration file|no such file/.test(failureText) ? 'compose_or_file_missing'
                 : /health_check/.test(failureText) ? 'health_check_failed'
+                : /docker_build/.test(failureText) && /dockerfile.*not found|failed to read dockerfile/.test(commandText) ? 'dockerfile_missing'
+                : /docker_build/.test(failureText) && /not found.*context|no such file or directory/.test(commandText) ? 'build_context_missing'
+                : /docker_build/.test(failureText) && /env file.*not found|couldn't find env file/.test(commandText) ? 'compose_env_file_missing'
+                : /docker_build/.test(failureText) && /docker.*(not found|unavailable)|cannot connect to the docker daemon/.test(commandText) ? 'docker_runtime_unavailable'
+                : /docker_build/.test(failureText) && /failed to solve|process .* did not complete|executor failed/.test(commandText) ? 'docker_build_step_failed'
                 : /docker_build/.test(failureText) ? 'docker_build_failed'
                 : /docker_up/.test(failureText) ? 'docker_up_failed'
                 : /git_pull|repository/.test(failureText) ? 'repository_update_failed'
