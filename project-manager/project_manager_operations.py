@@ -35,7 +35,7 @@ DOCKER_ALLOWED_PREFIXES = tuple(
     item.strip()
     for item in os.getenv(
         "PROJECT_DOCKER_ALLOWED_PREFIXES",
-        "vitrine_core_,cursos_ia_mvp_,tvsumare_,agente_compras_,vitrine_cockpit_",
+        "vitrine_core_,cursos_ia_mvp_,tvsumare_,agente_compras_,vitrine_cockpit_,vitrine_cockpit_",
     ).split(",")
     if item.strip()
 )
