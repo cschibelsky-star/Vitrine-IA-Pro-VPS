@@ -59,9 +59,8 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$OPS_REPO_DIR/$COMPOSE_FILE"
-          cd "$OPS_REPO_DIR"
           docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
+          docker compose -p "$DOCKER_PROJECT" -f "$GITHUB_WORKSPACE/$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
       - name: Wait for healthy
         shell: bash
         run: |
@@ -80,6 +79,5 @@ jobs:
         run: |
           set -euo pipefail
           docker image tag "$KNOWN_GOOD_TAG" "vitrine-vps-mcp-vitrine_ops_api:latest"
-          cd "$OPS_REPO_DIR"
           docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
+          docker compose -p "$DOCKER_PROJECT" -f "$GITHUB_WORKSPACE/$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
