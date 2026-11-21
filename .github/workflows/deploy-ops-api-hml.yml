@@ -45,12 +45,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OLD_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$CONTAINER")"
-          test -n "$OLD_IMAGE_ID"
-          KNOWN_GOOD_TAG="vitrine-ops-api:known-good-${GITHUB_RUN_ID}"
-          docker image tag "$OLD_IMAGE_ID" "$KNOWN_GOOD_TAG"
-          echo "OLD_IMAGE_ID=$OLD_IMAGE_ID" >> "$GITHUB_ENV"
-          echo "KNOWN_GOOD_TAG=$KNOWN_GOOD_TAG" >> "$GITHUB_ENV"
+          if OLD_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$CONTAINER" 2>/dev/null)" && [ -n "$OLD_IMAGE_ID" ]; then
+            KNOWN_GOOD_TAG="vitrine-ops-api:known-good-${GITHUB_RUN_ID}"
+            docker image tag "$OLD_IMAGE_ID" "$KNOWN_GOOD_TAG"
+            echo "OLD_IMAGE_ID=$OLD_IMAGE_ID" >> "$GITHUB_ENV"
+            echo "KNOWN_GOOD_TAG=$KNOWN_GOOD_TAG" >> "$GITHUB_ENV"
+          else
+            echo "No existing Ops API container; proceeding as initial deployment."
+          fi
       - name: Build Ops API image
         shell: bash
         run: docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" build "$SERVICE"
