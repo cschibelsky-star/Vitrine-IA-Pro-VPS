@@ -60,7 +60,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f "$OPS_REPO_DIR/$COMPOSE_FILE"
           docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
           docker compose -p "$DOCKER_PROJECT" -f "$GITHUB_WORKSPACE/$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
       - name: Wait for healthy
