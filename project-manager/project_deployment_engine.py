@@ -92,6 +92,12 @@ def classify_failure(result: dict[str, Any]) -> str:
         return "compose_env_file_missing"
     if "failed to solve" in text or "executor failed" in text:
         return "docker_build_step_failed"
+    if "composer" in text and any(marker in text for marker in ("error", "failed", "could not")):
+        return "composer_failed"
+    if "docker-php-ext-install" in text or "configure: error" in text:
+        return "php_extension_build_failed"
+    if "apt-get" in text or "temporary failure resolving" in text:
+        return "base_package_or_network_failed"
     if "permission denied" in text:
         return "permission_denied"
     return "unclassified"
