@@ -45,7 +45,7 @@ jobs:
             });
             const body = await response.json().catch(() => ({}));
             if (!response.ok || body.ok === false) {
-              const detail = body.result || body.detail || {};
+              const detail = body.result || body.detail || body;
               const stderr = String(detail.stderr || body.detail?.stderr || '');
               const reason = /local changes|would be overwritten/i.test(stderr) ? 'local_changes_block_checkout'
                 : /untracked working tree/i.test(stderr) ? 'untracked_files_block_checkout'
@@ -53,9 +53,10 @@ jobs:
                 : /permission denied|access denied/i.test(stderr) ? 'repository_permission_denied'
                 : /authentication failed|could not read from remote|repository not found/i.test(stderr) ? 'repository_fetch_or_auth_failed'
                 : 'unclassified_operation_failure';
-              const steps = Array.isArray(detail.steps) ? detail.steps.map(step => ({stage: step.stage, ok: step.result?.ok, exit_code: step.result?.exit_code})) : undefined;
+              const stepList = body.steps || detail.steps || [];
+              const steps = Array.isArray(stepList) ? stepList.map(step => ({stage: step.stage, ok: step.ok ?? step.result?.ok, exit_code: step.exit_code ?? step.result?.exit_code, failure_class: step.failure_class})) : undefined;
               const failureText = JSON.stringify(body.detail || detail).toLowerCase();
-              const commandText = JSON.stringify((detail.steps || []).map(step => ({stage: step.stage, stderr: step.result?.stderr || ''}))).toLowerCase();
+              const commandText = JSON.stringify(stepList).toLowerCase();
               const failureClass = /permission denied|access denied/.test(failureText) ? 'permission_denied'
                 : /compose.*invalid|no configuration file|no such file/.test(failureText) ? 'compose_or_file_missing'
                 : /health_check/.test(failureText) ? 'health_check_failed'
