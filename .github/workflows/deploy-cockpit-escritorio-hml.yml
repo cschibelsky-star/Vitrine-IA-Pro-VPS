@@ -28,6 +28,11 @@ jobs:
           . /srv/connectors/vitrine-vps-mcp/secrets/ops.env
           set +a
           docker compose -p vitrine-vps-ops -f "$GITHUB_WORKSPACE/docker-compose.vps-ops.yml" up -d --build vps_ops_plugin
+      - name: Validate Ops API deployment tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec vitrine_ops_api_hml sh -lc 'docker --version; docker-compose --version; test -f /srv/projects/cockpit-escritorio-hml-isolated/repository/docker-compose.cockpit-hml.yml'
       - name: Reconcile and deploy Cockpit HML
         shell: bash
         run: |
