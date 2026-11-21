@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -120,7 +121,8 @@ def project_deploy(req: DeploymentRequest) -> dict[str, Any]:
             return result
 
     if req.build:
-        build = run(["docker", "compose", "-p", project_name, "-f", compose_file, "build"], repository)
+        compose = ["docker-compose"] if shutil.which("docker-compose") else ["docker", "compose"]
+        build = run(compose + ["-p", project_name, "-f", compose_file, "build"], repository)
         steps.append({"stage": "docker_build", "result": build})
         if not build["ok"]:
             result = fail("docker_build", steps, build)
@@ -128,7 +130,8 @@ def project_deploy(req: DeploymentRequest) -> dict[str, Any]:
             return result
 
     if req.start:
-        up = run(["docker", "compose", "-p", project_name, "-f", compose_file, "up", "-d"], repository)
+        compose = ["docker-compose"] if shutil.which("docker-compose") else ["docker", "compose"]
+        up = run(compose + ["-p", project_name, "-f", compose_file, "up", "-d"], repository)
         steps.append({"stage": "docker_up", "result": up})
         if not up["ok"]:
             result = fail("docker_up", steps, up)
