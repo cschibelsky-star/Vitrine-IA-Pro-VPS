@@ -45,7 +45,7 @@ jobs:
             });
             const body = await response.json().catch(() => ({}));
             if (!response.ok || body.ok === false) {
-              const detail = body.result || {};
+              const detail = body.result || body.detail || {};
               const stderr = String(detail.stderr || body.detail?.stderr || '');
               const reason = /local changes|would be overwritten/i.test(stderr) ? 'local_changes_block_checkout'
                 : /untracked working tree/i.test(stderr) ? 'untracked_files_block_checkout'
@@ -53,7 +53,8 @@ jobs:
                 : /permission denied|access denied/i.test(stderr) ? 'repository_permission_denied'
                 : /authentication failed|could not read from remote|repository not found/i.test(stderr) ? 'repository_fetch_or_auth_failed'
                 : 'unclassified_operation_failure';
-              console.log(`${label}: ${JSON.stringify({status: response.status, ok: body.ok, operation: body.operation, stage: body.stage, reason, exit_code: detail.exit_code})}`);
+              const steps = Array.isArray(detail.steps) ? detail.steps.map(step => ({stage: step.stage, ok: step.result?.ok, exit_code: step.result?.exit_code})) : undefined;
+              console.log(`${label}: ${JSON.stringify({status: response.status, ok: body.ok, operation: body.operation, stage: body.stage || detail.stage, error: body.error || detail.error, reason, exit_code: detail.exit_code, steps})}`);
               throw new Error(`${label} failed`);
             }
             console.log(`${label}: ok=true`);
