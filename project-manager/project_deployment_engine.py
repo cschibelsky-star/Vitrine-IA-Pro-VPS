@@ -80,8 +80,25 @@ def load_manifest(project_id: str) -> dict[str, Any]:
     return data
 
 
+def classify_failure(result: dict[str, Any]) -> str:
+    text = (str(result.get("stdout", "")) + " " + str(result.get("stderr", ""))).lower()
+    if "cannot connect to the docker daemon" in text or "docker: not found" in text:
+        return "docker_runtime_unavailable"
+    if "dockerfile" in text and "not found" in text:
+        return "dockerfile_missing"
+    if "no such file or directory" in text or "context" in text and "not found" in text:
+        return "build_context_missing"
+    if "env file" in text and "not found" in text:
+        return "compose_env_file_missing"
+    if "failed to solve" in text or "executor failed" in text:
+        return "docker_build_step_failed"
+    if "permission denied" in text:
+        return "permission_denied"
+    return "unclassified"
+
+
 def fail(stage: str, steps: list[dict[str, Any]], detail: dict[str, Any]) -> dict[str, Any]:
-    return {"ok": False, "stage": stage, "steps": steps, "detail": detail}
+    return {"ok": False, "stage": stage, "steps": [{"stage": item.get("stage"), "ok": item.get("result", {}).get("ok"), "exit_code": item.get("result", {}).get("exit_code"), "failure_class": classify_failure(item.get("result", {}))} for item in steps], "detail": detail}
 
 
 @router.post("/deploy", dependencies=[Depends(auth)])
