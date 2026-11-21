@@ -24,14 +24,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker exec -i vitrine_ops_api_hml sh -c 'set -a; . /run/secrets/ops.env; set +a; python3 -' <<'PY'
+          docker exec -i vitrine_ops_api_hml python3 - <<'PY'
           import json
           import os
           import urllib.error
           import urllib.request
 
           base = "http://127.0.0.1:8080"
-          token = os.environ.get("OPS_BROKER_TOKEN", "")
+          secret_path = "/run/secrets/ops.env"
+          token = ""
+          with open(secret_path, encoding="utf-8") as secret_file:
+              for line in secret_file:
+                  key, separator, value = line.strip().partition("=")
+                  if key == "OPS_BROKER_TOKEN" and separator:
+                      token = value.strip().strip("\"\'")
+                      break
           if not token:
               raise SystemExit("Ops API runtime credential is unavailable")
           headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
