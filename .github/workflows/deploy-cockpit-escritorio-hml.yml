@@ -24,6 +24,9 @@ jobs:
         run: |
           set -euo pipefail
           find /srv/connectors/vitrine-vps-mcp/secrets/ops.env -maxdepth 2 -type f -printf '%p\n' 2>/dev/null || true
+          set -a
+          . /srv/connectors/vitrine-vps-mcp/secrets/ops.env
+          set +a
           docker compose -p vitrine-vps-ops -f "$GITHUB_WORKSPACE/docker-compose.vps-ops.yml" up -d --build vps_ops_plugin
       - name: Reconcile and deploy Cockpit HML
         shell: bash
