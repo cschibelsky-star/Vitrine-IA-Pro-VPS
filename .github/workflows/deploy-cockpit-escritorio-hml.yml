@@ -31,14 +31,26 @@ jobs:
           import urllib.request
 
           base = "http://127.0.0.1:8080"
-          secret_path = "/run/secrets/ops.env"
           token = ""
-          with open(secret_path, encoding="utf-8") as secret_file:
-              for line in secret_file:
-                  key, separator, value = line.strip().partition("=")
-                  if key == "OPS_BROKER_TOKEN" and separator:
-                      token = value.strip().strip("\"\'")
-                      break
+          secret_root = "/run/secrets/ops.env"
+          candidates = []
+          if os.path.isfile(secret_root):
+              candidates.append(secret_root)
+          elif os.path.isdir(secret_root):
+              for root, _, files in os.walk(secret_root):
+                  candidates.extend(os.path.join(root, name) for name in files)
+          for candidate in candidates:
+              try:
+                  with open(candidate, encoding="utf-8") as secret_file:
+                      for line in secret_file:
+                          key, separator, value = line.strip().partition("=")
+                          if key == "OPS_BROKER_TOKEN" and separator:
+                              token = value.strip().strip("\"\'")
+                              break
+              except (OSError, UnicodeDecodeError):
+                  continue
+              if token:
+                  break
           if not token:
               raise SystemExit("Ops API runtime credential is unavailable")
           headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
