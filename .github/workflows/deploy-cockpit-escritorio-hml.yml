@@ -17,19 +17,6 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feature/escritorio-dev-eco-mvp-missoes-20261117
-          fetch-depth: 1
-          clean: true
-      - name: Validate source SHA
-        shell: bash
-        run: |
-          set -euo pipefail
-          SHA="$(git rev-parse HEAD)"
-          EXPECTED="${{ inputs.expected_sha }}"
-          if [ -n "$EXPECTED" ] && [ "$SHA" != "$EXPECTED" ]; then exit 13; fi
-          echo "Deploy SHA: $SHA"
       - name: Check Ops API
         shell: bash
         run: curl -fsS --max-time 15 http://127.0.0.1:18080/health >/dev/null
