@@ -1,0 +1,85 @@
+name: Deploy Ops API HML
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "SHA esperado da branch feature/super-centro-operacional-v0.1"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-api-hml-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Controlled Ops API deploy
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+    env:
+      OPS_REPO_DIR: /srv/projects/vitrine-vps-ops/repository
+      COMPOSE_FILE: docker-compose.ops-api.yml
+      DOCKER_PROJECT: vitrine-vps-mcp
+      SERVICE: vitrine_ops_api
+      CONTAINER: vitrine_ops_api_hml
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/super-centro-operacional-v0.1
+          fetch-depth: 1
+          clean: true
+      - name: Validate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          EXPECTED="${{ inputs.expected_sha }}"
+          if [ -n "$EXPECTED" ] && [ "$SHA" != "$EXPECTED" ]; then exit 13; fi
+          test -f "$COMPOSE_FILE"
+          echo "DEPLOY_SHA=$SHA" >> "$GITHUB_ENV"
+      - name: Capture known-good image
+        shell: bash
+        run: |
+          set -euo pipefail
+          OLD_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$CONTAINER")"
+          test -n "$OLD_IMAGE_ID"
+          KNOWN_GOOD_TAG="vitrine-ops-api:known-good-${GITHUB_RUN_ID}"
+          docker image tag "$OLD_IMAGE_ID" "$KNOWN_GOOD_TAG"
+          echo "OLD_IMAGE_ID=$OLD_IMAGE_ID" >> "$GITHUB_ENV"
+          echo "KNOWN_GOOD_TAG=$KNOWN_GOOD_TAG" >> "$GITHUB_ENV"
+      - name: Build Ops API image
+        shell: bash
+        run: docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" build "$SERVICE"
+      - name: Recreate only Ops API
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$OPS_REPO_DIR/$COMPOSE_FILE"
+          cd "$OPS_REPO_DIR"
+          docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
+      - name: Wait for healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            STATE="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER" 2>/dev/null || true)"
+            if [ "$STATE" = healthy ]; then exit 0; fi
+            if [ "$STATE" = unhealthy ] || [ "$STATE" = exited ] || [ "$STATE" = dead ]; then break; fi
+            sleep 5
+          done
+          docker logs --tail 100 "$CONTAINER" || true
+          exit 20
+      - name: Roll back automatically on failure
+        if: failure() && env.KNOWN_GOOD_TAG != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image tag "$KNOWN_GOOD_TAG" "vitrine-vps-mcp-vitrine_ops_api:latest"
+          cd "$OPS_REPO_DIR"
+          docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+          docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
