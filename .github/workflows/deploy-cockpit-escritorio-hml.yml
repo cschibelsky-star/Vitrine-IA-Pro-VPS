@@ -15,6 +15,12 @@ jobs:
       - name: Check Ops API
         shell: bash
         run: curl -fsS --max-time 15 http://127.0.0.1:18080/health >/dev/null
+      - name: Ensure VPS Ops plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /srv/projects/vitrine-vps-ops/repository
+          docker compose -p vitrine-vps-ops -f docker-compose.vps-ops.yml up -d --build vps_ops_plugin
       - name: Reconcile and deploy Cockpit HML
         shell: bash
         run: |
