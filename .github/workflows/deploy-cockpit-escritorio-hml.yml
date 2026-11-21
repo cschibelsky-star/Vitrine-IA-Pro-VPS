@@ -45,7 +45,15 @@ jobs:
             });
             const body = await response.json().catch(() => ({}));
             if (!response.ok || body.ok === false) {
-              console.log(`${label}: ${JSON.stringify({status: response.status, ok: body.ok, operation: body.operation, stage: body.stage, error: body.error})}`);
+              const detail = body.result || {};
+              const stderr = String(detail.stderr || body.detail?.stderr || '');
+              const reason = /local changes|would be overwritten/i.test(stderr) ? 'local_changes_block_checkout'
+                : /untracked working tree/i.test(stderr) ? 'untracked_files_block_checkout'
+                : /pathspec .* did not match/i.test(stderr) ? 'target_branch_missing_locally'
+                : /permission denied|access denied/i.test(stderr) ? 'repository_permission_denied'
+                : /authentication failed|could not read from remote|repository not found/i.test(stderr) ? 'repository_fetch_or_auth_failed'
+                : 'unclassified_operation_failure';
+              console.log(`${label}: ${JSON.stringify({status: response.status, ok: body.ok, operation: body.operation, stage: body.stage, reason, exit_code: detail.exit_code})}`);
               throw new Error(`${label} failed`);
             }
             console.log(`${label}: ok=true`);
