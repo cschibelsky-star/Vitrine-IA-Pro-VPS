@@ -45,7 +45,8 @@ jobs:
             });
             const body = await response.json().catch(() => ({}));
             if (!response.ok || body.ok === false) {
-              throw new Error(`${label} failed: HTTP ${response.status} ${body.error || body.stage || 'operation_failed'}`);
+              console.log(`${label}: ${JSON.stringify({status: response.status, ok: body.ok, operation: body.operation, stage: body.stage, error: body.error})}`);
+              throw new Error(`${label} failed`);
             }
             console.log(`${label}: ok=true`);
           }
