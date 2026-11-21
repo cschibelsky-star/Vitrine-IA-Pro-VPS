@@ -2,18 +2,13 @@ name: Deploy Cockpit Escritório HML
 
 on:
   workflow_dispatch:
-    inputs:
-      expected_sha:
-        description: "SHA esperado da branch feature/escritorio-dev-eco-mvp-missoes-20261117"
-        required: false
-        type: string
 
 permissions:
   contents: read
 
 jobs:
   deploy:
-    name: Deploy Cockpit through Ops API
+    name: Deploy Cockpit through VPS Ops
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     steps:
@@ -24,58 +19,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker exec -i vitrine_ops_api_hml python3 - <<'PY'
-          import json
-          import os
-          import urllib.error
-          import urllib.request
-
-          base = "http://127.0.0.1:8080"
-          token = ""
-          secret_root = "/run/secrets/ops.env"
-          candidates = []
-          if os.path.isfile(secret_root):
-              candidates.append(secret_root)
-          elif os.path.isdir(secret_root):
-              for root, _, files in os.walk(secret_root):
-                  candidates.extend(os.path.join(root, name) for name in files)
-          for candidate in candidates:
-              try:
-                  with open(candidate, encoding="utf-8") as secret_file:
-                      for line in secret_file:
-                          key, separator, value = line.strip().partition("=")
-                          if key == "OPS_BROKER_TOKEN" and separator:
-                              token = value.strip().strip("\"\'")
-                              break
-              except (OSError, UnicodeDecodeError):
-                  continue
-              if token:
-                  break
-          if not token:
-              raise SystemExit("Ops API runtime credential is unavailable")
-          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-          def request(label, path, payload=None):
-              data = None if payload is None else json.dumps(payload).encode()
-              req = urllib.request.Request(base + path, data=data, headers=headers, method="GET" if data is None else "POST")
-              try:
-                  with urllib.request.urlopen(req, timeout=1200) as response:
-                      result = json.load(response)
-              except (urllib.error.URLError, TimeoutError) as exc:
-                  raise SystemExit(f"{label} request failed: {type(exc).__name__}") from exc
-              print(f"{label}: ok={result.get('ok')}")
-              if not result.get("ok"):
-                  raise SystemExit(f"{label} failed: {result.get('error') or result.get('stage') or 'operation_failed'}")
-              return result
-
-          request("manifest", "/projects/cockpit-escritorio-hml/manifest")
-          request("clone", "/projects/clone", {"project_id": "cockpit-escritorio-hml"})
-          request("status", "/projects/cockpit-escritorio-hml/status")
-          request("deploy", "/project-deployments/deploy", {
-              "project_id": "cockpit-escritorio-hml",
-              "environment": "homologation",
-              "update_repository": True,
-              "build": True,
-              "start": True,
-          })
-          PY
+          docker exec -i vitrine_vps_ops_plugin_hml node - <<'NODE'
+          const api = (process.env.OPS_API_URL || 'http://vitrine_ops_api_hml:8080').replace(/\/$/, '');
+          const token = process.env.OPS_BROKER_TOKEN || '';
+          if (!token) throw new Error('VPS Ops runtime credential unavailable');
+          async function call(label, path, payload) {
+            const response = await fetch(api + path, {
+              method: payload ? 'POST' : 'GET',
+              headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: payload ? JSON.stringify(payload) : undefined,
+              signal: AbortSignal.timeout(1200000),
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || body.ok === false) {
+              throw new Error(`${label} failed: HTTP ${response.status} ${body.error || body.stage || 'operation_failed'}`);
+            }
+            console.log(`${label}: ok=true`);
+          }
+          await call('manifest', '/projects/cockpit-escritorio-hml/manifest');
+          await call('clone', '/projects/clone', { project_id: 'cockpit-escritorio-hml' });
+          await call('status', '/projects/cockpit-escritorio-hml/status');
+          await call('deploy', '/project-deployments/deploy', {
+            project_id: 'cockpit-escritorio-hml',
+            environment: 'homologation',
+            update_repository: true,
+            build: true,
+            start: true,
+          });
+          NODE
