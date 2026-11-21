@@ -51,8 +51,8 @@ jobs:
             console.log(`${label}: ok=true`);
           }
           await call('manifest', '/projects/cockpit-escritorio-hml/manifest');
-          await call('clone', '/projects/clone', { project_id: 'cockpit-escritorio-hml' });
           await call('status', '/projects/cockpit-escritorio-hml/status');
+          await call('clone', '/projects/clone', { project_id: 'cockpit-escritorio-hml' });
           await call('deploy', '/project-deployments/deploy', {
             project_id: 'cockpit-escritorio-hml',
             environment: 'homologation',
