@@ -1,0 +1,25 @@
+name: Project Manager CI
+
+on:
+  pull_request:
+    paths:
+      - 'project-manager/**'
+      - '.github/workflows/project-manager-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate Cockpit HML manifest
+        run: python project-manager/test_cockpit_manifest.py
+      - name: Compile project manager Python
+        run: python -m py_compile project-manager/project_manager_operations.py project-manager/project_manager_tools.py project-manager/test_cockpit_manifest.py
