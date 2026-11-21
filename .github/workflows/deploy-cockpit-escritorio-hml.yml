@@ -1,0 +1,53 @@
+name: Deploy Cockpit Escritório HML
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "SHA esperado da branch feature/escritorio-dev-eco-mvp-missoes-20261117"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Cockpit through Ops API
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/escritorio-dev-eco-mvp-missoes-20261117
+          fetch-depth: 1
+          clean: true
+      - name: Validate source SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          EXPECTED="${{ inputs.expected_sha }}"
+          if [ -n "$EXPECTED" ] && [ "$SHA" != "$EXPECTED" ]; then exit 13; fi
+          echo "Deploy SHA: $SHA"
+      - name: Check Ops API
+        shell: bash
+        run: curl -fsS --max-time 15 http://127.0.0.1:18080/health >/dev/null
+      - name: Reconcile and deploy Cockpit HML
+        shell: bash
+        run: |
+          set -euo pipefail
+          . /srv/connectors/vitrine-vps-mcp/secrets/ops.env
+          AUTH=( -H "Authorization: Bearer $OPS_BROKER_TOKEN" -H 'Content-Type: application/json' )
+          curl -fsS "${AUTH[@]}" http://127.0.0.1:18080/projects/cockpit-escritorio-hml/manifest >/tmp/cockpit-manifest.json
+          curl -fsS "${AUTH[@]}" -X POST -d '{"project_id":"cockpit-escritorio-hml"}' http://127.0.0.1:18080/projects/clone >/tmp/cockpit-clone.json
+          curl -fsS "${AUTH[@]}" http://127.0.0.1:18080/projects/cockpit-escritorio-hml/status >/tmp/cockpit-status.json
+          curl -fsS "${AUTH[@]}" -X POST -d '{"project_id":"cockpit-escritorio-hml","environment":"homologation","update_repository":true,"build":true,"start":true}' http://127.0.0.1:18080/project-deployments/deploy >/tmp/cockpit-deploy.json
+          python3 - <<'PY'
+          import json
+          for name in ('manifest', 'clone', 'status', 'deploy'):
+              data = json.load(open(f'/tmp/cockpit-{name}.json', encoding='utf-8'))
+              print(f'{name}: ok={data.get("ok")}')
+              if not data.get('ok'):
+                  raise SystemExit(f'{name} failed')
+          PY
