@@ -1,13 +1,16 @@
 {
   "id": "cockpit-escritorio-hml",
-  "name": "Cockpit HML — Escritório Virtual",
-  "workspace_root": "/srv/projects/cockpit-admin-v1-hml",
+  "name": "Cockpit HML — Escritório Virtual (isolado)",
+  "workspace_root": "/srv/projects/cockpit-escritorio-hml-isolated",
   "repository": {
     "url": "https://github.com/cschibelsky-star/vitrine-ai-pro.git",
     "branch": "feature/escritorio-dev-eco-mvp-missoes-20261117",
     "directory": "repository"
   },
-  "shared_directories": ["storage", "bootstrap/cache"],
+  "shared_directories": [
+    "storage",
+    "bootstrap/cache"
+  ],
   "docker": {
     "compose_file": "docker-compose.cockpit-hml.yml",
     "project_name": "vitrine-cockpit-hml"
@@ -17,7 +20,9 @@
     "allowed_keys": []
   },
   "domains": {
-    "homologation": ["hml.vitrineiapro.com.br"]
+    "homologation": [
+      "hml.vitrineiapro.com.br"
+    ]
   },
   "deployment": {
     "homologation": {
@@ -35,7 +40,13 @@
   "backup_root": "/srv/backups/cockpit-admin-v1-hml",
   "release": {
     "directory": "releases",
-    "exclude": [".git", ".env", "storage", "vendor", "node_modules"]
+    "exclude": [
+      ".git",
+      ".env",
+      "storage",
+      "vendor",
+      "node_modules"
+    ]
   },
   "policies": {
     "dirty_tree": "preserve",
