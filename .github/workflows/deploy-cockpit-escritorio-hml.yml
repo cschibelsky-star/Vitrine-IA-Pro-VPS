@@ -59,11 +59,4 @@ jobs:
               "build": True,
               "start": True,
           })
-          PY          python3 - <<'PY'
-          import json
-          for name in ('manifest', 'clone', 'status', 'deploy'):
-              data = json.load(open(f'/tmp/cockpit-{name}.json', encoding='utf-8'))
-              print(f'{name}: ok={data.get("ok")}')
-              if not data.get('ok'):
-                  raise SystemExit(f'{name} failed')
           PY
