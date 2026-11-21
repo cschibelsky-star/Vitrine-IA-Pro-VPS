@@ -74,6 +74,7 @@ jobs:
           set -euo pipefail
           test -f "$OPS_REPO_DIR/$COMPOSE_FILE"
           cd "$OPS_REPO_DIR"
+          docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
           docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
 
       - name: Wait for healthy
@@ -106,6 +107,7 @@ jobs:
           echo "Rolling back to $OLD_IMAGE_ID"
           docker image tag "$KNOWN_GOOD_TAG" "$IMAGE_TAG"
           cd "$OPS_REPO_DIR"
+          docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
           docker compose -p "$DOCKER_PROJECT" -f "$COMPOSE_FILE" up -d --no-build --force-recreate "$SERVICE"
 
           for i in $(seq 1 24); do
