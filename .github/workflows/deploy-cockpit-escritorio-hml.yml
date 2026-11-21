@@ -24,13 +24,42 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          . /srv/connectors/vitrine-vps-mcp/secrets/ops.env
-          AUTH=( -H "Authorization: Bearer $OPS_BROKER_TOKEN" -H 'Content-Type: application/json' )
-          curl -fsS "${AUTH[@]}" http://127.0.0.1:18080/projects/cockpit-escritorio-hml/manifest >/tmp/cockpit-manifest.json
-          curl -fsS "${AUTH[@]}" -X POST -d '{"project_id":"cockpit-escritorio-hml"}' http://127.0.0.1:18080/projects/clone >/tmp/cockpit-clone.json
-          curl -fsS "${AUTH[@]}" http://127.0.0.1:18080/projects/cockpit-escritorio-hml/status >/tmp/cockpit-status.json
-          curl -fsS "${AUTH[@]}" -X POST -d '{"project_id":"cockpit-escritorio-hml","environment":"homologation","update_repository":true,"build":true,"start":true}' http://127.0.0.1:18080/project-deployments/deploy >/tmp/cockpit-deploy.json
-          python3 - <<'PY'
+          docker exec -i vitrine_ops_api_hml sh -c 'set -a; . /run/secrets/ops.env; set +a; python3 -' <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          base = "http://127.0.0.1:8080"
+          token = os.environ.get("OPS_BROKER_TOKEN", "")
+          if not token:
+              raise SystemExit("Ops API runtime credential is unavailable")
+          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+          def request(label, path, payload=None):
+              data = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(base + path, data=data, headers=headers, method="GET" if data is None else "POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=1200) as response:
+                      result = json.load(response)
+              except (urllib.error.URLError, TimeoutError) as exc:
+                  raise SystemExit(f"{label} request failed: {type(exc).__name__}") from exc
+              print(f"{label}: ok={result.get('ok')}")
+              if not result.get("ok"):
+                  raise SystemExit(f"{label} failed: {result.get('error') or result.get('stage') or 'operation_failed'}")
+              return result
+
+          request("manifest", "/projects/cockpit-escritorio-hml/manifest")
+          request("clone", "/projects/clone", {"project_id": "cockpit-escritorio-hml"})
+          request("status", "/projects/cockpit-escritorio-hml/status")
+          request("deploy", "/project-deployments/deploy", {
+              "project_id": "cockpit-escritorio-hml",
+              "environment": "homologation",
+              "update_repository": True,
+              "build": True,
+              "start": True,
+          })
+          PY          python3 - <<'PY'
           import json
           for name in ('manifest', 'clone', 'status', 'deploy'):
               data = json.load(open(f'/tmp/cockpit-{name}.json', encoding='utf-8'))
