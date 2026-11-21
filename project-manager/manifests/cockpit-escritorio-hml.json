@@ -1,0 +1,46 @@
+{
+  "id": "cockpit-escritorio-hml",
+  "name": "Cockpit HML — Escritório Virtual",
+  "workspace_root": "/srv/projects/cockpit-admin-v1-hml",
+  "repository": {
+    "url": "https://github.com/cschibelsky-star/vitrine-ai-pro.git",
+    "branch": "feature/escritorio-dev-eco-mvp-missoes-20261117",
+    "directory": "repository"
+  },
+  "shared_directories": ["storage", "bootstrap/cache"],
+  "docker": {
+    "compose_file": "docker-compose.cockpit-hml.yml",
+    "project_name": "vitrine-cockpit-hml"
+  },
+  "runtime": {
+    "env_file": "/srv/projects/cockpit-admin-v1-hml/.env.runtime",
+    "allowed_keys": []
+  },
+  "domains": {
+    "homologation": ["hml.vitrineiapro.com.br"]
+  },
+  "deployment": {
+    "homologation": {
+      "health_url": "https://hml.vitrineiapro.com.br/cockpit/login",
+      "requires_ssl": true,
+      "automatic": true
+    },
+    "production": {
+      "health_url": "https://vitrineiapro.com.br/cockpit/login",
+      "requires_ssl": true,
+      "automatic": false,
+      "requires_explicit_cutover": true
+    }
+  },
+  "backup_root": "/srv/backups/cockpit-admin-v1-hml",
+  "release": {
+    "directory": "releases",
+    "exclude": [".git", ".env", "storage", "vendor", "node_modules"]
+  },
+  "policies": {
+    "dirty_tree": "preserve",
+    "allow_reset": false,
+    "allow_clean": false,
+    "backup_before_mutation": true
+  }
+}
