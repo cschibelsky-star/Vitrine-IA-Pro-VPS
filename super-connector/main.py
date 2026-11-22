@@ -410,5 +410,64 @@ def laravel_test(project_id: str) -> dict[str, Any]:
     return result
 
 
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+def github_actions_dispatch(
+    repository: str,
+    workflow: str,
+    ref: str,
+    confirm: str = "",
+) -> dict[str, Any]:
+    """Dispatch one allowlisted, offline GitHub Actions workflow; never deploy."""
+    import re
+    import urllib.error
+    import urllib.request
+
+    if confirm != "EXECUTAR":
+        return {"ok": False, "error": "confirmation_required"}
+    allowed = {
+        ("cschibelsky-star/Vitrine-IA-Pro-VPS", "avello-gateway-v2-isolated.yml"):
+            "feature/avello-gateway-v2-isolated-20261111",
+    }
+    expected_ref = allowed.get((repository, workflow))
+    if expected_ref is None or ref != expected_ref:
+        return {"ok": False, "error": "workflow_or_ref_not_allowlisted"}
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        return {"ok": False, "error": "invalid_repository"}
+    token = os.getenv("SUPER_GITHUB_ACTIONS_TOKEN", "").strip()
+    if not token:
+        return {"ok": False, "error": "github_actions_token_not_configured"}
+    owner, name = repository.split("/", 1)
+    url = (
+        f"https://api.github.com/repos/{owner}/{name}/actions/workflows/"
+        f"{workflow}/dispatches"
+    )
+    request = urllib.request.Request(
+        url,
+        data=json.dumps({"ref": ref}).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+            "User-Agent": "vitrine-super-actions-dispatch",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            status = response.status
+        result = {"ok": status == 204, "status_code": status,
+                  "repository": repository, "workflow": workflow, "ref": ref}
+    except urllib.error.HTTPError as exc:
+        result = {"ok": False, "error": "github_http_error", "status_code": exc.code}
+    except (urllib.error.URLError, TimeoutError, OSError):
+        result = {"ok": False, "error": "github_transport_error"}
+    _audit("github.actions.dispatch",
+           {"repository": repository, "workflow": workflow, "ref": ref},
+           result)
+    return result
+
+
 if __name__ == "__main__":
     mcp.run(transport="http", host="0.0.0.0", port=8000)
