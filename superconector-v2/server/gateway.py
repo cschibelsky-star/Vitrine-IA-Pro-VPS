@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 import httpx
 import jwt
+from operational_v5 import read_factory, TOOLS, PROJECTS
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -112,6 +113,22 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         if not isinstance(obj, dict) or obj.get("project_id") != project_id:
             raise HTTPException(status_code=502, detail="upstream_identity_mismatch")
         return JSONResponse({key: obj[key] for key in _ALLOWED_RESPONSE_KEYS if key in obj})
+
+    @app.get("/v1/operational/{project_id}/{operation}")
+    async def operational_read(project_id: str, operation: str, request: Request):
+        claims = _claims(request, settings)
+        if (project_id not in PROJECTS or operation not in TOOLS
+                or project_id not in settings.tenant_projects.get(claims["tenant_id"], frozenset())):
+            raise HTTPException(status_code=403, detail="resource_not_authorized")
+        if os.environ.get("SUPER_OPERATIONAL_PILOT_ENABLED") != "true":
+            raise HTTPException(status_code=503, detail="pilot_disabled")
+        try:
+            result = await read_factory(operation, project_id)
+            # Do not expose arbitrary upstream content or infrastructure details.
+            return {"project_id": project_id, "operation": operation,
+                    "upstream_responded": isinstance(result, dict)}
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            raise HTTPException(status_code=502, detail="upstream_unavailable") from None
 
     return app
 
