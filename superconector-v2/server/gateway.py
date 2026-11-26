@@ -163,6 +163,51 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
             raise HTTPException(status_code=502, detail="upstream_unavailable") from None
 
+
+    @app.get("/v1/host/{project_id}/{operation}")
+    def host_read(project_id: str, operation: str, request: Request):
+        from host_client import call_host, OPERATIONS
+        import logging
+
+        claims = _claims(request, settings)
+
+        if (
+            project_id != "superconector-v2"
+            or operation not in OPERATIONS
+            or project_id not in settings.tenant_projects.get(
+                claims["tenant_id"], frozenset()
+            )
+        ):
+            raise HTTPException(403, "resource_not_authorized")
+
+        if os.environ.get("SUPER_HOST_ENABLED") != "true":
+            raise HTTPException(503, "host_executor_disabled")
+
+        audit = logging.getLogger("uvicorn.error")
+
+        try:
+            result = call_host(project_id, operation)
+            audit.info(
+                "host_operation tenant=%r subject=%r project=%s operation=%s status=ok",
+                claims["tenant_id"], claims["sub"],
+                project_id, operation
+            )
+            return {
+                "ok": True,
+                "project_id": project_id,
+                "operation": operation,
+                "source": "native-host",
+                "stdout": result["stdout"],
+                "exit_code": result["exit_code"],
+                "duration_ms": result["duration_ms"],
+            }
+        except (OSError, ValueError, KeyError, TypeError):
+            audit.warning(
+                "host_operation project=%s operation=%s status=failed",
+                project_id, operation
+            )
+            raise HTTPException(502, "host_executor_unavailable") from None
+
     return app
 
 app = create_app()
