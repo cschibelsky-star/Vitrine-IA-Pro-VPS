@@ -1,5 +1,6 @@
 """Internal read-only V5 adapter. Not a public endpoint or authorization layer."""
 import json
+import os
 import httpx
 
 URL = "http://127.0.0.1:8867/mcp"
@@ -11,6 +12,10 @@ async def read_factory(tool: str, project: str, *, transport=None):
         raise ValueError("operation_not_allowed")
     headers = {"Accept": "application/json, text/event-stream",
                "Content-Type": "application/json"}
+    if transport is None:
+        if os.environ.get('SUPER_V5_SOCKET_ENABLED') != 'true':
+            raise ValueError('private_transport_disabled')
+        transport = httpx.AsyncHTTPTransport(uds='/run/super-v5/mcp.sock', retries=0)
     async with httpx.AsyncClient(timeout=5, trust_env=False,
                                  follow_redirects=False, transport=transport) as client:
         async def send(payload, notification=False):
