@@ -1,0 +1,28 @@
+name: vitrine-super-v2-operational-hml
+services:
+  operational_mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.operational
+    image: vitrine-super-v2-operational:208e31f
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    pids_limit: 64
+    environment:
+      SUPER_OIDC_ISSUER: https://identity.hml.vitrineiapro.com.br/realms/vitrine-super-v2
+      SUPER_OIDC_AUDIENCE: super-v2-gateway
+      SUPER_MCP_RESOURCE: https://super-v2.hml.vitrineiapro.com.br/mcp
+      SUPER_OIDC_JWKS_URL: https://identity.hml.vitrineiapro.com.br/realms/vitrine-super-v2/protocol/openid-connect/certs
+      SUPER_ALLOWED_SUBJECT: 2eabca32-42c8-4631-8324-d61ee72343ac
+      SUPER_ALLOWED_TENANT: pilot
+      SUPER_HOST_ENABLED: "false"
+    ports:
+      - "127.0.0.1:18879:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,urllib.error; u='http://127.0.0.1:8000/mcp'; exec('try:\\n urllib.request.urlopen(u,timeout=3)\\nexcept urllib.error.HTTPError as e:\\n assert e.code==401\\nelse:\\n raise RuntimeError(\"authentication required\")')"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
