@@ -3,7 +3,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY gateway-requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-COPY gateway.py operational_v5.py ./
+COPY gateway.py operational_v5.py v5_private_bridge.py ./
 USER 65532:65532
 EXPOSE 8001
 CMD ["uvicorn", "gateway:app", "--host", "0.0.0.0", "--port", "8001"]

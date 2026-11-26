@@ -124,10 +124,43 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             raise HTTPException(status_code=503, detail="pilot_disabled")
         try:
             result = await read_factory(operation, project_id)
-            # Do not expose arbitrary upstream content or infrastructure details.
-            return {"project_id": project_id, "operation": operation,
-                    "upstream_responded": isinstance(result, dict)}
-        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            evidence = {}
+            if operation == "project_status":
+                for key in ("workspace_exists",
+                            "repository_exists",
+                            "repository_is_git"):
+                    if type(result.get(key)) is bool:
+                        evidence[key] = result[key]
+                git = result.get("git_status", {})
+                if isinstance(git, dict) and git.get("ok") is True:
+                    lines = git.get("stdout", "").splitlines()
+                    if lines and lines[0].startswith("## "):
+                        evidence["checkout"] = lines[0][3:][:200]
+            elif operation == "project_docker_status":
+                if result.get("exit_code") != 0:
+                    raise ValueError("docker_status_failed")
+                rows = result.get("stdout", "").splitlines()
+                matches = [
+                    row for row in rows
+                    if row.split() and
+                    row.split()[0] == "vitrine_factory_hml"
+                ]
+                if len(matches) != 1:
+                    raise ValueError("container_evidence_missing")
+                row = matches[0]
+                evidence["container"] = "vitrine_factory_hml"
+                evidence["health"] = (
+                    "unhealthy" if "(unhealthy)" in row
+                    else "healthy" if "(healthy)" in row
+                    else "unknown"
+                )
+            if not evidence:
+                raise ValueError("missing_evidence")
+            return {"project_id": project_id,
+                    "operation": operation,
+                    "source": "v5",
+                    "evidence": evidence}
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
             raise HTTPException(status_code=502, detail="upstream_unavailable") from None
 
     return app

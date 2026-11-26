@@ -15,7 +15,25 @@ async def read_factory(tool: str, project: str, *, transport=None):
     if transport is None:
         if os.environ.get('SUPER_V5_SOCKET_ENABLED') != 'true':
             raise ValueError('private_transport_disabled')
-        transport = httpx.AsyncHTTPTransport(uds='/run/super-v5/mcp.sock', retries=0)
+        transport = httpx.AsyncHTTPTransport(
+            uds='/run/super-v5/mcp.sock', retries=0)
+        async with httpx.AsyncClient(
+            transport=transport,
+            timeout=20,
+            trust_env=False,
+            follow_redirects=False
+        ) as private_client:
+            response = await private_client.get(
+                f"http://private/factory/{tool}")
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError("invalid_private_response")
+            if data.get("project_id") != project:
+                raise ValueError("private_identity_mismatch")
+            if data.get("ok") is not True:
+                raise ValueError("private_operation_failed")
+            return data
     async with httpx.AsyncClient(timeout=5, trust_env=False,
                                  follow_redirects=False, transport=transport) as client:
         async def send(payload, notification=False):
@@ -47,9 +65,16 @@ async def read_factory(tool: str, project: str, *, transport=None):
             await send({"jsonrpc":"2.0","method":"notifications/initialized"}, True)
             result, _ = await send({"jsonrpc":"2.0","id":2,"method":"tools/call",
                 "params":{"name":tool,"arguments":{"project_id":project}}})
-            if result.get("isError"):
+            if not isinstance(result, dict) or result.get("isError"):
                 raise ValueError("upstream_tool_error")
-            return result
+            data = result.get("structuredContent")
+            if not isinstance(data, dict):
+                raise ValueError("missing_structured_content")
+            if data.get("ok") is not True:
+                raise ValueError("upstream_operation_failed")
+            if data.get("project_id") != project:
+                raise ValueError("upstream_identity_mismatch")
+            return data
         finally:
             if "Mcp-Session-Id" in headers:
                 try:
