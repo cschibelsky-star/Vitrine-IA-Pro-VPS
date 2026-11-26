@@ -36,7 +36,13 @@ def execute(project, operation):
     started = time.monotonic()
 
     result = subprocess.run(
-        OPERATIONS[operation],
+        (
+            "/usr/bin/git",
+            "-c", "safe.directory=" + str(root),
+            "-c", "core.fsmonitor=false",
+            "-c", "core.hooksPath=/dev/null",
+            *OPERATIONS[operation][1:],
+        ),
         cwd=root,
         shell=False,
         capture_output=True,
