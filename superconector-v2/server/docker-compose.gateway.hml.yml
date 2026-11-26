@@ -5,13 +5,15 @@ services:
       context: .
       dockerfile: Dockerfile.gateway
     image: vitrine-super-v2-gateway:0.2.0-dev
-    restart: "no"
+    restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
     environment:
       SUPER_V5_READ_ENABLED: "false"
+      SUPER_OPERATIONAL_PILOT_ENABLED: "false"
+      SUPER_V5_SOCKET_ENABLED: "false"
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
     ports:
