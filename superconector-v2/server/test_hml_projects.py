@@ -13,7 +13,7 @@ class PilotTests(unittest.TestCase):
         self.assertEqual(set(projects), {"assessor-online-pr137-current-hml", "cockpit-admin-v1-hml"})
         for project in projects.values():
             self.assertEqual(project["environment"], "homologation")
-            expected = ["project_hml_snapshot"]
+            expected = ["project_hml_snapshot", "project_hml_release_preflight"]
             if project["project_id"] == "assessor-online-pr137-current-hml":
                 expected.append("project_hml_database_backup")
             self.assertEqual(project["operations"], expected)

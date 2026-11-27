@@ -5,8 +5,9 @@ import socket
 TARGET = "vitrine-super-v2-operational-hml-operational_mcp-1"
 SCOPES = {"candidate_status": "projects:read", "candidate_restart": "projects:write",
           "assessor_hml_snapshot": "projects:write", "project_hml_snapshot": "projects:write",
-          "hml_project_catalog": "projects:read", "project_hml_database_backup": "projects:write"}
-PROJECT_OPERATIONS = {"project_hml_snapshot", "project_hml_database_backup"}
+          "hml_project_catalog": "projects:read", "project_hml_database_backup": "projects:write",
+          "project_hml_release_preflight": "projects:read"}
+PROJECT_OPERATIONS = {"project_hml_snapshot", "project_hml_database_backup", "project_hml_release_preflight"}
 SNAPSHOT_TARGET = "assessor-online-pr137-current-hml"
 
 
@@ -23,7 +24,7 @@ def authorize(token, operation, subject, enabled, confirm=""):
         raise PermissionError("confirmation_required")
 
 
-def call_maintenance(operation, project_id=None):
+def call_maintenance(operation, project_id=None, commit=None):
     if operation not in SCOPES:
         raise ValueError("operation_not_allowed")
     if (operation in PROJECT_OPERATIONS) != (project_id is not None):
@@ -31,6 +32,10 @@ def call_maintenance(operation, project_id=None):
     payload = {"operation": operation}
     if project_id is not None:
         payload["project_id"] = project_id
+    if (operation == "project_hml_release_preflight") != (commit is not None):
+        raise ValueError("invalid_commit_argument")
+    if commit is not None:
+        payload["commit"] = commit
     with socket.socket(socket.AF_UNIX) as sock:
         sock.settimeout(60)
         sock.connect("/run/super-v2-maintenance/operations.sock")

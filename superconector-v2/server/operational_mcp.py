@@ -120,12 +120,12 @@ async def git_diff_check() -> dict:
     return await run_operation("git_diff_check")
 
 
-async def run_maintenance(operation, confirm="", project_id=None):
+async def run_maintenance(operation, confirm="", project_id=None, commit=None):
     token = get_access_token()
     authorize(token, operation, os.environ["SUPER_ALLOWED_SUBJECT"],
               os.environ.get("SUPER_MAINTENANCE_ENABLED") == "true", confirm)
     try:
-        result = await asyncio.to_thread(call_maintenance, operation, project_id)
+        result = await asyncio.to_thread(call_maintenance, operation, project_id, commit)
     except Exception:
         audit.warning("maintenance=%s status=failed", operation)
         raise RuntimeError("maintenance_failed") from None
@@ -167,6 +167,12 @@ async def project_hml_snapshot(project_id: str, confirm: str) -> dict:
 async def project_hml_database_backup(project_id: str, confirm: str) -> dict:
     """Create and validate an online SQLite backup for the supported HML project."""
     return await run_maintenance("project_hml_database_backup", confirm, project_id)
+
+
+@mcp.tool()
+async def project_hml_release_preflight(project_id: str, commit: str) -> dict:
+    """Read the requested Git revision and current image identities for one HML project."""
+    return await run_maintenance("project_hml_release_preflight", project_id=project_id, commit=commit)
 
 
 if __name__ == "__main__":
