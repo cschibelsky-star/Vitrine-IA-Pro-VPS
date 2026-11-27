@@ -26,3 +26,10 @@ services:
       interval: 15s
       timeout: 5s
       retries: 4
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.253.241.0/28
