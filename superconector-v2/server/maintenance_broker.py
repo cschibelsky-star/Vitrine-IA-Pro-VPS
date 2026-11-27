@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 import assessor_snapshot
+from hml_projects import PILOT, catalog
 
 SOCKET = Path("/run/super-v2-maintenance/operations.sock")
 TARGET = "vitrine-super-v2-operational-hml-operational_mcp-1"
@@ -38,9 +39,22 @@ def candidate():
 
 
 def operation(data):
-    if not isinstance(data, dict) or set(data) != {"operation"}:
+    if not isinstance(data, dict):
+        raise ValueError("invalid_request")
+    if data.get("operation") == "project_hml_snapshot":
+        if set(data) != {"operation", "project_id"} or not isinstance(data["project_id"], str):
+            raise ValueError("invalid_request")
+        project = PILOT.get(data["project_id"])
+        if project is None:
+            raise PermissionError("project_not_allowed")
+        return {"ok": True, "operation": "project_hml_snapshot", "target": project.project_id,
+                **assessor_snapshot.create_snapshot(root=project.root, paths=project.snapshot_paths,
+                                                   prefix=project.snapshot_prefix)}
+    if set(data) != {"operation"}:
         raise ValueError("invalid_request")
     op = data["operation"]
+    if op == "hml_project_catalog":
+        return {"ok": True, "operation": op, "target": "hml-pilot", "projects": catalog()}
     if op == "assessor_hml_snapshot":
         return {"ok": True, "operation": op, "target": assessor_snapshot.PROJECT,
                 **assessor_snapshot.create_snapshot()}
@@ -70,7 +84,8 @@ class Handler(socketserver.StreamRequestHandler):
             if len(raw) > 1024 or not raw.endswith(b"\n"):
                 raise ValueError("invalid_request")
             data = json.loads(raw)
-            if isinstance(data, dict) and data.get("operation") in ("candidate_status", "candidate_restart", "assessor_hml_snapshot"):
+            if isinstance(data, dict) and data.get("operation") in ("candidate_status", "candidate_restart", "assessor_hml_snapshot",
+                                                                      "project_hml_snapshot", "hml_project_catalog"):
                 op = data["operation"]
             result = operation(data)
         except Exception:

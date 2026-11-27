@@ -1,0 +1,22 @@
+name: Super V2 HML project pilot
+on:
+  pull_request:
+    paths:
+      - 'superconector-v2/server/**'
+      - '.github/workflows/super-v2-hml-project-pilot.yml'
+permissions:
+  contents: read
+jobs:
+  test-broker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: superconector-v2/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest -v test_hml_projects test_assessor_snapshot test_maintenance_broker
+      - run: python -m py_compile operational_mcp.py
