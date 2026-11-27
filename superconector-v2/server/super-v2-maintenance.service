@@ -1,0 +1,28 @@
+[Unit]
+Description=Superconector V2 restricted HML maintenance
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=superv2ops
+WorkingDirectory=/opt/super-v2-maintenance
+ExecStart=/usr/bin/python3 -B /opt/super-v2-maintenance/maintenance_broker.py
+RuntimeDirectory=super-v2-maintenance
+RuntimeDirectoryMode=0750
+UMask=0077
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=128M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target
