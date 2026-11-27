@@ -120,16 +120,16 @@ async def git_diff_check() -> dict:
     return await run_operation("git_diff_check")
 
 
-async def run_maintenance(operation, confirm=""):
+async def run_maintenance(operation, confirm="", project_id=None):
     token = get_access_token()
     authorize(token, operation, os.environ["SUPER_ALLOWED_SUBJECT"],
               os.environ.get("SUPER_MAINTENANCE_ENABLED") == "true", confirm)
     try:
-        result = await asyncio.to_thread(call_maintenance, operation)
+        result = await asyncio.to_thread(call_maintenance, operation, project_id)
     except Exception:
         audit.warning("maintenance=%s status=failed", operation)
         raise RuntimeError("maintenance_failed") from None
-    audit.info("subject=%r maintenance=%s status=ok", token.subject, operation)
+    audit.info("subject=%r maintenance=%s project=%r status=ok", token.subject, operation, project_id)
     return {"source": "native-vps", **result}
 
 
@@ -149,6 +149,18 @@ async def candidate_restart(confirm: str) -> dict:
 async def assessor_hml_snapshot(confirm: str) -> dict:
     """Create and verify a private snapshot of the five Assessor Online HML files."""
     return await run_maintenance("assessor_hml_snapshot", confirm)
+
+
+@mcp.tool()
+async def hml_project_catalog() -> dict:
+    """List registered HML projects and the operations their broker supports."""
+    return await run_maintenance("hml_project_catalog")
+
+
+@mcp.tool()
+async def project_hml_snapshot(project_id: str, confirm: str) -> dict:
+    """Save and verify the registered files of an allowlisted HML project."""
+    return await run_maintenance("project_hml_snapshot", confirm, project_id)
 
 
 if __name__ == "__main__":

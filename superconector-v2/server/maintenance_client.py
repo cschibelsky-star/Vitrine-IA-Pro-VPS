@@ -4,7 +4,8 @@ import socket
 
 TARGET = "vitrine-super-v2-operational-hml-operational_mcp-1"
 SCOPES = {"candidate_status": "projects:read", "candidate_restart": "projects:write",
-          "assessor_hml_snapshot": "projects:write"}
+          "assessor_hml_snapshot": "projects:write", "project_hml_snapshot": "projects:write",
+          "hml_project_catalog": "projects:read"}
 SNAPSHOT_TARGET = "assessor-online-pr137-current-hml"
 
 
@@ -21,13 +22,18 @@ def authorize(token, operation, subject, enabled, confirm=""):
         raise PermissionError("confirmation_required")
 
 
-def call_maintenance(operation):
+def call_maintenance(operation, project_id=None):
     if operation not in SCOPES:
         raise ValueError("operation_not_allowed")
+    if (operation == "project_hml_snapshot") != (project_id is not None):
+        raise ValueError("invalid_project_argument")
+    payload = {"operation": operation}
+    if project_id is not None:
+        payload["project_id"] = project_id
     with socket.socket(socket.AF_UNIX) as sock:
         sock.settimeout(60)
         sock.connect("/run/super-v2-maintenance/operations.sock")
-        sock.sendall(json.dumps({"operation": operation}).encode() + b"\n")
+        sock.sendall(json.dumps(payload).encode() + b"\n")
         with sock.makefile("rb") as stream:
             raw = stream.readline(8193)
     if len(raw) > 8192 or not raw.endswith(b"\n"):
@@ -36,6 +42,10 @@ def call_maintenance(operation):
     if not isinstance(result, dict) or result.get("ok") is not True:
         raise RuntimeError("maintenance_failed")
     target = SNAPSHOT_TARGET if operation == "assessor_hml_snapshot" else TARGET
+    if operation == "project_hml_snapshot":
+        target = project_id
+    elif operation == "hml_project_catalog":
+        target = "hml-pilot"
     if result.get("operation") != operation or result.get("target") != target:
         raise RuntimeError("response_mismatch")
     return result

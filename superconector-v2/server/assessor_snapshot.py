@@ -45,20 +45,22 @@ def read_fixed(base, parts):
         os.close(fd)
 
 
-def create_snapshot():
+def create_snapshot(*, root=None, paths=None, prefix='assessor-hml'):
+    root = ROOT if root is None else root
+    paths = FILES if paths is None else paths
     directory = DESTINATION.lstat()
     if (not stat.S_ISDIR(directory.st_mode) or directory.st_uid != os.geteuid()
             or directory.st_mode & 0o077):
         raise PermissionError("unsafe_snapshot_directory")
-    if sum(1 for _ in DESTINATION.glob("assessor-hml-*.tar.gz")) >= MAX_SNAPSHOTS:
+    if sum(1 for _ in DESTINATION.glob(f"{prefix}-*.tar.gz")) >= MAX_SNAPSHOTS:
         raise ValueError("snapshot_limit")
 
     # Resolve every source component without following symlinks.
     sources = {
-        name: read_fixed(Path("/"), (ROOT / name).parts[1:])
-        for name in FILES
+        name: read_fixed(Path("/"), (root / name).parts[1:])
+        for name in paths
     }
-    fd, temp = tempfile.mkstemp(prefix=".assessor-hml-", dir=DESTINATION)
+    fd, temp = tempfile.mkstemp(prefix=f".{prefix}-", dir=DESTINATION)
     published = None
     complete = False
     try:
@@ -74,7 +76,7 @@ def create_snapshot():
             output.seek(0)
             with tarfile.open(fileobj=output, mode="r:gz") as archive:
                 entries = archive.getmembers()
-                if [entry.name for entry in entries] != list(FILES):
+                if [entry.name for entry in entries] != list(paths):
                     raise ValueError("invalid_snapshot_contents")
                 for entry in entries:
                     with archive.extractfile(entry) as member:
@@ -98,4 +100,4 @@ def create_snapshot():
         if published is not None and not complete:
             published.unlink(missing_ok=True)
     return {"archive": archive_name, "sha256": digest, "bytes": size,
-            "file_count": len(FILES), "verified": True}
+            "file_count": len(paths), "verified": True}
