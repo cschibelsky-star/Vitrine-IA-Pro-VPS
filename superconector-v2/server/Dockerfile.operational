@@ -2,7 +2,7 @@ FROM vitrine-super-v2-public:0.2.0-dev
 USER root
 RUN pip install --no-cache-dir 'PyJWT[crypto]>=2.8,<3'
 WORKDIR /app
-COPY operational_mcp.py mcp_identity.py host_client.py ./
+COPY operational_mcp.py mcp_identity.py host_client.py maintenance_client.py ./
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER 65532:65532
 EXPOSE 8000
