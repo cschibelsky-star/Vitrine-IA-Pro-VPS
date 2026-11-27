@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.operational
-    image: vitrine-super-v2-operational:208e31f
+    image: vitrine-super-v2-operational:maintenance-v1
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
