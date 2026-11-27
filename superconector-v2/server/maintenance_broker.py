@@ -10,6 +10,8 @@ import struct
 import subprocess
 from pathlib import Path
 
+import assessor_snapshot
+
 SOCKET = Path("/run/super-v2-maintenance/operations.sock")
 TARGET = "vitrine-super-v2-operational-hml-operational_mcp-1"
 PROJECT = "vitrine-super-v2-operational-hml"
@@ -39,6 +41,9 @@ def operation(data):
     if not isinstance(data, dict) or set(data) != {"operation"}:
         raise ValueError("invalid_request")
     op = data["operation"]
+    if op == "assessor_hml_snapshot":
+        return {"ok": True, "operation": op, "target": assessor_snapshot.PROJECT,
+                **assessor_snapshot.create_snapshot()}
     if op not in ("candidate_status", "candidate_restart"):
         raise PermissionError("operation_not_allowed")
     cid, before = candidate()
@@ -65,7 +70,7 @@ class Handler(socketserver.StreamRequestHandler):
             if len(raw) > 1024 or not raw.endswith(b"\n"):
                 raise ValueError("invalid_request")
             data = json.loads(raw)
-            if isinstance(data, dict) and data.get("operation") in ("candidate_status", "candidate_restart"):
+            if isinstance(data, dict) and data.get("operation") in ("candidate_status", "candidate_restart", "assessor_hml_snapshot"):
                 op = data["operation"]
             result = operation(data)
         except Exception:

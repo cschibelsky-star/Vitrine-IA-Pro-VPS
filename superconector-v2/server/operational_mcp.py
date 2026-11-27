@@ -145,6 +145,12 @@ async def candidate_restart(confirm: str) -> dict:
     return await run_maintenance("candidate_restart", confirm)
 
 
+@mcp.tool()
+async def assessor_hml_snapshot(confirm: str) -> dict:
+    """Create and verify a private snapshot of the five Assessor Online HML files."""
+    return await run_maintenance("assessor_hml_snapshot", confirm)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     mcp.run(transport="streamable-http")

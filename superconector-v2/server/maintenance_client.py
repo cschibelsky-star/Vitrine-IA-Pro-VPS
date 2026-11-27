@@ -3,7 +3,9 @@ import json
 import socket
 
 TARGET = "vitrine-super-v2-operational-hml-operational_mcp-1"
-SCOPES = {"candidate_status": "projects:read", "candidate_restart": "projects:write"}
+SCOPES = {"candidate_status": "projects:read", "candidate_restart": "projects:write",
+          "assessor_hml_snapshot": "projects:write"}
+SNAPSHOT_TARGET = "assessor-online-pr137-current-hml"
 
 
 def authorize(token, operation, subject, enabled, confirm=""):
@@ -15,7 +17,7 @@ def authorize(token, operation, subject, enabled, confirm=""):
         raise PermissionError("scope_required")
     if not enabled:
         raise PermissionError("maintenance_disabled")
-    if operation == "candidate_restart" and confirm != "EXECUTAR":
+    if SCOPES[operation] == "projects:write" and confirm != "EXECUTAR":
         raise PermissionError("confirmation_required")
 
 
@@ -33,6 +35,7 @@ def call_maintenance(operation):
     result = json.loads(raw)
     if not isinstance(result, dict) or result.get("ok") is not True:
         raise RuntimeError("maintenance_failed")
-    if result.get("operation") != operation or result.get("target") != TARGET:
+    target = SNAPSHOT_TARGET if operation == "assessor_hml_snapshot" else TARGET
+    if result.get("operation") != operation or result.get("target") != target:
         raise RuntimeError("response_mismatch")
     return result
