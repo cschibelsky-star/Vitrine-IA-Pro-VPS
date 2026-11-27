@@ -6,6 +6,7 @@ import os
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.auth.settings import AuthSettings
+from mcp.server.auth.routes import create_protected_resource_routes
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.transport_security import TransportSecuritySettings
 
@@ -15,7 +16,27 @@ from maintenance_client import authorize, call_maintenance
 
 audit = logging.getLogger("super-v2.audit")
 
-mcp = FastMCP(
+class OperationalMCP(FastMCP):
+    def streamable_http_app(self):
+        app = super().streamable_http_app()
+        auth = self.settings.auth
+        metadata_routes = create_protected_resource_routes(
+            resource_url=auth.resource_server_url,
+            authorization_servers=[auth.issuer_url],
+            scopes_supported=["projects:read", "projects:write"],
+        )
+        for metadata_route in metadata_routes:
+            matches = [
+                i for i, route in enumerate(app.router.routes)
+                if getattr(route, "path", None) == metadata_route.path
+            ]
+            if len(matches) != 1:
+                raise RuntimeError("unexpected OAuth metadata route count")
+            app.router.routes[matches[0]] = metadata_route
+        return app
+
+
+mcp = OperationalMCP(
     "Vitrine IA Pro Superconector V2",
     host="0.0.0.0",
     port=8000,
