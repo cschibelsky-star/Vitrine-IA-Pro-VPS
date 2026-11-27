@@ -1,0 +1,7 @@
+services:
+  operational_mcp:
+    user: "${SUPER_HOST_UID:?required}:${SUPER_HOST_GID:?required}"
+    environment:
+      SUPER_HOST_ENABLED: "true"
+    volumes:
+      - /run/super-v2-host:/run/super-v2-host:ro
