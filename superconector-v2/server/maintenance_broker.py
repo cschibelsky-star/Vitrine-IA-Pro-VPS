@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 import assessor_snapshot
+import hml_sqlite_backup
 from hml_projects import PILOT, catalog
 
 SOCKET = Path("/run/super-v2-maintenance/operations.sock")
@@ -21,11 +22,11 @@ LOG = logging.getLogger("super-v2-maintenance")
 ENV = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LC_ALL": "C"}
 
 
-def docker(*args):
+def docker(*args, timeout=35):
     result = subprocess.run(
         ["/usr/bin/docker", "--host", "unix:///run/docker.sock", *args],
         env=ENV, cwd="/", shell=False, capture_output=True, text=True,
-        timeout=35, check=True,
+        timeout=timeout, check=True,
     )
     return result.stdout.strip()
 
@@ -41,12 +42,17 @@ def candidate():
 def operation(data):
     if not isinstance(data, dict):
         raise ValueError("invalid_request")
-    if data.get("operation") == "project_hml_snapshot":
+    if data.get("operation") in ("project_hml_snapshot", "project_hml_database_backup"):
         if set(data) != {"operation", "project_id"} or not isinstance(data["project_id"], str):
             raise ValueError("invalid_request")
         project = PILOT.get(data["project_id"])
         if project is None:
             raise PermissionError("project_not_allowed")
+        if data["operation"] == "project_hml_database_backup":
+            if project.project_id != hml_sqlite_backup.PROJECT_ID:
+                raise PermissionError("database_backup_not_allowed")
+            return {"ok": True, "operation": data["operation"], "target": project.project_id,
+                    **hml_sqlite_backup.create_backup(docker)}
         return {"ok": True, "operation": "project_hml_snapshot", "target": project.project_id,
                 **assessor_snapshot.create_snapshot(root=project.root, paths=project.snapshot_paths,
                                                    prefix=project.snapshot_prefix)}
@@ -85,7 +91,7 @@ class Handler(socketserver.StreamRequestHandler):
                 raise ValueError("invalid_request")
             data = json.loads(raw)
             if isinstance(data, dict) and data.get("operation") in ("candidate_status", "candidate_restart", "assessor_hml_snapshot",
-                                                                      "project_hml_snapshot", "hml_project_catalog"):
+                                                                      "project_hml_snapshot", "hml_project_catalog", "project_hml_database_backup"):
                 op = data["operation"]
             result = operation(data)
         except Exception:

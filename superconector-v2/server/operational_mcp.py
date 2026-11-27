@@ -163,6 +163,12 @@ async def project_hml_snapshot(project_id: str, confirm: str) -> dict:
     return await run_maintenance("project_hml_snapshot", confirm, project_id)
 
 
+@mcp.tool()
+async def project_hml_database_backup(project_id: str, confirm: str) -> dict:
+    """Create and validate an online SQLite backup for the supported HML project."""
+    return await run_maintenance("project_hml_database_backup", confirm, project_id)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     mcp.run(transport="streamable-http")

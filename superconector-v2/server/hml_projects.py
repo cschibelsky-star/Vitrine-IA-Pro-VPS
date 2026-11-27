@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from assessor_snapshot import FILES as ASSESSOR_FILES
+from assessor_snapshot import FILES as ASSESSOR_FILES, PROJECT as ASSESSOR_PROJECT
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,8 @@ def catalog():
         "environment": "homologation",
         "compose_file": p.compose_file,
         "services": list(p.services),
-        "operations": ["project_hml_snapshot"],
+        "operations": ["project_hml_snapshot"] + (
+            ["project_hml_database_backup"] if p.project_id == ASSESSOR_PROJECT else []
+        ),
         "snapshot_files": list(p.snapshot_paths),
     } for p in PILOT.values()]

@@ -13,7 +13,10 @@ class PilotTests(unittest.TestCase):
         self.assertEqual(set(projects), {"assessor-online-pr137-current-hml", "cockpit-admin-v1-hml"})
         for project in projects.values():
             self.assertEqual(project["environment"], "homologation")
-            self.assertEqual(project["operations"], ["project_hml_snapshot"])
+            expected = ["project_hml_snapshot"]
+            if project["project_id"] == "assessor-online-pr137-current-hml":
+                expected.append("project_hml_database_backup")
+            self.assertEqual(project["operations"], expected)
 
     @patch.object(broker.assessor_snapshot, "create_snapshot", return_value={"verified": True})
     def test_cockpit_target_and_paths_are_fixed_on_the_host(self, snapshot):

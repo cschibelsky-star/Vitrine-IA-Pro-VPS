@@ -5,7 +5,8 @@ import socket
 TARGET = "vitrine-super-v2-operational-hml-operational_mcp-1"
 SCOPES = {"candidate_status": "projects:read", "candidate_restart": "projects:write",
           "assessor_hml_snapshot": "projects:write", "project_hml_snapshot": "projects:write",
-          "hml_project_catalog": "projects:read"}
+          "hml_project_catalog": "projects:read", "project_hml_database_backup": "projects:write"}
+PROJECT_OPERATIONS = {"project_hml_snapshot", "project_hml_database_backup"}
 SNAPSHOT_TARGET = "assessor-online-pr137-current-hml"
 
 
@@ -25,7 +26,7 @@ def authorize(token, operation, subject, enabled, confirm=""):
 def call_maintenance(operation, project_id=None):
     if operation not in SCOPES:
         raise ValueError("operation_not_allowed")
-    if (operation == "project_hml_snapshot") != (project_id is not None):
+    if (operation in PROJECT_OPERATIONS) != (project_id is not None):
         raise ValueError("invalid_project_argument")
     payload = {"operation": operation}
     if project_id is not None:
@@ -42,7 +43,7 @@ def call_maintenance(operation, project_id=None):
     if not isinstance(result, dict) or result.get("ok") is not True:
         raise RuntimeError("maintenance_failed")
     target = SNAPSHOT_TARGET if operation == "assessor_hml_snapshot" else TARGET
-    if operation == "project_hml_snapshot":
+    if operation in PROJECT_OPERATIONS:
         target = project_id
     elif operation == "hml_project_catalog":
         target = "hml-pilot"
