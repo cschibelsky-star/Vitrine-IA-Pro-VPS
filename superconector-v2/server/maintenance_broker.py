@@ -12,6 +12,7 @@ from pathlib import Path
 
 import assessor_snapshot
 import hml_sqlite_backup
+import hml_release_preflight
 from hml_projects import PILOT, catalog
 
 SOCKET = Path("/run/super-v2-maintenance/operations.sock")
@@ -42,6 +43,14 @@ def candidate():
 def operation(data):
     if not isinstance(data, dict):
         raise ValueError("invalid_request")
+    if data.get("operation") == "project_hml_release_preflight":
+        if set(data) != {"operation", "project_id", "commit"} or not isinstance(data["project_id"], str):
+            raise ValueError("invalid_request")
+        project = PILOT.get(data["project_id"])
+        if project is None:
+            raise PermissionError("project_not_allowed")
+        return {"ok": True, "operation": data["operation"], "target": project.project_id,
+                **hml_release_preflight.preflight(project, data["commit"], docker)}
     if data.get("operation") in ("project_hml_snapshot", "project_hml_database_backup"):
         if set(data) != {"operation", "project_id"} or not isinstance(data["project_id"], str):
             raise ValueError("invalid_request")
@@ -91,7 +100,7 @@ class Handler(socketserver.StreamRequestHandler):
                 raise ValueError("invalid_request")
             data = json.loads(raw)
             if isinstance(data, dict) and data.get("operation") in ("candidate_status", "candidate_restart", "assessor_hml_snapshot",
-                                                                      "project_hml_snapshot", "hml_project_catalog", "project_hml_database_backup"):
+                                                                      "project_hml_snapshot", "hml_project_catalog", "project_hml_database_backup", "project_hml_release_preflight"):
                 op = data["operation"]
             result = operation(data)
         except Exception:
