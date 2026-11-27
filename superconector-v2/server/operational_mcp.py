@@ -11,6 +11,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from mcp_identity import IdentityVerifier
 from host_client import call_host
+from maintenance_client import authorize, call_maintenance
 
 audit = logging.getLogger("super-v2.audit")
 
@@ -96,6 +97,31 @@ async def git_history() -> dict:
 async def git_diff_check() -> dict:
     """Check the repository diff for whitespace errors."""
     return await run_operation("git_diff_check")
+
+
+async def run_maintenance(operation, confirm=""):
+    token = get_access_token()
+    authorize(token, operation, os.environ["SUPER_ALLOWED_SUBJECT"],
+              os.environ.get("SUPER_MAINTENANCE_ENABLED") == "true", confirm)
+    try:
+        result = await asyncio.to_thread(call_maintenance, operation)
+    except Exception:
+        audit.warning("maintenance=%s status=failed", operation)
+        raise RuntimeError("maintenance_failed") from None
+    audit.info("subject=%r maintenance=%s status=ok", token.subject, operation)
+    return {"source": "native-vps", **result}
+
+
+@mcp.tool()
+async def candidate_status() -> dict:
+    """Read the isolated HML candidate container status."""
+    return await run_maintenance("candidate_status")
+
+
+@mcp.tool()
+async def candidate_restart(confirm: str) -> dict:
+    """Restart only the isolated HML candidate; requires projects:write and explicit EXECUTAR confirmation."""
+    return await run_maintenance("candidate_restart", confirm)
 
 
 if __name__ == "__main__":
